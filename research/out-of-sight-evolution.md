@@ -9,7 +9,8 @@ Provenance: the task analysis and cache analysis were run in this repo. The lite
 - The family is graded on whether the scene **progressed** while unseen. A return that looks the same as before scores the minimum. Remembering the scene is not the task.
 - LingBot's failure is a content failure, not a camera failure: PlayWorld reports a 93% trajectory-gate pass rate for LingBot-World2 on this family, the highest of nine models.
 - The literature agrees on the symptom ("frozen, not forgotten") across this model class. The cause on LingBot v2 causal-fast is ours to prove.
-- The best-supported cheap levers are text that states the progressed state, and weakening or rewriting the pinned first frames at the moment the camera returns. More memory is not supported.
+- After a red-team review, the first lever to test is the scene caption as prompt (which upstream gives Genie 3 and we do not give LingBot), starting on insight. Sink changes are gated behind a probe, and writing a new state into the sink as first proposed is not buildable. More memory is not supported.
+- Out-of-sight alone cannot reach 2.12; two or three families must move.
 
 ## What the task measures
 
@@ -25,9 +26,11 @@ From `data/outsight/data.json` and `third_party/PlayWorld/metrics/vqa/rubric.py`
 From `python -m adapters.lingbot_world2.cache_model --split all --family outsight`:
 
 - LingBot keeps the first 6 latents forever (the "sink": the input image plus about 20 frames) and the previous 8 latents (about 32 frames, 2 s).
-- In 43 of 43 tasks the dataset trajectory ends at the starting view, which is in the sink and never evicted.
-- Evictions only hit views passed in transit: 36 of 43 tasks with default turn rates, 18 of 43 with turn calibration.
-- So on return, the model's only memory of the target view is the scene at second 0.
+- 31 of 43 dataset trajectories end at the starting view (33 with turn calibration), which is in the sink and never evicted. Four more return to it and then make a final move (OE026, OE037, OE039, OE047); two return after walking (OE019, OE050); four never return (OE021, OE028, OE029, OE032). An earlier version of this note said 43 of 43; that came from a check that also counted a still tail as a revisit.
+- Evictions hit views passed in transit: 36 of 43 tasks with default turn rates, 18 of 43 with turn calibration.
+- So on a clean return, the model's only memory of the target view is the scene at second 0.
+- The sink is not six copies of the start view. Slot 0 is the input image, and it is re-conditioned from the original image on every pass through the `y` channel. In 38 of 43 tasks the camera starts moving at frame 1, so slots 1 to 5 hold the first part of the outbound sweep.
+- Only about 4 to 10 seconds pass while the camera is away. Insight tasks get 60 seconds of still camera.
 
 ## Hypothesis
 
@@ -82,9 +85,40 @@ Status: 1 and 2 are reported for LingBot v1 or for the model family in the liter
 - "Best consistency means worst evolution" (MBench): not supported by the source.
 - "Few-step distilled models lose motion" (Phased DMD): measured on a different distillation setup; does not transfer.
 
-## Proposals
+## Red-team rulings (2026-11-14)
 
-Status key: **census** = waits for the baseline's judge reasons; **untested** = no evidence on LingBot v2 yet. A red-team review of every proposal is in progress; rulings will be added below.
+Every proposal below was attacked by two adversaries (can it be built in this code; will it move the score) and ruled on by a judge that re-checked the objections against the code and data. A final adversary reviewed the plan as a whole. Summary:
+
+| # | Ruling | Why |
+|---|---|---|
+| P0 census | Modify | Not free and not decisive alone: frozen and reverted are the same judge level, and all three causes give the same symptom. Read the raw per-pass JSONs for all 24 dev tasks, use three labels (trajectory fault, level 1 with clean trajectory, level 2+), use insight as the still-camera control. Never block building on it. |
+| P1 still camera | Modify | The baseline's insight tasks already answer most of it. Otherwise a matched still-versus-turn probe arm, read by eye. |
+| P2 return prompt | Modify | Ship candidate is a fixed activity sentence appended to the task prompt. The return switch is a later add-on. Replacing the task prompt would drop instruction-following content. |
+| P3 sink down-weight | Modify | No build until a no-sink probe arm shows a same-scene, advanced return. Step 1 alone is the wrong dose for this sampler. |
+| P4 flush, P14 recompute | Withdrawn | Flush raises the sink's share from 6 of 14 latents to 6 of 7. Recompute re-encodes the same second-0 latents. Keep only the text re-encode path, which the prompt switch needs. |
+| P5 diagnostic | Dropped | Folded into the probe; no proxy for progress exists. |
+| P6 side rollout | **Killed** | Slot 0 is re-conditioned from the original image through `y` on every pass, slots 1 to 5 are not at the start pose, and re-running the clean pass on the sink corrupts upstream cache indices. |
+| P7 edited anchor | Modify | No latent write, no ledger, no past.dev, no image editor before freeze. At most a donor-rollout K/V copy as a probe. |
+| P8 sink surgery | Modify | Only `13:1` and `12:0` change sink size alone (at `18:0` the rolling window also grows). Replace-sink is a no-op on 41 of 43 tasks. |
+| P9 memory window | Modify | Not for this family. A GC window A/B only if the baseline shows GC loses on identity at reappearance. |
+| P11 best-of-N | **Killed** | A similarity selector prefers the frozen return; a "did it progress" selector restates the judge. Closed loop allows only greedy per-step selection, and the 14B cache cannot be cloned on an 80 GB card. |
+| P13 iteration setup | Modify | Select on 14B, not 1.3B. One seed with two judge passes measures judge noise only: use two seeds and count per-task cells. Fix the turn-calibration setting across arms. |
+| P16 priority | Modify | Out-of-sight alone cannot reach 2.12: every task at 2.0 there gives about 2.03 overall. Two or three families must move. |
+
+What the whole-plan review added:
+
+- **The dataset caption is benchmark input.** Upstream's Genie 3, HappyOyster and HY-World2 players send `Environment: <image_caption>` plus the task. Our adapter sends only the camera instruction, or "wait and observe" on 29 of 30 insight tasks. The captions already describe the activity as visible evidence, which is the format LingBot v2 was trained on. This is AR-002 (#32).
+- **Insight is the cheapest family to move.** It has no gate, no agent and no camera motion, so a judged A/B has no player noise. A task point there is worth 1/120 overall, against 1/172 for out-of-sight.
+- **The player is unexamined.** Ours is gpt-4.1-mini; the paper used Claude Haiku 4.5. It oscillated for 24 chunks on GC005.
+- **The local baseline is unmeasured**, and every estimate above assumes it equals the web demo's 1.82.
+- **The final 171-task run has never been tried** at the shard count it needs.
+- **Shared risk of the prompt lever:** StEvo-Bench reports that when LingBot evolves a scene it stops obeying the camera. A richer prompt could cost trajectory gates on GC and out-of-sight.
+
+Order the review defends: fix the freeze time and the fallback; start a baseline full-171 generation without scoring; test the caption prompt on insight; read the baseline; run the caption arm on all 24 dev tasks; one merged probe only if out-of-sight is still at level 1; everything else after freeze.
+
+## Proposals (as first written)
+
+Kept for the record. See the rulings above for what survived.
 
 | # | Proposal | What it tests or changes | Support | Main risk |
 |---|---|---|---|---|
@@ -111,7 +145,7 @@ Status key: **census** = waits for the baseline's judge reasons; **untested** = 
 4. P6 or P7 if 3 shows the return can be moved.
 5. P8 only with the no-sink control.
 
-P9 is deprioritised for this family: the cache analysis shows the returned view is always retained.
+P9 is deprioritised for this family: on a clean return the cache analysis shows the returned view is retained. This order is superseded by the red-team order above.
 
 ## Honesty rules for these tests
 
