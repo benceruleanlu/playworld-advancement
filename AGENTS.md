@@ -82,10 +82,11 @@ Submission due Sunday 14:30: repo link, 2-minute demo video, short description. 
 | Model | GC | IF | Insight | Out-of-sight | Overall |
 |---|---|---|---|---|---|
 | Genie 3 | 2.74 | 2.40 | 1.51 | 1.81 | 2.12 |
+| LingBot-World v2 (web demo) | 2.04 | 2.13 | 1.95 | 1.16 | 1.82 |
 | SANA-WM | 1.72 | 1.89 | 1.13 | 1.16 | 1.48 |
 | Matrix-Game-3.0 | 1.30 | 1.25 | 1.00 | 1.00 | 1.14 |
 
-Genie 3 is weak on insight and out-of-sight. That is where we win.
+Genie 3 is weak on insight and out-of-sight. That is where we win. LingBot already beats Genie 3 on insight (1.95 vs 1.51); its gap is out-of-sight (1.16) and GC.
 
 ### Timeline
 

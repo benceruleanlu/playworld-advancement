@@ -19,6 +19,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from types import SimpleNamespace
 
 DEFAULTS = {
     "openai": {"PLAYER_API_URL": "https://api.openai.com/v1",
@@ -64,7 +65,7 @@ def parse_reply(body: dict) -> str:
     return str(msg)
 
 
-def make_request_fn(name: str):
+def make_request_fn(name: str, *, show_error_body: bool = True):
     def request_agent_action(args, prompt, images_b64):
         url = args.agent_base_url.rstrip("/") + "/chat/completions"
         data = json.dumps(build_payload(args.agent_model, prompt, list(images_b64))).encode()
@@ -74,8 +75,9 @@ def make_request_fn(name: str):
         try:
             with opener.open(req, timeout=args.agent_timeout_s) as resp:
                 body = json.loads(resp.read().decode())
-        except urllib.error.HTTPError as e:  # surface the provider's message; never the key
-            raise RuntimeError(f"Agent API HTTP {e.code}: {e.read().decode(errors='replace')[:300]}") from None
+        except urllib.error.HTTPError as e:
+            detail = f": {e.read().decode(errors='replace')[:300]}" if show_error_body else ""
+            raise RuntimeError(f"Agent API HTTP {e.code}{detail}") from None
         return parse_reply(body)
 
     request_agent_action.provider = name
@@ -93,3 +95,32 @@ def patch(run_agent_module) -> str:
             os.environ[key] = val
     run_agent_module.request_agent_action = make_request_fn(name)
     return name
+
+
+def preflight() -> None:
+    key = os.environ.get("PLAYER_API_KEY")
+    if not key:
+        raise SystemExit("Closed-loop generation requires PLAYER_API_KEY.")
+    if provider() != "openai":
+        print("Player key configured. Live preflight is available for the OpenAI provider.")
+        return
+
+    args = SimpleNamespace(
+        agent_base_url=os.environ.get("PLAYER_API_URL") or DEFAULTS["openai"]["PLAYER_API_URL"],
+        agent_model=os.environ.get("PLAYER_MODEL") or DEFAULTS["openai"]["PLAYER_MODEL"],
+        agent_api_key=key,
+        agent_timeout_s=10,
+    )
+    try:
+        reply = make_request_fn("openai", show_error_body=False)(args, "Reply with OK.", [])
+    except Exception as exc:
+        # Some API error bodies include credential fragments. Print only the status.
+        status = str(exc) if str(exc).startswith("Agent API HTTP ") else type(exc).__name__
+        raise SystemExit(f"Player API preflight failed ({status}). Check the key, endpoint, model and project access.") from None
+    if not reply.strip():
+        raise SystemExit("Player API preflight returned an empty reply.")
+    print("Player API preflight succeeded.")
+
+
+if __name__ == "__main__":
+    preflight()

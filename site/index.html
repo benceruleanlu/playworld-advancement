@@ -174,6 +174,8 @@ details table { margin-top: 6px; }
 .delta .tag.real { border-color: currentColor; }
 .delta .abs { display: block; font-size: 11px; color: var(--ink2); }
 .callout { font-size: 13px; color: var(--ink2); margin: 8px 0 0; }
+.team { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 14px; }
+.team a { margin-left: 4px; font-size: 13px; }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--ink2); }
 footer p { margin: 4px 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -217,6 +219,7 @@ footer p { margin: 4px 0; }
     <a class="nl" href="#rigor">How we measure</a>
     <a class="nl" href="#progress">Progress</a>
     <a class="nl" href="#data">All runs</a>
+    <a class="nl" href="#h-team">Team</a>
   </div>
 </nav>
 <div class="wrap" id="top">
@@ -321,6 +324,16 @@ footer p { margin: 4px 0; }
   <div class="filters"><label>Baseline <select id="cmp-base"></select></label></div>
   <div class="scroll"><table id="cmp"></table></div>
   <p class="callout" id="cmp-note"></p>
+</section>
+
+<section aria-labelledby="h-team">
+  <h2 id="h-team" class="sec">Team</h2>
+  <ul class="team">
+    <li>Benjamin Lu <a href="https://github.com/benceruleanlu">@benceruleanlu</a></li>
+    <li>Hari Gangadharan <a href="https://github.com/Hcoder10">@Hcoder10</a></li>
+    <li>Justin Poehnelt <a href="https://github.com/jpoehnelt">@jpoehnelt</a></li>
+    <li>Kevv <a href="https://github.com/kevvzhang">@kevvzhang</a></li>
+  </ul>
 </section>
 
 <footer id="foot"></footer>
