@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlayWorld advancement: experiment results</title>
+<meta name="description" content="Live experiment results for the PlayWorld advancement hackathon project, compared with Genie 3 (2.12).">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.05);
+  --good: #006300; --bad: #b02a2a; --warn: #9a6400; --link: #1c5cab;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --other: #898781; --ref: #898781;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.06);
+    --good: #0ca30c; --bad: #e66767; --warn: #fab219; --link: #86b6ef;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--link); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+header h1 { font-size: 22px; line-height: 1.25; margin: 0 0 4px; font-weight: 650; }
+header p { margin: 0; color: var(--ink2); max-width: 70ch; }
+h2 { font-size: 16px; margin: 0 0 4px; font-weight: 650; }
+.sub { color: var(--ink2); font-size: 13px; margin: 0 0 12px; }
+section { margin-top: 28px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 18px; }
+.tile .label { font-size: 12px; color: var(--ink2); text-transform: uppercase; letter-spacing: .04em; }
+.tile .big { font-size: 34px; line-height: 1.15; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 4px; overflow-wrap: anywhere; }
+.tile .big.small { font-size: 22px; padding-top: 8px; }
+.tile .note { font-size: 13px; color: var(--ink2); margin-top: 2px; overflow-wrap: anywhere; }
+.good { color: var(--good); } .bad { color: var(--bad); }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; margin-bottom: 12px; }
+.filters label, .field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink2); }
+.filters .check { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); padding-bottom: 6px; }
+select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+select:focus-visible, input:focus-visible, button:focus-visible, summary:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 9px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { font-weight: 600; color: var(--ink2); font-size: 12px; background: var(--surface); position: sticky; top: 0; }
+td.num, th.num { text-align: right; }
+tbody tr:last-child td { border-bottom: 0; }
+th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; color: inherit; font-weight: inherit; }
+th button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+th .arrow { font-size: 10px; min-width: 8px; }
+td.exp, th.exp { position: sticky; left: 0; background: var(--surface); z-index: 1; max-width: 230px; white-space: normal; overflow-wrap: anywhere; box-shadow: 1px 0 0 var(--grid); }
+td.notes { white-space: normal; min-width: 160px; max-width: 280px; color: var(--ink2); overflow-wrap: anywhere; }
+td.overall { font-weight: 650; }
+.std { color: var(--ink2); font-weight: 400; font-size: 12px; }
+tr.ref td { background: var(--wash); }
+tr.ref td.exp { background: var(--surface); }
+tr.refhead td { font-size: 12px; font-weight: 600; color: var(--ink2); background: var(--wash); text-transform: uppercase; letter-spacing: .04em; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.badge { font-size: 11px; line-height: 1.4; padding: 0 6px; border-radius: 999px; border: 1px solid var(--axis); color: var(--ink2); white-space: nowrap; }
+.badge.warn { border-color: var(--warn); color: var(--warn); }
+.badge.partial { border-style: dashed; }
+.badge.ok { border-color: var(--good); color: var(--good); }
+.empty { padding: 22px 14px; color: var(--ink2); text-align: center; white-space: normal; }
+.dash { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 10px; font-size: 13px; }
+.chips label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.chips label.off { opacity: .55; cursor: not-allowed; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
+.sw.line { height: 0; width: 18px; border-radius: 0; border: 0; border-top: 2px solid; }
+.sw.dash2 { border-top-style: dashed; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink2); margin: 4px 0 8px; align-items: center; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 12px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart svg text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink2); }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .baseline { stroke: var(--axis); stroke-width: 1; }
+.chart .bar { transition: filter .1s; }
+.chart .bar.hover { filter: brightness(1.15) contrast(1.05); }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .hit:focus-visible { outline: 2px solid var(--link); }
+.s1 { fill: var(--s1); } .s2 { fill: var(--s2); } .s3 { fill: var(--s3); } .s4 { fill: var(--s4); } .sref { fill: var(--ref); } .sother { fill: var(--other); }
+.k1 { color: var(--s1); stroke: var(--s1); } .k2 { color: var(--s2); stroke: var(--s2); } .k3 { color: var(--s3); stroke: var(--s3); } .k4 { color: var(--s4); stroke: var(--s4); } .kother { color: var(--other); stroke: var(--other); } .kref { color: var(--ref); stroke: var(--ref); }
+.sw.k1 { background: var(--s1); } .sw.k2 { background: var(--s2); } .sw.k3 { background: var(--s3); } .sw.k4 { background: var(--s4); } .sw.kref, .sw.kother { background: var(--ref); }
+.sw.line.k1, .sw.line.k2, .sw.line.k3, .sw.line.k4, .sw.line.kref, .sw.line.kother { background: none; }
+.tip { position: absolute; pointer-events: none; z-index: 5; background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.15); max-width: 240px; display: none; }
+.tip b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.tip .t2 { color: var(--ink2); overflow-wrap: anywhere; }
+details { margin-top: 8px; font-size: 13px; }
+summary { cursor: pointer; color: var(--ink2); }
+details table { margin-top: 6px; }
+.delta { white-space: nowrap; }
+.delta .v { font-weight: 600; }
+.delta .tag { font-size: 11px; margin-left: 4px; padding: 0 5px; border-radius: 999px; border: 1px solid var(--axis); color: var(--ink2); }
+.delta .tag.real { border-color: currentColor; }
+.delta .abs { display: block; font-size: 11px; color: var(--ink2); }
+.callout { font-size: 13px; color: var(--ink2); margin: 8px 0 0; }
+footer { margin-top: 32px; font-size: 12px; color: var(--ink2); }
+footer p { margin: 4px 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) {
+  .tile .big { font-size: 28px; }
+  th, td { padding: 6px 7px; }
+}
+@media (forced-colors: active) {
+  .chart .bar { stroke: CanvasText; stroke-width: 1; }
+  .badge { border-color: CanvasText; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>PlayWorld advancement: experiment results</h1>
+  <p>Raising an open world model's PlayWorld score above Genie 3 (2.12) with inference-time methods. Scores run from 1 to 5; higher is better.</p>
+</header>
+
+<div class="tiles" id="tiles" aria-live="polite"></div>
+
+<section aria-labelledby="h-board">
+  <h2 id="h-board">Leaderboard</h2>
+  <p class="sub">Click a column to sort. Empty cells mean the value was not measured, not zero. Paper rows are shown for reference and are not filtered.</p>
+  <div class="filters" id="filters">
+    <label>Runner <select id="f-runner"></select></label>
+    <label>Split <select id="f-split"></select></label>
+    <label>Action source <select id="f-action"></select></label>
+    <label class="check"><input type="checkbox" id="f-tests"> Show pipeline tests <span id="hidden-count" class="std"></span></label>
+  </div>
+  <div class="scroll" id="board-scroll"><table id="board"></table></div>
+</section>
+
+<section aria-labelledby="h-charts">
+  <h2 id="h-charts">Charts</h2>
+  <p class="sub">Charts follow the filters above. Bars start at zero; scores cannot go below 1.</p>
+  <div class="charts">
+    <div class="card chart" id="c-bars">
+      <h2>Per-family score vs Genie 3</h2>
+      <div class="chips" id="bar-chips" role="group" aria-label="Experiments to chart (up to 4)"></div>
+      <div class="legend" id="bar-legend"></div>
+      <div id="bar-svg"></div>
+      <details><summary>Table view</summary><div id="bar-table"></div></details>
+      <div class="tip" id="bar-tip" role="status"></div>
+    </div>
+    <div class="card chart" id="c-line">
+      <h2>Overall score over time</h2>
+      <p class="sub" style="margin-bottom:4px">Times are UTC. Hollow markers are open-loop (dataset) runs.</p>
+      <div class="legend" id="line-legend"></div>
+      <div id="line-svg"></div>
+      <details><summary>Table view</summary><div id="line-table"></div></details>
+      <div class="tip" id="line-tip" role="status"></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-cmp">
+  <h2 id="h-cmp">Compare to a baseline</h2>
+  <p class="sub">Delta is the row minus the baseline. A delta smaller than 2x the pass-to-pass std is noise (project rule). The CSV stores only the overall std, so it is used for every family; when it is missing, the paper's pass variance (std 0.105) is used.</p>
+  <div class="filters"><label>Baseline <select id="cmp-base"></select></label></div>
+  <div class="scroll"><table id="cmp"></table></div>
+  <p class="callout" id="cmp-note"></p>
+</section>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+"use strict";
+(function () {
+  var REPO = "benceruleanlu/playworld-advancement";
+  var RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/experiments.csv";
+  var COMMIT = "https://github.com/" + REPO + "/commit/";
+  var TARGET = 2.12;
+  var FALLBACK_STD = Math.sqrt(0.011);
+  var FULL_TASKS = 171;
+  var FAMS = [["gc", "GC"], ["if", "IF"], ["insight", "Insight"], ["outsight", "Out-of-sight"]];
+  var REFS = [
+    { exp: "Genie 3", gc: 2.74, if: 2.40, insight: 1.51, outsight: 1.81, overall: 2.12 },
+    { exp: "LingBot-World2", gc: 2.04, if: 2.13, insight: 1.95, outsight: 1.16, overall: 1.82 },
+    { exp: "SANA-WM", gc: 1.72, if: 1.89, insight: 1.13, outsight: 1.16, overall: 1.48 },
+    { exp: "Matrix-Game-3.0", gc: 1.30, if: 1.25, insight: 1.00, outsight: 1.00, overall: 1.14 }
+  ];
+  REFS.forEach(function (r) { r.ref = true; });
+  var GENIE = REFS[0];
+
+  /* ---------- helpers ---------- */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "class") e.className = attrs[k];
+      else if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function sv(tag, attrs, kids) {
+    var e = document.createElementNS(SVGNS, tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function fmt(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : "-"; }
+  function dashCell(td) { td.appendChild(el("span", { class: "dash", text: "-" })); }
+  function isTest(r) { return /fake_runner/.test(r.runner || ""); }
+  function isOpen(r) { return r.action_source === "dataset"; }
+  function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
+  function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function fmtTime(t) {
+    var d = new Date(t);
+    return MON[d.getUTCMonth()] + " " + d.getUTCDate() + " " + pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes());
+  }
+  function ago(t) {
+    var s = Math.max(0, (Date.now() - t) / 1000);
+    if (s < 90) return "just now";
+    if (s < 5400) return Math.round(s / 60) + " min ago";
+    if (s < 129600) return Math.round(s / 3600) + " h ago";
+    return Math.round(s / 86400) + " days ago";
+  }
+
+  /* ---------- CSV (RFC 4180: quoted fields, commas, doubled quotes, embedded newlines) ---------- */
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    var rows = [], row = [], f = "", q = false, i = 0, n = text.length, c;
+    while (i < n) {
+      c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i += 2; continue; } q = false; i++; continue; }
+        f += c; i++; continue;
+      }
+      if (c === '"') { q = true; i++; continue; }
+      if (c === ",") { row.push(f); f = ""; i++; continue; }
+      if (c === "\r") { i++; continue; }
+      if (c === "\n") { row.push(f); rows.push(row); row = []; f = ""; i++; continue; }
+      f += c; i++;
+    }
+    if (f !== "" || row.length) { row.push(f); rows.push(row); }
+    return rows.filter(function (r) { return !(r.length === 1 && r[0].trim() === ""); });
+  }
+  function num(s) {
+    if (s === undefined || s === null) return null;
+    s = String(s).trim();
+    if (s === "") return null;
+    var v = Number(s);
+    return isFinite(v) ? v : null;
+  }
+  function toRows(text) {
+    var t = parseCSV(text);
+    if (!t.length) throw new Error("empty csv");
+    var head = t[0].map(function (h) { return h.trim(); });
+    if (head.indexOf("exp") < 0) throw new Error("no exp column");
+    var out = [];
+    t.slice(1).forEach(function (cells, idx) {
+      var o = {};
+      head.forEach(function (h, j) { o[h] = (cells[j] === undefined ? "" : cells[j]); });
+      if (!o.exp || !o.exp.trim()) return;
+      var ts = Date.parse(o.timestamp);
+      out.push({
+        exp: o.exp.trim(), split: (o.split || "").trim(), t: isFinite(ts) ? ts : null, ts: o.timestamp || "",
+        sha: (o.git_sha || "").trim(), runner: (o.runner || "").trim(), action_source: (o.action_source || "").trim(),
+        gc: num(o.gc), if: num(o.if), insight: num(o.insight), outsight: num(o.outsight),
+        overall: num(o.overall), overall_std: num(o.overall_std), passes: num(o.passes),
+        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), notes: (o.notes || "").trim(), order: idx
+      });
+    });
+    return out;
+  }
+
+  /* ---------- state ---------- */
+  var ALL = [];
+  var source = "";
+  var filt = { runner: "", split: "", action: "", tests: false };
+  var sort = { key: "t", dir: -1 };
+  var sel = []; // chosen experiment keys for the bar chart, in slot order
+  var slotOf = {}; // exp key -> slot 1..4, stable while selected
+  var touched = false;
+  var cmpBase = "";
+  function key(r) { return r.exp + "\u0000" + r.split; }
+
+  function visible() {
+    return ALL.filter(function (r) {
+      if (!filt.tests && isTest(r)) return false;
+      if (filt.runner && r.runner !== filt.runner) return false;
+      if (filt.split && r.split !== filt.split) return false;
+      if (filt.action && r.action_source !== filt.action) return false;
+      return true;
+    });
+  }
+
+  /* ---------- tiles ---------- */
+  function tile(label, big, note, cls, small) {
+    return el("div", { class: "card tile" }, [
+      el("div", { class: "label", text: label }),
+      el("div", { class: "big" + (small ? " small" : "") + (cls ? " " + cls : ""), text: big }),
+      el("div", { class: "note", text: note })
+    ]);
+  }
+  function renderTiles() {
+    var box = $("tiles"); clear(box);
+    var real = ALL.filter(function (r) { return !isTest(r); });
+    var hiddenTests = ALL.length - real.length;
+    var closed = real.filter(function (r) { return isClosed(r) && r.overall !== null; });
+    var best = null;
+    closed.forEach(function (r) { if (!best || r.overall > best.overall) best = r; });
+    if (best) {
+      box.appendChild(tile("Best closed-loop overall", fmt(best.overall), best.exp + " (" + best.split + ", " + best.n_tasks + " tasks" + (isPartial(best) ? ", partial" : "") + ")"));
+      var gap = best.overall - TARGET;
+      box.appendChild(tile("Gap to Genie 3 (" + TARGET.toFixed(2) + ")",
+        (gap >= 0 ? "+" : "-") + Math.abs(gap).toFixed(2),
+        gap >= 0 ? "ahead of Genie 3 (paper)" : "still short of Genie 3 (paper)", gap >= 0 ? "good" : "bad"));
+    } else {
+      var openOnly = real.filter(function (r) { return r.overall !== null; }).length;
+      box.appendChild(tile("Best closed-loop overall", "-", openOnly ? "no closed-loop run yet (" + openOnly + " open-loop A/B)" : "no scored runs yet"));
+      box.appendChild(tile("Gap to Genie 3 (" + TARGET.toFixed(2) + ")", "-", "needs a closed-loop run"));
+    }
+    box.appendChild(tile("Experiments", String(real.length), hiddenTests ? "plus " + hiddenTests + " pipeline test" + (hiddenTests > 1 ? "s" : "") + " (hidden by default)" : "all logged runs"));
+    var last = null;
+    ALL.forEach(function (r) { if (r.t !== null && (last === null || r.t > last)) last = r.t; });
+    box.appendChild(tile("Last updated", last === null ? "-" : fmtTime(last), last === null ? "no timestamps" : ago(last) + " (UTC)", "", true));
+  }
+
+  /* ---------- filters ---------- */
+  function fillSelect(id, values, label, cur) {
+    var s = $(id); clear(s);
+    s.appendChild(el("option", { value: "", text: label }));
+    values.forEach(function (v) { s.appendChild(el("option", { value: v, text: v })); });
+    s.value = values.indexOf(cur) >= 0 ? cur : "";
+  }
+  function uniq(f) {
+    var seen = {}, out = [];
+    ALL.forEach(function (r) { var v = f(r); if (v && !seen[v]) { seen[v] = 1; out.push(v); } });
+    return out.sort();
+  }
+  function renderFilters() {
+    fillSelect("f-runner", uniq(function (r) { return r.runner; }), "All runners", filt.runner);
+    fillSelect("f-split", uniq(function (r) { return r.split; }), "All splits", filt.split);
+    fillSelect("f-action", uniq(function (r) { return r.action_source; }), "All action sources", filt.action);
+    filt.runner = $("f-runner").value; filt.split = $("f-split").value; filt.action = $("f-action").value;
+    var nt = ALL.filter(isTest).length;
+    $("hidden-count").textContent = nt ? "(" + nt + " hidden)" : "";
+    $("f-tests").checked = filt.tests;
+  }
+
+  /* ---------- leaderboard ---------- */
+  var COLS = [
+    ["exp", "Experiment", "exp", false], ["runner", "Runner", "", false], ["action_source", "Action source", "", false],
+    ["split", "Split", "", false], ["n_tasks", "Tasks", "num", true], ["n_missing", "Missing", "num", true],
+    ["gc", "GC", "num", true], ["if", "IF", "num", true], ["insight", "Insight", "num", true],
+    ["outsight", "Out-of-sight", "num", true], ["overall", "Overall (std)", "num", true], ["passes", "Passes", "num", true],
+    ["t", "Time (UTC)", "", false], ["sha", "Commit", "", false], ["notes", "Notes", "", false]
+  ];
+  function badgesFor(r) {
+    var b = el("div", { class: "badges" });
+    if (r.ref) { b.appendChild(el("span", { class: "badge", text: "paper, full benchmark" })); return b; }
+    if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
+    if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "action_source=dataset replays dataset actions. Valid for fast A/B only, never for final numbers.", text: "! open loop, A/B only" }));
+    else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", text: "closed loop" }));
+    if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
+    return b;
+  }
+  function sortVal(r, k) {
+    var v = r[k];
+    return v === undefined || v === null || v === "" ? null : v;
+  }
+  function rowEl(r) {
+    var tr = el("tr", { class: r.ref ? "ref" : "" });
+    var td = el("td", { class: "exp" }, [el("div", { text: r.exp }), badgesFor(r)]);
+    tr.appendChild(td);
+    ["runner", "action_source", "split"].forEach(function (k) {
+      var t = el("td"); if (r.ref || !r[k]) dashCell(t); else t.textContent = r[k]; tr.appendChild(t);
+    });
+    ["n_tasks", "n_missing"].forEach(function (k) {
+      var t = el("td", { class: "num" }); if (r[k] === null || r.ref) dashCell(t); else t.textContent = String(r[k]); tr.appendChild(t);
+    });
+    FAMS.forEach(function (f) {
+      var t = el("td", { class: "num" }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
+    });
+    var o = el("td", { class: "num overall" });
+    if (r.overall === null) dashCell(o);
+    else {
+      o.appendChild(document.createTextNode(fmt(r.overall)));
+      if (r.overall_std !== null) o.appendChild(el("span", { class: "std", text: " ±" + fmt(r.overall_std) }));
+    }
+    tr.appendChild(o);
+    var p = el("td", { class: "num" }); if (r.passes === null || r.ref) dashCell(p); else p.textContent = String(r.passes); tr.appendChild(p);
+    var tt = el("td");
+    if (r.t === null || r.ref) dashCell(tt); else { tt.textContent = fmtTime(r.t); tt.title = r.ts; }
+    tr.appendChild(tt);
+    var cm = el("td");
+    if (r.sha && /^[0-9a-f]{7,40}$/i.test(r.sha)) cm.appendChild(el("a", { href: COMMIT + r.sha, target: "_blank", rel: "noopener", text: r.sha.slice(0, 7) }));
+    else dashCell(cm);
+    tr.appendChild(cm);
+    var nt = el("td", { class: "notes" }); if (!r.notes || r.ref) dashCell(nt); else nt.textContent = r.notes; tr.appendChild(nt);
+    return tr;
+  }
+  function renderBoard() {
+    var t = $("board"); clear(t);
+    var thead = el("thead"), hr = el("tr");
+    COLS.forEach(function (c) {
+      var th = el("th", { class: c[2], scope: "col", "aria-sort": sort.key === c[0] ? (sort.dir > 0 ? "ascending" : "descending") : "none" });
+      var b = el("button", { type: "button", title: "Sort by " + c[1] }, [el("span", { text: c[1] }), el("span", { class: "arrow", "aria-hidden": "true", text: sort.key === c[0] ? (sort.dir > 0 ? "▲" : "▼") : "" })]);
+      b.addEventListener("click", function () {
+        if (sort.key === c[0]) sort.dir = -sort.dir; else { sort.key = c[0]; sort.dir = c[3] || c[0] === "t" ? -1 : 1; }
+        renderBoard();
+      });
+      th.appendChild(b); hr.appendChild(th);
+    });
+    thead.appendChild(hr); t.appendChild(thead);
+    var rows = visible().slice().sort(function (a, b) {
+      var x = sortVal(a, sort.key), y = sortVal(b, sort.key);
+      if (x === null && y === null) return a.order - b.order;
+      if (x === null) return 1; if (y === null) return -1;
+      var c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+      return c * sort.dir || a.order - b.order;
+    });
+    var tb = el("tbody");
+    if (!rows.length) {
+      var nt = ALL.filter(isTest).length;
+      var msg = ALL.length ? "No experiments match these filters." + (!filt.tests && nt ? " " + nt + " pipeline test row" + (nt > 1 ? "s are" : " is") + " hidden; tick \"Show pipeline tests\" to see them." : "")
+                           : "No experiments logged yet. Run the experiment workflow and rows appear here.";
+      tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: String(COLS.length), text: msg })]));
+    }
+    rows.forEach(function (r) { tb.appendChild(rowEl(r)); });
+    t.appendChild(tb);
+    var rb = el("tbody");
+    rb.appendChild(el("tr", { class: "refhead" }, [el("td", { colspan: String(COLS.length), text: "Reference: PlayWorld paper, full benchmark (171 tasks)" })]));
+    REFS.forEach(function (r) { rb.appendChild(rowEl(r)); });
+    t.appendChild(rb);
+  }
+
+  /* ---------- tooltip ---------- */
+  function showTip(tip, host, html, x, y) {
+    clear(tip);
+    html.forEach(function (n) { tip.appendChild(n); });
+    tip.style.display = "block";
+    var hw = host.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    var lx = Math.min(Math.max(4, x + 12), hw - tw - 4);
+    var ly = y - th - 10; if (ly < 4) ly = y + 14;
+    tip.style.left = lx + "px"; tip.style.top = ly + "px";
+  }
+  function hideTip(tip) { tip.style.display = "none"; }
+
+  function table(headers, rows) {
+    var t = el("table"), h = el("tr");
+    headers.forEach(function (x, i) { h.appendChild(el("th", { class: i ? "num" : "", text: x })); });
+    t.appendChild(el("thead", null, [h]));
+    var b = el("tbody");
+    rows.forEach(function (r) {
+      var tr = el("tr");
+      r.forEach(function (c, i) { tr.appendChild(el("td", { class: i ? "num" : "", text: c })); });
+      b.appendChild(tr);
+    });
+    t.appendChild(b);
+    return el("div", { class: "scroll" }, [t]);
+  }
+
+  /* ---------- bar chart ---------- */
+  function slotFor(k) {
+    if (slotOf[k]) return slotOf[k];
+    var used = {}; sel.forEach(function (s) { if (slotOf[s]) used[slotOf[s]] = 1; });
+    for (var i = 1; i <= 4; i++) if (!used[i]) { slotOf[k] = i; return i; }
+    return 4;
+  }
+  function pruneSel(vis) {
+    var keys = {}; vis.forEach(function (r) { keys[key(r)] = r; });
+    sel = sel.filter(function (k) { return keys[k]; });
+    Object.keys(slotOf).forEach(function (k) { if (sel.indexOf(k) < 0) delete slotOf[k]; });
+    if (!touched) {
+      var scored = vis.filter(function (r) { return r.overall !== null; })
+        .sort(function (a, b) { return (a.t || 0) - (b.t || 0) || a.order - b.order; });
+      sel = scored.slice(-3).map(key);
+      slotOf = {}; sel.forEach(function (k) { slotFor(k); });
+    }
+  }
+  function renderBarChips(vis) {
+    var box = $("bar-chips"); clear(box);
+    var scored = vis.filter(function (r) { return r.overall !== null; });
+    if (!scored.length) { box.appendChild(el("span", { class: "std", text: "No scored experiments to chart yet. Genie 3 is shown for reference." })); return; }
+    scored.forEach(function (r) {
+      var k = key(r), on = sel.indexOf(k) >= 0, full = sel.length >= 4 && !on;
+      var cb = el("input", { type: "checkbox" }); cb.checked = on; cb.disabled = full;
+      cb.addEventListener("change", function () {
+        touched = true;
+        if (cb.checked) { sel.push(k); slotFor(k); } else { sel = sel.filter(function (x) { return x !== k; }); delete slotOf[k]; }
+        renderBarChips(vis); renderBars(vis);
+      });
+      var lab = el("label", { class: full ? "off" : "", title: full ? "Up to 4 experiments at a time" : "" }, [cb]);
+      lab.appendChild(el("span", { class: "sw " + (on ? "k" + slotOf[k] : ""), style: on ? null : "background:transparent" }));
+      lab.appendChild(el("span", { text: r.exp }));
+      box.appendChild(lab);
+    });
+  }
+  function drawBars(series, groups) {
+    var host = $("bar-svg"); clear(host);
+    var W = Math.max(280, host.clientWidth || 520), H = 280;
+    var m = { l: 30, r: 6, t: 10, b: 26 };
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var maxv = 0; series.forEach(function (s) { s.vals.forEach(function (v) { if (v !== null && v > maxv) maxv = v; }); });
+    var ymax = Math.max(3, Math.ceil(maxv));
+    var y = function (v) { return m.t + ph - (v / ymax) * ph; };
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Grouped bar chart of per-family scores. A table view follows." });
+    for (var g = 0; g <= ymax; g++) {
+      svg.appendChild(sv("line", { class: g === 0 ? "baseline" : "gridline", x1: m.l, x2: W - m.r, y1: y(g), y2: y(g) }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: y(g) + 4, "text-anchor": "end", text: String(g) }));
+    }
+    var gw = pw / groups.length, n = series.length;
+    var inner = gw * 0.78, gap = 2;
+    var bw = Math.max(3, Math.min(30, (inner - gap * (n - 1)) / n));
+    var used = bw * n + gap * (n - 1);
+    var tip = $("bar-tip");
+    groups.forEach(function (gr, gi) {
+      var gx = m.l + gi * gw + (gw - used) / 2;
+      svg.appendChild(sv("text", { x: m.l + gi * gw + gw / 2, y: H - 8, "text-anchor": "middle", text: gr[1] }));
+      series.forEach(function (s, si) {
+        var v = s.vals[gi], x = gx + si * (bw + gap);
+        var bar = null;
+        if (v !== null) {
+          var top = y(v), h = y(0) - top, r = Math.min(4, bw / 2, h);
+          bar = sv("path", { class: "bar " + s.cls, d: "M" + x + "," + y(0) + "V" + (top + r) + "Q" + x + "," + top + " " + (x + r) + "," + top + "H" + (x + bw - r) + "Q" + (x + bw) + "," + top + " " + (x + bw) + "," + (top + r) + "V" + y(0) + "Z" });
+          svg.appendChild(bar);
+        }
+        var label = gr[1] + ", " + s.name + ": " + (v === null ? "no score" : fmt(v));
+        var hit = sv("rect", { class: "hit", x: x - gap / 2 - 1, y: m.t, width: bw + gap + 2, height: ph, tabindex: "0", "aria-label": label });
+        var show = function (ev) {
+          if (bar) bar.classList.add("hover");
+          var b = hit.getBoundingClientRect(), hb = host.getBoundingClientRect(), cb = $("c-bars").getBoundingClientRect();
+          var px = ev && ev.clientX !== undefined && ev.type !== "focus" ? ev.clientX : b.left + b.width / 2;
+          var py = ev && ev.clientY !== undefined && ev.type !== "focus" ? ev.clientY : b.top + 20;
+          var kids = [el("b", { text: v === null ? "no score" : fmt(v) }), el("div", { class: "t2", text: s.name }), el("div", { class: "t2", text: gr[1] })];
+          if (v !== null && !s.isRef && GENIE[gr[0]] !== null) {
+            var d = v - GENIE[gr[0]];
+            kids.push(el("div", { class: "t2", text: (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) + " vs Genie 3" }));
+          }
+          showTip(tip, $("c-bars"), kids, px - cb.left, py - cb.top);
+        };
+        var off = function () { if (bar) bar.classList.remove("hover"); hideTip(tip); };
+        hit.addEventListener("pointermove", show); hit.addEventListener("pointerenter", show);
+        hit.addEventListener("pointerleave", off); hit.addEventListener("focus", show); hit.addEventListener("blur", off);
+        svg.appendChild(hit);
+      });
+    });
+    host.appendChild(svg);
+  }
+  function renderBars(vis) {
+    var groups = FAMS.concat([["overall", "Overall"]]);
+    var series = [{ name: "Genie 3 (paper)", cls: "sref", isRef: true, vals: groups.map(function (g) { return GENIE[g[0]]; }) }];
+    var byKey = {}; vis.forEach(function (r) { byKey[key(r)] = r; });
+    sel.forEach(function (k) {
+      var r = byKey[k]; if (!r) return;
+      series.push({ name: r.exp, cls: "s" + slotFor(k), vals: groups.map(function (g) { return r[g[0]]; }) });
+    });
+    var lg = $("bar-legend"); clear(lg);
+    series.forEach(function (s) {
+      lg.appendChild(el("span", null, [el("span", { class: "sw " + (s.isRef ? "kref" : "k" + s.cls.slice(1)) }), el("span", { text: s.name })]));
+    });
+    drawBars(series, groups);
+    $("bar-table").replaceChildren(table(["Experiment"].concat(groups.map(function (g) { return g[1]; })),
+      series.map(function (s) { return [s.name].concat(s.vals.map(function (v) { return v === null ? "-" : fmt(v); })); })));
+  }
+
+  /* ---------- line chart ---------- */
+  var runnerSlots = [];
+  function runnerClass(runner) {
+    var i = runnerSlots.indexOf(runner);
+    return i >= 0 && i < 4 ? String(i + 1) : "other";
+  }
+  function drawLine(pts) {
+    var host = $("line-svg"); clear(host);
+    var W = Math.max(280, host.clientWidth || 520), H = 280;
+    var m = { l: 34, r: 12, t: 14, b: 28 };
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var maxv = TARGET; pts.forEach(function (p) { if (p.overall > maxv) maxv = p.overall; });
+    var ymin = 1, ymax = Math.ceil((maxv + 0.2) * 2) / 2;
+    var y = function (v) { return m.t + ph - ((v - ymin) / (ymax - ymin)) * ph; };
+    var tmin, tmax;
+    if (pts.length) {
+      tmin = Math.min.apply(null, pts.map(function (p) { return p.t; })); tmax = Math.max.apply(null, pts.map(function (p) { return p.t; }));
+      if (tmax - tmin < 3600000) { tmin -= 43200000; tmax += 43200000; }
+      else { var padT = (tmax - tmin) * 0.06; tmin -= padT; tmax += padT; }
+    } else { tmax = Date.now(); tmin = tmax - 86400000; }
+    var x = function (t) { return m.l + ((t - tmin) / (tmax - tmin)) * pw; };
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Overall score of each experiment over time, with the Genie 3 target line at 2.12. A table view follows." });
+    var step = ymax - ymin > 3 ? 1 : 0.5;
+    for (var g = ymin; g <= ymax + 1e-9; g += step) {
+      svg.appendChild(sv("line", { class: g === ymin ? "baseline" : "gridline", x1: m.l, x2: W - m.r, y1: y(g), y2: y(g) }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: y(g) + 4, "text-anchor": "end", text: g.toFixed(step < 1 ? 1 : 0) }));
+    }
+    var range = tmax - tmin, nt = W < 420 ? 3 : 5;
+    for (var i = 0; i < nt; i++) {
+      var tt = tmin + (range * i) / (nt - 1), d = new Date(tt);
+      var lab = range < 3 * 86400000 ? MON[d.getUTCMonth()] + " " + d.getUTCDate() + " " + pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) : MON[d.getUTCMonth()] + " " + d.getUTCDate();
+      svg.appendChild(sv("text", { x: x(tt), y: H - 8, "text-anchor": i === 0 ? "start" : (i === nt - 1 ? "end" : "middle"), text: lab }));
+    }
+    // target line
+    svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: y(TARGET), y2: y(TARGET), stroke: "var(--ink2)", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
+    svg.appendChild(sv("text", { x: W - m.r, y: y(TARGET) - 5, "text-anchor": "end", text: "Genie 3 " + TARGET.toFixed(2) + " (paper)" }));
+    // best closed-loop so far (step)
+    var sorted = pts.slice().sort(function (a, b) { return a.t - b.t || a.order - b.order; });
+    var best = null, path = "";
+    sorted.forEach(function (p) {
+      if (!isClosed(p)) return;
+      if (best === null || p.overall > best) {
+        path += (path ? "H" + x(p.t) + "V" + y(p.overall) : "M" + x(p.t) + "," + y(p.overall)); best = p.overall;
+      }
+    });
+    if (path) {
+      var lastClosed = sorted.filter(isClosed).pop();
+      path += "H" + (W - m.r);
+      svg.appendChild(sv("path", { d: path, fill: "none", stroke: "var(--ink)", "stroke-width": 2, "stroke-linejoin": "round" }));
+      void lastClosed;
+    }
+    var tip = $("line-tip");
+    var marks = [];
+    pts.forEach(function (p) {
+      var cls = runnerClass(p.runner), cx = x(p.t), cy = y(p.overall);
+      var c = sv("circle", { class: "k" + cls, cx: cx, cy: cy, r: 5, "stroke-width": 2, tabindex: "0",
+        fill: isOpen(p) ? "var(--surface)" : "currentColor", "aria-label": p.exp + ", overall " + fmt(p.overall) + ", " + (isOpen(p) ? "open loop" : "closed loop") });
+      var show = function () {
+        var cb = $("c-line").getBoundingClientRect(), b = c.getBoundingClientRect();
+        showTip(tip, $("c-line"), [el("b", { text: fmt(p.overall) }), el("div", { class: "t2", text: p.exp }),
+          el("div", { class: "t2", text: (p.runner || "-") + ", " + (p.action_source || "-") + ", " + (p.split || "-") }),
+          el("div", { class: "t2", text: fmtTime(p.t) + " UTC" })], b.left + b.width / 2 - cb.left, b.top + 5 - cb.top);
+      };
+      c.addEventListener("focus", show); c.addEventListener("blur", function () { hideTip(tip); });
+      marks.push({ p: p, c: c, cx: cx, cy: cy, show: show });
+    });
+    // nearest-point layer so the pointer only has to be close, not exact
+    var layer = sv("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" });
+    layer.addEventListener("pointermove", function (ev) {
+      if (!marks.length) return;
+      var r = svg.getBoundingClientRect(), k = W / r.width, px = (ev.clientX - r.left) * k, py = (ev.clientY - r.top) * k;
+      var best2 = null, bd = 1e9;
+      marks.forEach(function (mk) { var d = Math.hypot(mk.cx - px, mk.cy - py); if (d < bd) { bd = d; best2 = mk; } });
+      if (best2 && bd < 40) best2.show(); else hideTip(tip);
+    });
+    layer.addEventListener("pointerleave", function () { hideTip(tip); });
+    svg.appendChild(layer);
+    marks.forEach(function (mk) { svg.appendChild(mk.c); });
+    if (!pts.length) svg.appendChild(sv("text", { x: m.l + pw / 2, y: m.t + ph / 2 + 24, "text-anchor": "middle", text: "No scored experiments yet" }));
+    host.appendChild(svg);
+  }
+  function renderLine(vis) {
+    runnerSlots = []; ALL.forEach(function (r) { if (r.runner && runnerSlots.indexOf(r.runner) < 0 && !isTest(r)) runnerSlots.push(r.runner); });
+    ALL.forEach(function (r) { if (r.runner && runnerSlots.indexOf(r.runner) < 0) runnerSlots.push(r.runner); });
+    var pts = vis.filter(function (r) { return r.overall !== null && r.t !== null; });
+    var lg = $("line-legend"); clear(lg);
+    var seen = {};
+    pts.forEach(function (p) {
+      var c = runnerClass(p.runner), k = c + p.runner;
+      if (seen[k]) return; seen[k] = 1;
+      lg.appendChild(el("span", null, [el("span", { class: "sw k" + c }), el("span", { text: c === "other" ? (p.runner || "-") + " (other)" : p.runner })]));
+    });
+    lg.appendChild(el("span", null, [el("span", { class: "sw line", style: "border-top-color:var(--ink)" }), el("span", { text: "best closed-loop so far" })]));
+    lg.appendChild(el("span", null, [el("span", { class: "sw line dash2", style: "border-top-color:var(--ink2)" }), el("span", { text: "Genie 3 target" })]));
+    drawLine(pts);
+    $("line-table").replaceChildren(pts.length ? table(["Experiment", "Overall", "When (UTC)", "Loop"],
+      pts.slice().sort(function (a, b) { return a.t - b.t; }).map(function (p) { return [p.exp, fmt(p.overall), fmtTime(p.t), isOpen(p) ? "open" : (isClosed(p) ? "closed" : "-")]; }))
+      : el("p", { class: "std", text: "No scored experiments yet." }));
+  }
+
+  /* ---------- compare ---------- */
+  function thresholdFor(a, b) {
+    var stds = [a.overall_std, b.overall_std].filter(function (s) { return s !== null && s !== undefined; });
+    return 2 * (stds.length ? Math.max.apply(null, stds) : FALLBACK_STD);
+  }
+  function renderCompare(vis) {
+    var scored = vis.filter(function (r) { return r.overall !== null || FAMS.some(function (f) { return r[f[0]] !== null; }); });
+    var opts = scored.map(function (r) { return [key(r), r.exp + " (" + r.split + ")", r]; })
+      .concat(REFS.map(function (r) { return ["ref:" + r.exp, r.exp + " (paper)", r]; }));
+    var s = $("cmp-base"); clear(s);
+    opts.forEach(function (o) { s.appendChild(el("option", { value: o[0], text: o[1] })); });
+    var valid = opts.some(function (o) { return o[0] === cmpBase; });
+    if (!valid) {
+      var firstClosed = scored.filter(isClosed).sort(function (a, b) { return (a.t || 0) - (b.t || 0); })[0];
+      cmpBase = firstClosed ? key(firstClosed) : (scored[0] ? key(scored[0]) : "ref:" + GENIE.exp);
+    }
+    s.value = cmpBase;
+    var base = null; opts.forEach(function (o) { if (o[0] === cmpBase) base = o[2]; });
+    var t = $("cmp"); clear(t);
+    var others = scored.filter(function (r) { return key(r) !== cmpBase; });
+    var hr = el("tr"); ["Experiment"].concat(FAMS.map(function (f) { return f[1]; })).concat(["Overall"]).forEach(function (h, i) {
+      hr.appendChild(el("th", { class: i ? "num" : "exp", scope: "col", text: h }));
+    });
+    t.appendChild(el("thead", null, [hr]));
+    var tb = el("tbody");
+    if (!others.length) {
+      tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: "6", text: scored.length ? "Only one experiment is visible. Log a second run, or choose a paper row as the baseline, to see deltas." : "No scored experiments to compare yet." })]));
+    }
+    others.forEach(function (r) {
+      var tr = el("tr");
+      var td = el("td", { class: "exp" }, [el("div", { text: r.exp }), badgesFor(r)]);
+      if (base && !base.ref && base.split !== r.split) td.appendChild(el("div", { class: "badges" }, [el("span", { class: "badge warn", text: "! split differs from baseline" })]));
+      tr.appendChild(td);
+      FAMS.map(function (f) { return f[0]; }).concat(["overall"]).forEach(function (k) {
+        var c = el("td", { class: "num" });
+        if (r[k] === null || base[k] === null) dashCell(c);
+        else {
+          var d = r[k] - base[k], thr = thresholdFor(base, r), noise = Math.abs(d) < thr;
+          var box = el("div", { class: "delta" });
+          var v = el("span", { class: "v " + (noise ? "" : (d > 0 ? "good" : "bad")), text: (noise ? "" : (d > 0 ? "▲ " : "▼ ")) + (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) });
+          box.appendChild(v);
+          box.appendChild(el("span", { class: "tag " + (noise ? "" : "real"), title: "Threshold: 2x std = " + thr.toFixed(2), text: noise ? "noise" : "real" }));
+          box.appendChild(el("span", { class: "abs", text: fmt(base[k]) + " → " + fmt(r[k]) }));
+          c.appendChild(box);
+        }
+        tr.appendChild(c);
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    var note = "";
+    if (base && base.ref) note = "The baseline is a paper number on the full 171-task benchmark. Rows scored on a smaller split or open loop are not directly comparable.";
+    $("cmp-note").textContent = note;
+  }
+
+  /* ---------- footer ---------- */
+  function renderFoot() {
+    var f = $("foot"); clear(f);
+    f.appendChild(el("p", { text: "Data source: " + source }));
+    f.appendChild(el("p", { text: "Rows: results/experiments.csv in the repo, written by pwa report. Paper rows are from the PlayWorld paper (full benchmark, 171 tasks). Our rows use the split shown, so only split=all closed-loop rows are comparable to them." }));
+    f.appendChild(el("p", null, [el("a", { href: "https://github.com/" + REPO, target: "_blank", rel: "noopener", text: "Repository" }),
+      document.createTextNode(" | "), el("a", { href: "https://github.com/" + REPO + "/blob/main/results/experiments.csv", target: "_blank", rel: "noopener", text: "experiments.csv" })]));
+  }
+
+  /* ---------- render all ---------- */
+  function renderAll() {
+    var vis = visible();
+    pruneSel(vis);
+    renderTiles(); renderBoard(); renderBarChips(vis); renderBars(vis); renderLine(vis); renderCompare(vis);
+  }
+  function wire() {
+    $("f-runner").addEventListener("change", function (e) { filt.runner = e.target.value; renderAll(); });
+    $("f-split").addEventListener("change", function (e) { filt.split = e.target.value; renderAll(); });
+    $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
+    $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderAll(); });
+    $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); });
+    var rz = null, lastW = window.innerWidth;
+    window.addEventListener("resize", function () {
+      if (window.innerWidth === lastW) return; lastW = window.innerWidth;
+      clearTimeout(rz); rz = setTimeout(function () { var v = visible(); renderBars(v); renderLine(v); }, 120);
+    });
+  }
+
+  /* ---------- load ---------- */
+  function get(url, ms) {
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, ms);
+    return fetch(url, { cache: "no-store", signal: ctl ? ctl.signal : undefined }).then(function (r) {
+      clearTimeout(timer);
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.text();
+    });
+  }
+  function override() {
+    var q = new URLSearchParams(location.search).get("csv");
+    if (!q) return null;
+    try { var u = new URL(q, location.href); return u.origin === location.origin ? u.href : null; } catch (e) { return null; }
+  }
+  function load() {
+    var ov = override();
+    var first = ov ? get(ov, 6000).then(function (t) { return { t: t, s: "sample file " + ov }; })
+      : get(RAW, 6000).then(function (t) { return { t: t, s: "live from the main branch (fetched " + new Date().toUTCString().slice(5, 22) + " UTC)" }; });
+    return first.then(function (o) { return { rows: toRows(o.t), s: o.s }; }).catch(function () {
+      return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
+    });
+  }
+  wire();
+  load().then(function (o) { ALL = o.rows; source = o.s; })
+    .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
+    .then(function () { renderFilters(); renderFoot(); renderAll(); });
+})();
+</script>
+</body>
+</html>
