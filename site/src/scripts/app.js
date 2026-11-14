@@ -599,7 +599,7 @@
       body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples.",
       links: [["#14", PR + "14"]], evidence: ["lb13-stateless-gc005-v1"] },
     { title: "Persistent session memory", status: "testing", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world forgets itself every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, 2.20 on one task) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
+      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, 2.20 on one task) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
       // like-for-like only: same 1.3B runner as the stateless baseline
       match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
@@ -753,7 +753,7 @@
       card.appendChild(bars);
       var gap = GENIE[k] - 1;
       card.appendChild(el("div", { class: "foot" }, [
-        el("span", { class: "badge " + (TARGETED[k] ? "accent" : ""), text: TARGETED[k] ? "Primary target" : "Hold the line" }),
+        el("span", { class: "badge " + (TARGETED[k] ? "accent" : ""), text: TARGETED[k] ? "Primary target" : "Don't regress" }),
         el("span", { class: "note", text: TARGETED[k] ? "Genie 3 is only " + fmt(gap) + " above the 1.0 floor." : "Genie 3 leads at " + fmt(GENIE[k]) + "." })
       ]));
       box.appendChild(card);

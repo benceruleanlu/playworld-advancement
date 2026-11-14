@@ -1,6 +1,6 @@
 <section id="rigor" aria-labelledby="h-rigor">
   <h2 id="h-rigor" class="sec">How we measure</h2>
-  <p class="sub">A world-model score is easy to inflate by accident: replay recorded actions instead of letting an agent play, tune on the test set, or call a lucky verifier pass a gain. This is the protocol every reported number goes through, and where each rule lives in the code (or, where it is only a team convention, we say so).</p>
+  <p class="sub">A world-model score is easy to inflate by accident. Replaying recorded actions instead of letting an agent play, tuning on the test set, or counting one lucky verifier pass as a gain all do it. Every reported number goes through the protocol below. The last column says where each rule is enforced, and marks the one that is only a team convention.</p>
   <div class="pipe" aria-label="Evaluation pipeline">
     <div class="card step"><h3>Fixed splits</h3><p>171 tasks. A seeded 24-task dev set (6 per family) for iteration; 147 held out, unscored until code freeze.</p></div>
     <div class="card step"><h3>Closed-loop play</h3><p>An LLM agent (<code>gpt-4.1-mini</code>) watches each chunk and picks the next action. No replayed dataset actions in final numbers.</p></div>
