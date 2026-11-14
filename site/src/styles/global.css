@@ -87,6 +87,18 @@ section.tight { margin-top: 28px; }
 .method { display: flex; flex-direction: column; gap: 6px; }
 .method .top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .method p { margin: 0; font-size: 14px; color: var(--ink2); }
+.method p.what { color: var(--ink); }
+.method p.measured { font-size: 13px; }
+.method p.measured b { color: var(--ink); font-weight: 600; }
+.method details { margin-top: 2px; }
+.method details p { margin-top: 6px; font-size: 13px; }
+.open-prs { margin-top: 14px; font-size: 14px; color: var(--ink2); }
+.open-prs h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); font-weight: 600; margin: 0 0 6px; }
+.open-prs ul { margin: 0; padding-left: 18px; } .open-prs li { margin: 4px 0; } .open-prs li a { margin-left: 4px; }
+details.howto, details.tool, details.rules-wrap { margin: 4px 0 14px; font-size: 14px; }
+details.howto ul { margin: 6px 0 8px; padding-left: 18px; color: var(--ink2); }
+details.howto .cklegend { margin-top: 4px; }
+details.tool[open] > summary, details.rules-wrap[open] > summary { margin-bottom: 8px; }
 .method .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--ink2); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--grid); }
 .method .ev { font-size: 13px; }
 .method .ev ul { margin: 2px 0 0; padding-left: 18px; }
