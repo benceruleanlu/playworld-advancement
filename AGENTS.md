@@ -20,6 +20,16 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 - A delta smaller than 2x the pass-to-pass std is noise.
 - Secrets live in `config/env.sh` only. Never print or commit key values.
 
+## Skills
+
+`.claude/skills/` holds skills from [jpoehnelt/skills](https://github.com/jpoehnelt/skills) (MIT, `.claude/skills/LICENSE`) at commit `0eefeee`: `eng-*` (change checklist, blast radius, benchmark checklist, testing, TDD, agent CLI scale), `gh-*` (CI triage, PR feedback loop, PR commit review), `comms-*` (technical writing, unslop, impact, how, why, interrogate, slides), `agents-*` (correct, reflect, swarm). Update by re-copying the folders, not by editing in place. Repo facts they read:
+
+- Checks: `python -m pytest -q` (tests in `tests/`, pytest); one file: `python -m pytest -q tests/test_cli.py`. Site: `cd site && npm ci && mkdir -p public && cp ../results/experiments.csv public/ && npm run build`.
+- CI: `.github/workflows/ci.yml` jobs `test` (pytest, needs PlayWorld submodule and dataset JSON from HF) and `site` (Astro build). `experiment.yml` is manual, needs repo secrets and Modal; `pages.yml` deploys on main.
+- Tests use `tests/fake_runner.py` as the no-GPU runner fake. GPU generation, Gemini scoring and agent API calls are not tested in CI and need a human with keys.
+- Benchmark harness is `pwa` (below). A score claim needs closed loop, Gemini 3.1 Pro, 2+ passes, and a delta at least 2x pass std (`pwa compare`).
+- No PR template or changeset. PR and commit titles: `Area: what changed` (e.g. `Site: ...`, `lingbot: ...`), PR number appended on merge.
+
 ## CLI (`pwa`)
 
 Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doctor`.
