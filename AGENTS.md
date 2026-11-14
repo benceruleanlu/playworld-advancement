@@ -92,23 +92,28 @@ Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner
 
 Update this as runs land: add measured rows, and move a claim from unverified to verified with the run that showed it.
 
-Generation wall clock is roughly `ceil(n_tasks / num_shards) * min_per_task + load_per_shard`. `modal_app.py` maps each shard to its own GPU container (`gen_shard.starmap`) with no cap in code, so more shards is near-linear until the Modal GPU quota binds. GPU-hours stay about the same, plus one model load per shard.
+Sharding is per family: `pwa/gen.py::shard_tasks()` (mirroring upstream `run_agent`) assigns task `i` of each family to shard `i % num_shards`, and a shard runs its families one after another. So generation wall clock is roughly `sum over families of ceil(n_family / num_shards) * min_per_task + load_per_shard`, and shards beyond the largest family get no work. `modal_app.py` maps each shard to its own GPU container (`gen_shard.starmap`) with no cap in code.
+
+- dev (6 per family): 4 shards -> busiest shard runs 8 tasks; 6 shards -> 4 tasks, the floor. More than 6 shards adds nothing.
+- all (gc 48, if 50, insight 30, outsight 43): 4 -> 44 tasks per shard, 8 -> 23, 24 -> 9, 50 -> 4.
 
 Verified:
 - Launching several `experiment` runs at once can fail with Modal `App create rate limit exceeded` (`RESOURCE_EXHAUSTED`) in the prefetch step, before any GPU starts. Stagger dispatches by 1-2 min; rerun under the same name is fine if nothing was generated.
 - Scoring runs on the Actions runner with `pwa score --workers 6`; it is serial after generation.
+- The single-task GC005 time (~15 min) underestimates dev tasks: at 23:40 UTC on 2026-11-14, `lb14-turncal-dev-v1` (busiest shard 4 tasks) was still generating after 94 min and `lb14-session-dev-v1` (8 tasks) after 126 min, so a closed-loop 14B dev task takes over ~23 min on average unless a shard is stuck. Budgets below assume 15 min and are optimistic.
 
 Unverified (check and update):
-- Whether 24 concurrent H100 containers start or queue on our quota (`lb14-turncal-dev-v1`).
+- Concurrent H100 containers available on our quota (`lb14-turncal-dev-v1` asked for 24, but only 6 have dev work).
+- Whether a shard with no tasks exits before loading the model.
 - Split of per-task time between model load, denoising and agent API calls (read from `gen.log`).
 
-Levers, biggest first: raise `num_shards` (dev: 24 = one task per GPU); 1.3B for A/B, 14B to confirm; `--action-source dataset` for A/B only (no agent calls, not for final numbers); `tasks` input to run only the family a method targets; start the next A/B while the last one runs.
+Levers, biggest first: raise `num_shards` up to the largest family size (dev: 6); one task per GPU would need cross-family sharding in `pwa gen`; 1.3B for A/B, 14B to confirm; `--action-source dataset` for A/B only (no agent calls, not for final numbers); `tasks` input to run only the family a method targets; start the next A/B while the last one runs.
 
 | Exp | Runner | Tasks | Shards | GPU | Gen wall clock | Min/task | Notes |
 |---|---|---|---|---|---|---|---|
 | lb14-session-agent-gc005-v1 | lingbot_world2 | 1 | 1 | H100 | <=16 min | <=16 (incl. load) | closed loop; upper bound, gen start to job end incl. scoring |
 
-Full 171-task budget at ~15 min/task: 4 shards ~11 h (over the 6 h job cap), 8 shards ~5.5 h, 24 shards ~2 h.
+Full 171-task budget at ~15 min/task: 4 shards ~11 h (over the 6 h job cap), 8 shards ~5.8 h, 24 shards ~2.3 h, 50 shards ~1 h.
 
 ### Results site
 
