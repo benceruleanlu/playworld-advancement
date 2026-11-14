@@ -49,7 +49,7 @@ def main(exp: str, variant: str = "1.3b", tasks: str = "OE034,OE039,OE047", angl
     if not (ROOT / "data").is_dir():
         raise SystemExit("data/ missing; run ./setup.sh first (the image ships the local checkout)")
     argv = [exp, "--tasks", *tasks.split(","), "--angles", *angles.split(","), "--holds", *holds.split(","),
-            "--windows", *windows.split(",")]
+            f"--windows={windows}"]
     argv += ["--dino"] if dino else []
     argv += ["--resume"] if resume else []
     code = probe_job.remote(argv, variant)

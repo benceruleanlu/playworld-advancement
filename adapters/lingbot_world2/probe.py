@@ -10,7 +10,7 @@ when the outbound latents are evicted, the memory problem is cache policy, not
 attention weights.
 
     LINGBOT_VARIANT=1.3b python -m adapters.lingbot_world2.probe probe-v1 \\
-        --tasks OE034 OE039 --angles 45 90 180 --holds 0 48 --windows 18:6 36:6 -1:0
+        --tasks OE034 OE039 --angles 45 90 180 --holds 0 48 --windows=18:6,36:6,-1:0
 
 On Modal: PWA_RUNNER=lingbot_world2_1p3b modal run modal_app.py::probe --exp probe-v1 ...
 Writes runs/EXP/probe/<task>/<traj>.mp4 and .json, and runs/EXP/probe/summary.{json,tsv}.
@@ -91,7 +91,8 @@ def pairs(keys: list[str], rate_deg: float, local: int, sink: int, tol: float | 
             if abs(y[j] - y[f]) > tol:
                 continue
             lf, lj = latent_of(f), latent_of(j)
-            vis = set(C.visible(lf // C.CHUNK, local, sink))
+            c = lf // C.CHUNK  # the chunk's own keys are attended to as well
+            vis = set(C.visible(c, local, sink)) | set(range(c * C.CHUNK, (c + 1) * C.CHUNK))
             out.append({"kind": kind, "frame": f, "ref": j, "yaw": round(float(y[f]), 2),
                         "gap_latents": lf - lj, "in_cache": lj in vis, "ref_in_sink": lj < sink})
     return out
@@ -175,7 +176,8 @@ def main(argv=None) -> int:
     ap.add_argument("--tasks", nargs="+", default=["OE034", "OE039", "OE047"])
     ap.add_argument("--angles", nargs="+", type=float, default=[45, 90, 180])
     ap.add_argument("--holds", nargs="+", type=int, default=[0, 48])
-    ap.add_argument("--windows", nargs="+", default=["18:6"], help="local_attn:sink, e.g. 18:6 36:6 -1:0")
+    ap.add_argument("--windows", default="18:6",
+                    help="comma-separated local_attn:sink; write --windows=18:6,-1:0 (argparse rejects a bare -1:0)")
     ap.add_argument("--rate", type=float, default=45 / 32, help="yaw degrees per pixel frame (turn-cal chunk rate)")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--fps", type=int, default=16)
@@ -193,7 +195,7 @@ def main(argv=None) -> int:
     if root.exists() and not args.resume:
         raise SystemExit(f"{root} exists; pick a new experiment name or pass --resume")
     root.mkdir(parents=True, exist_ok=True)
-    windows = [tuple(int(x) for x in w.split(":")) for w in args.windows]
+    windows = [tuple(int(x) for x in w.split(":")) for w in args.windows.split(",") if w.strip()]
     pipe, cfg, variant = L.load_pipe(*windows[0])
     dino = Dino() if args.dino else None
     summary = []

@@ -196,3 +196,13 @@ def test_psnr_and_corr():
     assert PR.corr(a, 1 - a) == pytest.approx(-1.0, abs=1e-4)
     assert PR.psnr(a, np.clip(a + 0.1, 0, 1)) < 30
     assert PR.psnr(np.zeros((2, 2)), np.full((2, 2), 0.1)) == pytest.approx(20.0)
+
+
+def test_pairs_count_same_chunk_reference_as_cached():
+    # 30 deg turnaround falls inside a chunk: return frame 34 pairs with outbound 32 (both latent 9)
+    rate = 45 / 32
+    keys = PR.trajectory(30, 0, rate)
+    rows = PR.pairs(keys, rate, -1, 0)
+    assert rows and all(r["in_cache"] for r in rows)
+    same = [r for r in PR.pairs(keys, rate, 18, 6) if PR.latent_of(r["frame"]) // 4 == PR.latent_of(r["ref"]) // 4]
+    assert same and all(r["in_cache"] for r in same)
