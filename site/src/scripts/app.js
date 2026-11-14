@@ -752,38 +752,37 @@
   }
 
   /* ---------- families ---------- */
+  // one table: family, paper scores, our headline run, and our gap to Genie 3
   function renderFams() {
-    var box = $("fams"); clear(box);
-    var scaleMax = 3;
-    FAMS.forEach(function (f) {
-      var k = f[0], info = FAMINFO[k], b = bestFinal() || bestClosed();
-      var top = null; REFS.forEach(function (r) { if (r !== GENIE && (!top || r[k] > top[k])) top = r; });
-      var rows = [[ "Genie 3", GENIE[k], "ref" ], [ top.exp.replace("-World2", " v2"), top[k], "ref" ]];
-      var card = el("div", { class: "card fam" }, [
-        el("div", { class: "head" }, [el("h3", { text: info.name }), el("span", { class: "n", text: info.n + " tasks" })]),
-        el("p", { class: "q", text: info.q })
-      ]);
-      var bars = el("div", { class: "bars" });
-      function bar(name, v, cls, title) {
-        var w = v === null ? 0 : Math.max(0, Math.min(1, (v - 1) / (scaleMax - 1))) * 100;
-        // no fill element at all when there is no score, so an empty track never shows a sliver
-        var tr = el("div", { class: "track" }, v === null || w <= 0 ? [] : [el("div", { class: "fill " + cls, style: "width:" + w.toFixed(1) + "%" })]);
-        bars.appendChild(el("div", { class: "row", title: title || "" }, [el("span", { class: "nm", text: name }), tr,
-          el("span", { class: "v" + (v === null ? " none" : ""), text: v === null ? "not run" : fmt(v) })]));
-      }
-      rows.forEach(function (r) { bar(r[0], r[1], r[2]); });
-      var oursName = b && !isFinal(b) ? "Ours (" + b.n_tasks + " task" + (b.n_tasks === 1 ? "" : "s") + ")" : "Ours";
-      if (b) bar(oursName, b[k], "ours" + (isFinal(b) ? "" : " partial"), b.exp + (b[k] === null ? ": no tasks from this family" : ""));
-      else bar("Ours", null, "ours", "no closed-loop score yet");
-      card.appendChild(bars);
-      card.appendChild(el("div", { class: "foot" }, [
-        (b && b[k] !== null)
-          ? el("span", { class: "badge " + (isFinal(b) ? (b[k] >= GENIE[k] ? "ok" : "bad") : "partial"), text: "Ours vs Genie 3: " + (b[k] - GENIE[k] >= 0 ? "+" : "-") + Math.abs(b[k] - GENIE[k]).toFixed(2) + (isFinal(b) ? "" : " (partial)") })
-          : el("span", { class: "badge", text: "Ours: not measured yet" }),
-        el("span", { class: "note", text: "Paper: Genie 3 " + (GENIE[k] >= top[k] ? "leads " + top.exp.replace("-World2", " v2") + " by " + fmt(GENIE[k] - top[k]) : "trails " + top.exp.replace("-World2", " v2") + " by " + fmt(top[k] - GENIE[k])) + "." })
-      ]));
-      box.appendChild(card);
+    var t = $("fams"); clear(t);
+    var b = bestFinal() || bestClosed();
+    var top = null; REFS.forEach(function (r) { if (r !== GENIE && r.exp === "LingBot-World2") top = r; });
+    var oursHead = b && !isFinal(b) ? "Ours (" + b.n_tasks + " task" + (b.n_tasks === 1 ? "" : "s") + ")" : "Ours";
+    var hr = el("tr");
+    [["Family", "Family", "exp"], ["Genie 3", "G3", "num"], ["LingBot v2", "LB", "num"], [oursHead, "Ours", "num"], ["Ours vs Genie 3", "Gap", "num"]].forEach(function (h) {
+      hr.appendChild(el("th", { class: h[2], scope: "col" }, headLabel([0, h[0], 0, 0, h[1]])));
     });
+    t.appendChild(el("thead", null, [hr]));
+    var tb = el("tbody"), q = $("fam-q"); clear(q);
+    FAMS.forEach(function (f) {
+      var k = f[0], info = FAMINFO[k], tr = el("tr");
+      tr.appendChild(el("td", { class: "exp" }, [el("div", { class: "nm", text: info.name }), el("div", { class: "meta-line", text: info.n + " tasks" })]));
+      var lead = GENIE[k] >= top[k] ? "g" : "l";
+      tr.appendChild(el("td", { class: "num" + (lead === "g" ? " best" : ""), text: fmt(GENIE[k]) }));
+      tr.appendChild(el("td", { class: "num" + (lead === "l" ? " best" : ""), text: fmt(top[k]) }));
+      var o = el("td", { class: "num" });
+      if (b && b[k] !== null) o.textContent = fmt(b[k]); else o.appendChild(el("span", { class: "dash", title: "No dev-scale closed-loop run scores this family yet; smoke tests are not counted", text: "none yet" }));
+      tr.appendChild(o);
+      var g = el("td", { class: "num" });
+      if (b && b[k] !== null) {
+        var d = b[k] - GENIE[k];
+        g.appendChild(el("span", { class: "badge " + (isFinal(b) ? (d >= 0 ? "ok" : "bad") : "partial"), title: isFinal(b) ? "" : "Partial run: not comparable to the paper's full-benchmark score", text: (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) }));
+      } else dashCell(g);
+      tr.appendChild(g);
+      tb.appendChild(tr);
+      q.appendChild(el("li", null, [el("b", { text: info.name + ": " }), document.createTextNode(info.q)]));
+    });
+    t.appendChild(tb);
   }
 
   /* ---------- methods ---------- */
@@ -923,6 +922,7 @@
     $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
     $("f-branch").addEventListener("change", function (e) { filt.branch = e.target.value; renderAll(); });
     $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderAll(); });
+    $("charts-wrap").addEventListener("toggle", function () { if ($("charts-wrap").open) { var v = visible(); renderBars(v); renderLine(v); } });
     $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); syncUrl(); });
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {

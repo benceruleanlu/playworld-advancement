@@ -7,7 +7,6 @@ import Ruler from "../components/Ruler.astro";
 import WhereWeWin from "../components/WhereWeWin.astro";
 import Leaderboard from "../components/Leaderboard.astro";
 import Progress from "../components/Progress.astro";
-import Compare from "../components/Compare.astro";
 import Methods from "../components/Methods.astro";
 import Rigor from "../components/Rigor.astro";
 import Team from "../components/Team.astro";
@@ -16,12 +15,13 @@ import Team from "../components/Team.astro";
   <a class="skip" href="#top">Skip to results</a>
   <Nav />
   <main class="wrap" id="top" aria-busy="true" tabindex="-1">
-    <Hero />
-    <Ruler />
+    <div class="view lead">
+      <Hero />
+      <Ruler />
+    </div>
     <WhereWeWin />
     <Leaderboard />
     <Progress />
-    <Compare />
     <Methods />
     <Rigor />
     <Team />

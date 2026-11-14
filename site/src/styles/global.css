@@ -57,6 +57,14 @@ h2.sec { font-size: 22px; letter-spacing: -.005em; margin-bottom: 6px; }
 h3 { font-size: 15px; margin: 0 0 4px; font-weight: 650; }
 .sub { color: var(--ink2); font-size: 14px; margin: 0 0 14px; max-width: 75ch; }
 section { margin-top: 64px; }
+/* one main idea per screen on desktop-sized windows: each view fills the viewport below the sticky nav and centers its content */
+@media (min-width: 800px) and (min-height: 640px) {
+  .view, main > section:not(.tight):not(#team) { min-height: calc(100svh - 57px); display: flex; flex-direction: column; justify-content: center; margin-top: 0; padding: 40px 0; box-sizing: border-box; }
+  .view.lead { padding-top: 24px; }
+  .view.lead .hero { padding-top: 0; }
+  main > section + section:not(#team), .view + section { border-top: 1px solid var(--grid); }
+  #team { margin-top: 0; padding: 48px 0 24px; border-top: 1px solid var(--grid); }
+}
 section.tight { margin-top: 28px; }
 .callout { max-width: 75ch; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
@@ -67,21 +75,6 @@ section.tight { margin-top: 28px; }
 .ruler svg text.lab { fill: var(--ink); font-weight: 600; }
 .ruler .cap { font-size: 12px; color: var(--ink2); margin: 6px 0 0; }
 /* families */
-.fams { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }
-.fam .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.fam .n { font-size: 12px; color: var(--ink2); white-space: nowrap; }
-.fam { display: flex; flex-direction: column; }
-.fam .q { font-size: 13px; color: var(--ink2); margin: 2px 0 12px; flex: 1; } /* grows so the bars line up across cards */
-.fam .row .v.none { font-weight: 400; color: var(--muted); font-size: 12px; }
-.fam .foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grid); }
-.fam .foot .note { font-size: 12px; color: var(--ink2); }
-.fam .row { display: grid; grid-template-columns: 112px 1fr 48px; gap: 8px; align-items: center; font-size: 13px; margin: 4px 0; }
-.fam .row .nm { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fam .row .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-.fam .track { height: 10px; background: var(--wash); border-radius: 5px; position: relative; overflow: hidden; }
-.fam .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
-.fam .fill.ref { background: var(--ref); } .fam .fill.ours { background: var(--s1); }
-.fam .fill.ours.partial { background: repeating-linear-gradient(135deg, var(--s1) 0 4px, transparent 4px 7px); border: 1px solid var(--s1); }
 /* methods */
 .methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 10px; }
 .method { display: flex; flex-direction: column; gap: 6px; }
@@ -111,6 +104,16 @@ section.tight { margin-top: 28px; }
 .mlist .more p.std { font-size: 13px; }
 .mlist .more .links a { margin-right: 12px; }
 @media (max-width: 560px) { .mlist summary { grid-template-columns: minmax(0, 1fr) auto; } .mlist summary .res { grid-column: 1 / -1; text-align: left; } }
+/* steps of the protocol: a numbered one-line list in two columns */
+.steps { margin: 0 0 12px; padding-left: 22px; columns: 2 320px; column-gap: 40px; font-size: 14px; color: var(--ink2); }
+.steps li { margin: 0 0 8px; break-inside: avoid; }
+.steps b { color: var(--ink); font-weight: 600; }
+/* disclosures under a table */
+.tools { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+.tools details.tool { margin: 0; }
+details.tool > summary { color: var(--link); }
+ul.plain { margin: 6px 0 8px; padding-left: 18px; color: var(--ink2); font-size: 14px; }
+.famtable td.num, .famtable th.num { width: 16%; }
 .open-prs { margin-top: 14px; font-size: 14px; color: var(--ink2); }
 .open-prs h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); font-weight: 600; margin: 0 0 6px; }
 .open-prs ul { margin: 0; padding-left: 18px; } .open-prs li { margin: 4px 0; } .open-prs li a { margin-left: 4px; }
@@ -122,11 +125,6 @@ details.tool[open] > summary, details.rules-wrap[open] > summary { margin-bottom
 .method .ev { font-size: 13px; }
 .method .ev ul { margin: 2px 0 0; padding-left: 18px; }
 /* protocol */
-.pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 8px; counter-reset: step; }
-.pipe .step { position: relative; padding: 12px 12px 12px; }
-.pipe .step::before { counter-increment: step; content: counter(step); display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--ink); color: var(--page); margin-bottom: 6px; }
-.pipe .step h3 { font-size: 14px; }
-.pipe .step p { margin: 0; font-size: 13px; color: var(--ink2); }
 .rules td { white-space: normal; min-width: 140px; }
 .rules td:first-child { font-weight: 600; min-width: 170px; }
 .rules td.enf { color: var(--ink2); }
@@ -242,7 +240,6 @@ main:focus { outline: none; } /* focused only as the skip-link target */
   nav.top .wrap { flex-wrap: nowrap; overflow-x: auto; gap: 16px; }
   nav.top .brand { display: none; }
   nav.top a.nl { font-size: 13px; white-space: nowrap; }
-  .fam .row { grid-template-columns: 104px 1fr 44px; }
 }
 @media (forced-colors: active) {
   .chart .bar { stroke: CanvasText; stroke-width: 1; }
@@ -253,7 +250,6 @@ main:focus { outline: none; } /* focused only as the skip-link target */
 .card.sk { border: 1px solid var(--grid); background: var(--surface); }
 table .sk { height: 18px; width: 100%; }
 tr.skrow td { padding: 9px; border-bottom: 1px solid var(--grid); }
-.fams > .sk, .methods > .sk { min-width: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .sk { background: linear-gradient(90deg, var(--wash) 0%, var(--grid) 50%, var(--wash) 100%); background-size: 200% 100%; animation: skshim 1.4s ease-in-out infinite; }
   .card.sk { background: linear-gradient(90deg, var(--surface) 0%, var(--wash) 50%, var(--surface) 100%); background-size: 200% 100%; }

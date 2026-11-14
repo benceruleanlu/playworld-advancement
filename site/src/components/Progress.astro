@@ -2,23 +2,26 @@
   <h2 id="h-progress" class="sec">Progress</h2>
   <p class="sub">Each closed-loop run that set a new best on its split, and whether the gain clears the noise bar.</p>
   <div class="scroll"><table id="records"></table></div>
-  <div class="charts" style="margin-top:12px">
-    <div class="card chart" id="c-bars">
-      <h2>Per-family score vs Genie 3</h2>
-      <div class="chips" id="bar-chips" role="group" aria-label="Experiments to chart (up to 4)"></div>
-      <div class="legend" id="bar-legend"></div>
-      <div id="bar-svg"></div>
-      <details><summary>Table view</summary><div id="bar-table"></div></details>
-      <div class="tip" id="bar-tip" role="status"></div>
+  <details class="tool" id="charts-wrap"><summary>Show charts</summary>
+    <div class="charts">
+      <div class="card chart" id="c-bars">
+        <h2>Per-family score vs Genie 3</h2>
+        <div class="chips" id="bar-chips" role="group" aria-label="Experiments to chart (up to 4)"></div>
+        <div class="legend" id="bar-legend"></div>
+        <div id="bar-svg"></div>
+        <details><summary>Table view</summary><div id="bar-table"></div></details>
+        <div class="tip" id="bar-tip" role="status"></div>
+      </div>
+      <div class="card chart" id="c-line">
+        <h2>Overall score over time</h2>
+        <p class="sub" style="margin-bottom:4px;font-size:13px">UTC. Hollow markers are open-loop runs.</p>
+        <div class="legend" id="line-legend"></div>
+        <div id="line-svg"></div>
+        <details><summary>Table view</summary><div id="line-table"></div></details>
+        <div class="tip" id="line-tip" role="status"></div>
+      </div>
     </div>
-    <div class="card chart" id="c-line">
-      <h2>Overall score over time</h2>
-      <p class="sub" style="margin-bottom:4px;font-size:13px">Times are UTC. Hollow markers are open-loop (dataset) runs.</p>
-      <div class="legend" id="line-legend"></div>
-      <div id="line-svg"></div>
-      <details><summary>Table view</summary><div id="line-table"></div></details>
-      <div class="tip" id="line-tip" role="status"></div>
-    </div>
-  </div>
-  <p class="callout">Open-loop and pipeline-test runs are left out. Custom task lists are never compared, since the CSV does not record which tasks they used. Charts follow the leaderboard filters; bars start at 0, though scores cannot go below 1.</p>
+    <p class="callout">Charts follow the leaderboard filters. Bars start at 0, though scores cannot go below 1.</p>
+  </details>
+  <p class="callout">Open-loop and pipeline-test runs are left out. Custom task lists are never compared, since the CSV does not record which tasks they used.</p>
 </section>
