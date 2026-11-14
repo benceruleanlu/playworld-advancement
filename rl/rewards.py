@@ -9,8 +9,11 @@ agree after warping. We score:
           (mean and 10th percentile, so a single snap is not averaged away)
   memory  long gaps (>= min_gap frames, overlapping views): is a revisited view the same
           world as before, after the content left the model's KV window?
-  sharp   Laplacian variance relative to the input frame, capped at 1: stops the policy
-          from buying agreement with blur.
+  sharp   Laplacian variance relative to the input frame. Used only as a guard,
+          min(1, sharp / sharp_floor): it penalises blur but pays nothing for extra
+          sharpening (rl-v1, an uncapped term, learned to add bright specks).
+  ctrl    exp(-err / 5 deg), err = angle between the rotation measured from ORB matches
+          and the commanded one, per 4 frames.
 
 Frames are uint8 [F, H, W, 3] at generation resolution; scoring runs at 1/scale.
 """
@@ -37,7 +40,8 @@ class RewardConfig:
     w_memory: float = 1.0
     w_local: float = 0.5
     w_sharp: float = 0.5
-    w_ctrl: float = 0.5
+    sharp_floor: float = 0.65     # guard only: min(1, sharp / floor); rl-v1 showed an uncapped term buys specks
+    w_ctrl: float = 1.0
     ctrl_deg: float = 5.0         # ctrl = exp(-ctrl_err_deg / ctrl_deg)
     erode: int = 3
 
@@ -185,10 +189,11 @@ def cycle_reward(frames: np.ndarray, rots: np.ndarray, cfg: RewardConfig = Rewar
     cm = control_metrics(frames, rots)
     r_ctrl = (float(np.exp(-cm["ctrl_err_deg"] / cfg.ctrl_deg))
               if cm["ctrl_err_deg"] is not None and cm["ctrl_valid"] >= 0.5 else r_local)
-    total = cfg.w_local * r_local + cfg.w_sharp * sharp + cfg.w_ctrl * r_ctrl
+    sharp_guard = min(1.0, sharp / cfg.sharp_floor)
+    total = cfg.w_local * r_local + cfg.w_sharp * sharp_guard + cfg.w_ctrl * r_ctrl
     total += cfg.w_memory * (r_memory if np.isfinite(r_memory) else r_local)
     return {"reward": float(total), "local": r_local, "local_min": float(local.min()) if len(local) else 0.0,
-            "memory": r_memory, "sharp": sharp, "ctrl": r_ctrl, **cm,
+            "memory": r_memory, "sharp": sharp, "sharp_guard": sharp_guard, "ctrl": r_ctrl, **cm,
             "n_local": int(len(local)), "n_memory": int(len(memory))}
 
 

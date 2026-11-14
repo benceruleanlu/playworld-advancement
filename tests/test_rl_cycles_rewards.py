@@ -144,3 +144,14 @@ def test_control_metrics_measure_rotation():
     still = control_metrics(np.repeat(frames[:1], len(rots), axis=0), rots, scale=1)
     assert good["ctrl_valid"] > 0.8 and good["ctrl_err_deg"] < 1.0, good
     assert still["ctrl_err_deg"] > 4.0, still  # commanded 0.03 rad x 4 frames = 6.9 deg per step
+
+
+def test_sharpening_is_not_rewarded():
+    rots = frame_rotations(cycle(out=45))
+    frames = render(rots)
+    sharpened = frames.copy()
+    k = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], np.float32)
+    sharpened[1:] = np.stack([cv2.filter2D(f, -1, k) for f in frames[1:]])
+    a, b = cycle_reward(frames, rots, CFG), cycle_reward(sharpened, rots, CFG)
+    assert a["sharp_guard"] == b["sharp_guard"] == 1.0
+    assert b["reward"] <= a["reward"] + 1e-6  # extra high frequencies can only cost consistency
