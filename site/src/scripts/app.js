@@ -380,7 +380,7 @@
           svg.appendChild(bar);
         }
         var label = gr[1] + ", " + s.name + ": " + (v === null ? "no score" : fmt(v));
-        var hit = sv("rect", { class: "hit", x: x - gap / 2 - 1, y: m.t, width: bw + gap + 2, height: ph, tabindex: "0", "aria-label": label });
+        var hit = sv("rect", { class: "hit", x: x - gap / 2 - 1, y: m.t, width: bw + gap + 2, height: ph, tabindex: "0", role: "img", "aria-label": label });
         var show = function (ev) {
           if (bar) bar.classList.add("hover");
           var b = hit.getBoundingClientRect(), hb = host.getBoundingClientRect(), cb = $("c-bars").getBoundingClientRect();
@@ -473,7 +473,7 @@
     var marks = [];
     pts.forEach(function (p) {
       var cls = runnerClass(p.runner), cx = x(p.t), cy = y(p.overall);
-      var c = sv("circle", { class: "k" + cls, cx: cx, cy: cy, r: 5, "stroke-width": 2, tabindex: "0",
+      var c = sv("circle", { class: "k" + cls, cx: cx, cy: cy, r: 5, "stroke-width": 2, tabindex: "0", role: "img",
         fill: isOpen(p) ? "var(--surface)" : "currentColor", "aria-label": p.exp + ", overall " + fmt(p.overall) + ", " + (isOpen(p) ? "open loop" : "closed loop") });
       var show = function () {
         var cb = $("c-line").getBoundingClientRect(), b = c.getBoundingClientRect();
