@@ -7,6 +7,7 @@
   var TARGET = 2.12;
   var FALLBACK_STD = Math.sqrt(0.011);
   var FULL_TASKS = 171;
+  var DEV_TASKS = 24;
   var FAMS = [["gc", "GC"], ["if", "IF"], ["insight", "Insight"], ["outsight", "Out-of-sight"]];
   var REFS = [
     { exp: "Genie 3", gc: 2.74, if: 2.40, insight: 1.51, outsight: 1.81, overall: 2.12 },
@@ -46,6 +47,8 @@
   function isOpen(r) { return r.action_source === "dataset"; }
   function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
+  // real run too small to estimate a score: fewer than a dev split of tasks, or a single verifier pass
+  function isSmoke(r) { return !isTest(r) && ((r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   function fmtTime(t) {
@@ -197,6 +200,7 @@
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", text: "closed loop" }));
     if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run launched from branch " + r.branch + ", not main. The code behind this score is not merged.", text: "! unmerged code" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
+    if (isSmoke(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or under 2 verifier passes. A pipeline check, not a score estimate.", text: "smoke test" }));
     return b;
   }
   function sortVal(r, k) {
@@ -458,13 +462,13 @@
     var sorted = pts.slice().sort(function (a, b) { return a.t - b.t || a.order - b.order; });
     var best = null, path = "";
     sorted.forEach(function (p) {
-      if (!isClosed(p)) return;
+      if (!isClosed(p) || isSmoke(p)) return;
       if (best === null || p.overall > best) {
         path += (path ? "H" + x(p.t) + "V" + y(p.overall) : "M" + x(p.t) + "," + y(p.overall)); best = p.overall;
       }
     });
     if (path) {
-      var lastClosed = sorted.filter(isClosed).pop();
+      var lastClosed = sorted.filter(function (p) { return isClosed(p) && !isSmoke(p); }).pop();
       path += "H" + (W - m.r);
       svg.appendChild(sv("path", { d: path, fill: "none", stroke: "var(--ink)", "stroke-width": 2, "stroke-linejoin": "round" }));
       void lastClosed;
@@ -599,7 +603,7 @@
       body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples.",
       links: [["#14", PR + "14"]], evidence: ["lb13-stateless-gc005-v1"] },
     { title: "Persistent session memory", status: "testing", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, 2.20 on one task) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
+      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, a one-task smoke test) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
       // like-for-like only: same 1.3B runner as the stateless baseline
       match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
@@ -652,7 +656,7 @@
   function realRows() { return ALL.filter(function (r) { return !isTest(r); }); }
   function bestClosed() {
     var best = null;
-    realRows().forEach(function (r) { if (isClosed(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
+    realRows().forEach(function (r) { if (isClosed(r) && !isSmoke(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
     return best;
   }
   function bestFinal() {
@@ -674,8 +678,10 @@
       head = "In progress: best closed-loop score so far is " + fmt(bc.overall) + " on " + bc.n_tasks + " task" + (bc.n_tasks === 1 ? "" : "s") + ".";
       why = "Not yet comparable to Genie 3's 2.12. A final number must pass every protocol check: closed loop, all 171 tasks, 2+ verifier passes, every task scored, code on main, run after code freeze.";
     } else {
-      head = "In progress: no closed-loop score logged yet.";
-      why = "Rows appear here as soon as the experiment workflow finishes a run.";
+      var ns = realRows().filter(function (r) { return isClosed(r) && isSmoke(r); }).length;
+      head = "In progress: no dev-scale closed-loop score yet.";
+      why = (ns ? ns + " closed-loop smoke test" + (ns === 1 ? " is" : "s are") + " logged, but too small to estimate a score. " : "No closed-loop run is logged yet. ") +
+        "Dev-scale means all " + DEV_TASKS + " dev tasks with 2+ verifier passes.";
     }
     box.className = "status " + cls; clear(box);
     box.appendChild(el("span", { class: "dot", "aria-hidden": "true" }));
@@ -723,7 +729,7 @@
     host.appendChild(svg);
     $("ruler-cap").textContent = "Reference scores are the PlayWorld paper's full-benchmark numbers. " +
       (ours ? (isFinal(ours) ? "Ours is the best run passing every protocol check." : "Ours is the best closed-loop run so far; the hollow marker means it is not yet a full-benchmark result.")
-            : "Our marker appears after the first closed-loop run.") + " Axis is zoomed to 1-" + hi + " of the 1-5 scale.";
+            : "Our marker appears after the first dev-scale closed-loop run.") + " Axis is zoomed to 1-" + hi + " of the 1-5 scale.";
   }
 
   /* ---------- families ---------- */
