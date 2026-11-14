@@ -82,6 +82,7 @@ Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner
   - At launch the workflow adds a `status=running` row for EXP to `results/experiments.csv` on main, with `run_url` linking to the Actions run. The final row (`status=scored`) replaces it. A gen-only run ends as `generated`, and a failed or cancelled job as `failed` / `cancelled`. Rows from before these columns have them blank. These marker steps never fail the job.
   - Every scored run commits `results/reports/EXP.md` to main: the report plus a table of every task with its mean, status and the verifier's reason. Read that instead of downloading the artifact.
   - Each marker is one more commit to main touching `results/experiments.csv`, so it also triggers a Pages deploy.
+- LingBot memory probe: Actions tab -> `probe` -> Run workflow, on a ref that contains `probe_lingbot.py` (the #37 branch until it merges). Inputs: exp, variant (1.3b|14b), tasks, angles, holds, windows (e.g. `18:6,-1:0`), dino, gpu. One Modal GPU, no scoring and no results row; the step summary shows `summary.tsv` and `runs/EXP/probe` is uploaded as an artifact.
 - Full 171-task runs: `stage=gen-only` first, then `stage=score-only` (jobs cap at ~6 h).
 - Repo secrets: `GEMINI_API_KEY`, `PLAYER_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, optional `HF_TOKEN`. Optional repo variables: `PLAYER_API_PROVIDER`, `PLAYER_API_URL`, `PLAYER_MODEL`.
 - From a laptop: `modal run modal_app.py --exp NAME --split dev --num-shards 4`, then `modal volume get pwa-runs /NAME runs/`, then `pwa score NAME`.
