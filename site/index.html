@@ -268,7 +268,7 @@ footer p { margin: 4px 0; }
         <tr><td>Silent open-loop fallback is caught</td><td>Upstream falls back to dataset or WAIT actions on agent API errors and still exits 0.</td><td class="enf"><code>pwa gen</code> checks every mp4 and counts <code>[agent] fallback</code> lines</td></tr>
         <tr><td>Every run gets a new name</td><td>Upstream <code>--skip-done</code> silently reuses old videos.</td><td class="enf"><code>pwa gen</code> refuses an existing run directory unless <code>--resume</code></td></tr>
         <tr><td>Verifier settings are untouched</td><td>Comparable to the paper's leaderboard only at the same judge settings.</td><td class="enf"><code>pwa score</code> runs the upstream verifier from the pinned submodule; only the IF third-person gate is re-implemented, because upstream crashes on it</td></tr>
-        <tr><td>Missing scores are visible</td><td>Dropping a failed rollout can quietly raise the mean.</td><td class="enf"><code>pwa report</code> counts missing tasks; <code>--strict</code> scores them as 1.0</td></tr>
+        <tr><td>Missing scores are visible</td><td>Dropping a failed rollout can quietly raise the mean.</td><td class="enf"><code>pwa report</code> logs missing videos (<code>n_missing</code>) and unscored rollouts (<code>n_dropped</code>); <code>--strict</code> scores both as 1.0</td></tr>
         <tr><td>Gains must clear the noise</td><td>Verifier passes disagree; a single lucky pass is not an improvement.</td><td class="enf"><code>pwa compare</code> and the progress table below use 2x pass std</td></tr>
         <tr><td>Branch code is flagged</td><td>A score should describe code anyone can check out from main.</td><td class="enf">Workflow records <code>branch</code>; non-main rows badged "unmerged code"</td></tr>
       </tbody>
@@ -278,7 +278,7 @@ footer p { margin: 4px 0; }
 
 <section id="progress" aria-labelledby="h-progress">
   <h2 id="h-progress" class="sec">Progress</h2>
-  <p class="sub">Every closed-loop run that set a new best on its split, and whether the gain over the previous best clears the noise bar. Open-loop and pipeline-test runs are excluded.</p>
+  <p class="sub">Every closed-loop run that set a new best on its split, and whether the gain over the previous best clears the noise bar. Open-loop and pipeline-test runs are excluded. Runs on an explicit task list (split "custom") are listed but never compared, because the CSV does not record which tasks they used.</p>
   <div class="scroll"><table id="records"></table></div>
   <div class="charts" style="margin-top:12px">
     <div class="card chart" id="c-bars">
@@ -430,7 +430,7 @@ footer p { margin: 4px 0; }
         sha: (o.git_sha || "").trim(), runner: (o.runner || "").trim(), action_source: (o.action_source || "").trim(),
         gc: num(o.gc), if: num(o.if), insight: num(o.insight), outsight: num(o.outsight),
         overall: num(o.overall), overall_std: num(o.overall_std), passes: num(o.passes),
-        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(), order: idx
+        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), n_dropped: num(o.n_dropped), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(), order: idx
       });
     });
     return out;
@@ -557,7 +557,11 @@ footer p { margin: 4px 0; }
     var nt = el("td", { class: "num hide-sm" });
     if (r.ref) nt.textContent = String(FULL_TASKS);
     else if (r.n_tasks === null) dashCell(nt);
-    else { nt.textContent = String(r.n_tasks); if (r.n_missing) nt.appendChild(el("div", { class: "std bad", text: r.n_missing + " missing" })); }
+    else {
+      nt.textContent = String(r.n_tasks);
+      if (r.n_missing) nt.appendChild(el("div", { class: "std bad", text: r.n_missing + " missing" }));
+      if (r.n_dropped) nt.appendChild(el("div", { class: "std bad", text: r.n_dropped + " unscored" }));
+    }
     tr.appendChild(nt);
     var p = el("td", { class: "num hide-sm" }); if (r.passes === null || r.ref) dashCell(p); else p.textContent = String(r.passes); tr.appendChild(p);
     var tt = el("td", { class: "hide-sm" });
@@ -875,7 +879,8 @@ footer p { margin: 4px 0; }
     others.forEach(function (r) {
       var tr = el("tr");
       var td = el("td", { class: "exp" }, [el("div", { text: r.exp }), badgesFor(r)]);
-      if (base && !base.ref && base.split !== r.split) td.appendChild(el("div", { class: "badges" }, [el("span", { class: "badge warn", text: "! split differs from baseline" })]));
+      if (base && !base.ref && base.split === "custom" && r.split === "custom") td.appendChild(el("div", { class: "badges" }, [el("span", { class: "badge warn", title: "Both are explicit task lists; the CSV does not record which tasks.", text: "! custom task sets may differ" })]));
+      else if (base && !base.ref && base.split !== r.split) td.appendChild(el("div", { class: "badges" }, [el("span", { class: "badge warn", text: "! split differs from baseline" })]));
       tr.appendChild(td);
       FAMS.map(function (f) { return f[0]; }).concat(["overall"]).forEach(function (k) {
         var c = el("td", { class: "num" });
@@ -943,7 +948,12 @@ footer p { margin: 4px 0; }
     ["L", "closed loop", function (r) { return isClosed(r) ? 1 : 0; }],
     ["F", "full 171 tasks", function (r) { return r.split === "all" && r.n_tasks !== null && r.n_tasks >= FULL_TASKS ? 1 : 0; }],
     ["P", "2+ verifier passes", function (r) { return r.passes !== null && r.passes >= 2 ? 1 : 0; }],
-    ["M", "no missing scores", function (r) { return r.n_missing === null ? null : (r.n_missing === 0 ? 1 : 0); }],
+    // all tasks scored: no missing videos and no rollouts dropped as unscored. Unknown (?) for rows logged before n_dropped existed.
+    ["S", "every task scored", function (r) {
+      if (r.n_missing !== null && r.n_missing > 0) return 0;
+      if (r.n_dropped !== null && r.n_dropped > 0) return 0;
+      return r.n_missing === null || r.n_dropped === null ? null : 1;
+    }],
     ["C", "code on main", function (r) { return !r.branch ? null : (r.branch === "main" ? 1 : 0); }]
   ];
   function checkRow(r) { return CHECKS.map(function (c) { return c[2](r); }); }
@@ -988,7 +998,7 @@ footer p { margin: 4px 0; }
     } else if (bc) {
       cls = "warn";
       head = "In progress: best closed-loop score so far is " + fmt(bc.overall) + " on " + bc.n_tasks + " task" + (bc.n_tasks === 1 ? "" : "s") + ".";
-      why = "Not yet comparable to Genie 3's 2.12: the final number needs a closed-loop run on all 171 tasks with 2+ verifier passes, after code freeze.";
+      why = "Not yet comparable to Genie 3's 2.12. A final number must pass every protocol check: closed loop, all 171 tasks, 2+ verifier passes, every task scored, code on main, run after code freeze.";
     } else {
       head = "In progress: no closed-loop score logged yet.";
       why = "Rows appear here as soon as the experiment workflow finishes a run.";
@@ -1118,7 +1128,8 @@ footer p { margin: 4px 0; }
       .sort(function (a, b) { return a.t - b.t || a.order - b.order; });
     var best = {}, recs = [];
     rows.forEach(function (r) {
-      var k = r.split + "|" + r.n_tasks, prev = best[k];
+      // "custom" covers any explicit --tasks list; two custom runs may score different tasks, so never compare them
+      var k = r.split === "custom" ? "custom|" + r.exp : r.split + "|" + r.n_tasks, prev = best[k];
       if (!prev || r.overall > prev.overall) { recs.push([r, prev || null]); best[k] = r; }
     });
     if (!recs.length) tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: "5", text: "No closed-loop runs yet." })]));
@@ -1137,7 +1148,7 @@ footer p { margin: 4px 0; }
         verdict = el("span", { class: "badge " + (real ? "ok" : ""), title: "Threshold 2x std = " + thr.toFixed(2), text: real ? "real gain" : "within noise" });
       } else {
         dashCell(g);
-        verdict = el("span", { class: "badge", text: "first on split" });
+        verdict = el("span", { class: "badge", title: r.split === "custom" ? "Explicit task list; the CSV does not record which tasks, so it is not compared with other runs." : "", text: r.split === "custom" ? "custom tasks, not compared" : "first on split" });
       }
       tr.appendChild(g);
       tr.appendChild(el("td", null, [verdict]));

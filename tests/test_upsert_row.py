@@ -56,7 +56,7 @@ def test_dest_missing_branch_column_gets_it(tmp_path):
     write(src, report.CSV_FIELDS, [row("new", branch="feat/y")])
     report.upsert_row_into("new", src, dest)
     head, rows = read(dest)
-    assert head[-1] == "branch" and head[:len(OLD)] == OLD
+    assert head[len(OLD):] == ["branch", "n_dropped"] and head[:len(OLD)] == OLD
     assert rows[0]["exp"] == "old" and rows[0]["branch"] == "" and rows[1]["branch"] == "feat/y"
 
 

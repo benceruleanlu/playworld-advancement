@@ -18,7 +18,8 @@ REFERENCE = {
 # Paper: verifier pass-to-pass variance ~0.011 -> std ~0.105. Used when an exp has 1 pass.
 FALLBACK_STD = math.sqrt(0.011)
 CSV_FIELDS = ["exp", "split", "timestamp", "git_sha", "runner", "action_source", "gc", "if", "insight",
-              "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes", "branch"]
+              "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes", "branch",
+              "n_dropped"]
 
 
 def load_pass(exp: str, k: int, sel: list[dict]) -> tuple[dict, dict]:
@@ -171,7 +172,9 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            **{f: r4(fam.get(f, {}).get("mean")) for f in FAMILIES},
            "overall": r4(rep["overall"]), "overall_std": r4(rep["overall_std"]), "passes": len(rep["passes"]),
            "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": meta.get("notes", ""),
-           "branch": meta.get("branch") or current_branch()}
+           "branch": meta.get("branch") or current_branch(),
+           # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
+           "n_dropped": sum(f.get("dropped") or 0 for f in fam.values())}
     rows = [r for r in rows if not (r.get("exp") == rep["exp"] and r.get("split") == split)] + [new]
     tmp = RESULTS_CSV.with_suffix(".csv.tmp")
     with tmp.open("w", newline="") as fh:
