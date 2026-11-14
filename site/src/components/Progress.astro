@@ -1,6 +1,6 @@
 <section id="progress" aria-labelledby="h-progress">
   <h2 id="h-progress" class="sec">Progress</h2>
-  <p class="sub">Every closed-loop run that set a new best on its split, and whether the gain over the previous best clears the noise bar. Open-loop and pipeline-test runs are excluded. Runs on an explicit task list (split "custom") are listed but never compared, because the CSV does not record which tasks they used.</p>
+  <p class="sub">Each closed-loop run that set a new best on its split, and whether the gain clears the noise bar.</p>
   <div class="scroll"><table id="records"></table></div>
   <div class="charts" style="margin-top:12px">
     <div class="card chart" id="c-bars">
@@ -20,5 +20,5 @@
       <div class="tip" id="line-tip" role="status"></div>
     </div>
   </div>
-  <p class="callout">Charts follow the leaderboard filters. In the grouped bar chart, bars start at 0 even though scores cannot go below 1.</p>
+  <p class="callout">Open-loop and pipeline-test runs are left out. Custom task lists are never compared, since the CSV does not record which tasks they used. Charts follow the leaderboard filters; bars start at 0, though scores cannot go below 1.</p>
 </section>

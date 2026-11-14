@@ -1,7 +1,15 @@
 <section id="data" aria-labelledby="h-board">
   <h2 id="h-board" class="sec">Leaderboard</h2>
-  <p class="sub">Every logged experiment next to the paper's published models. Click a column to sort; the filters here also drive the charts below. Empty cells mean the value was not measured, not zero. The best value in each score column is underlined, but only rows passing every protocol check compare fairly with the paper rows. The protocol column (wider screens) shows which final-number checks a row passes.</p>
-  <div class="cklegend" id="cklegend"></div>
+  <p class="sub">Every logged run, next to the paper's models. Click a column to sort.</p>
+  <details class="howto"><summary>How to read this table</summary>
+    <ul>
+      <li>Empty cells mean not measured, not zero.</li>
+      <li>The best value in each score column is underlined. Only rows that pass every protocol check compare fairly with the paper rows.</li>
+      <li>The filters also drive the charts in Progress.</li>
+    </ul>
+    <p class="std">Protocol column (wider screens):</p>
+    <div class="cklegend" id="cklegend"></div>
+  </details>
   <div class="filters" id="filters">
     <label>Runner <select id="f-runner"></select></label>
     <label>Split <select id="f-split"></select></label>
