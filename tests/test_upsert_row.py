@@ -93,3 +93,23 @@ def test_cli(tmp_path):
     r = subprocess.run([sys.executable, "-m", "pwa.cli", "upsert-row", "zzz", "--into", str(dest)], cwd=ROOT, env=env,
                        capture_output=True, text=True)
     assert r.returncode == 1 and "no row" in r.stderr
+
+
+def test_branch_passthrough_and_generation_meta_wins(tmp_path, monkeypatch):
+    from pwa import core
+    # Modal container: no .git, no GITHUB_REF_NAME; the launcher passes PWA_GIT_BRANCH through.
+    monkeypatch.delenv("GITHUB_REF_NAME", raising=False)
+    monkeypatch.setenv("PWA_GIT_BRANCH", "feat/x")
+    monkeypatch.setattr(core, "git", lambda *a, **k: None)
+    assert core.current_branch() == "feat/x"
+    assert core.provenance()["branch"] == "feat/x"
+    # Scoring later on main: the branch stored at generation time wins over the reporting checkout's ref.
+    monkeypatch.setenv("GITHUB_REF_NAME", "main")
+    csv_path = tmp_path / "e.csv"
+    monkeypatch.setattr(report, "RESULTS_CSV", csv_path)
+    rep = {"exp": "e1", "generated": "2026-11-15T00:00:00Z", "families": {}, "overall": 1.5, "overall_std": None,
+           "passes": [1], "n_tasks": 2, "n_missing": 0}
+    report.upsert_csv(rep, {"runner": "sana", "branch": "feat/x"}, "dev")
+    report.upsert_csv({**rep, "exp": "e2"}, {"runner": "sana"}, "dev")  # no stored branch: reporting ref
+    _, rows = read(csv_path)
+    assert {r["exp"]: r["branch"] for r in rows} == {"e1": "feat/x", "e2": "main"}
