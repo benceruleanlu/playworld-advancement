@@ -44,6 +44,8 @@
   function fmt(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : "-"; }
   function dashCell(td) { td.appendChild(el("span", { class: "dash", text: "-" })); }
   function isTest(r) { return /fake_runner/.test(r.runner || ""); }
+  /* Score-less status row the experiment workflow writes while a run is in flight, or when it failed. Not a result. */
+  function isLive(r) { return r.overall === null && /^(running|generated|failed|cancelled)$/.test(r.status || ""); }
   function isOpen(r) { return r.action_source === "dataset"; }
   function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
@@ -105,7 +107,8 @@
         sha: (o.git_sha || "").trim(), runner: (o.runner || "").trim(), action_source: (o.action_source || "").trim(),
         gc: num(o.gc), if: num(o.if), insight: num(o.insight), outsight: num(o.outsight),
         overall: num(o.overall), overall_std: num(o.overall_std), passes: num(o.passes),
-        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), n_dropped: num(o.n_dropped), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(), order: idx
+        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), n_dropped: num(o.n_dropped), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(),
+        status: (o.status || "").trim().toLowerCase(), run_url: (o.run_url || "").trim(), order: idx
       });
     });
     return out;
@@ -136,7 +139,8 @@
   /* ---------- stat strip ---------- */
   function renderTiles() {
     var box = $("tiles"); clear(box);
-    var real = realRows(), hiddenTests = ALL.length - real.length;
+    var nonTest = realRows(), hiddenTests = ALL.length - nonTest.length;
+    var real = nonTest.filter(function (r) { return !isLive(r); });
     var closed = real.filter(isClosed).length, open = real.filter(isOpen).length;
     var finals = real.filter(isFinal).length;
     var held = real.filter(function (r) { return r.split === "heldout" || r.split === "all"; }).length;
@@ -190,6 +194,7 @@
   function badgesFor(r) {
     var b = el("div", { class: "badges" });
     if (r.ref) { b.appendChild(el("span", { class: "badge", text: "paper, full benchmark" })); return b; }
+    if (isLive(r)) b.appendChild(el("span", { class: "badge" + (r.status === "failed" || r.status === "cancelled" ? " warn" : ""), title: "Status row from the experiment workflow. Not a score.", text: r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status }));
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
     if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "action_source=dataset replays dataset actions. Valid for fast A/B only, never for final numbers.", text: "! open loop, A/B only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", text: "closed loop" }));
@@ -791,8 +796,8 @@
     var box = $("methods"); clear(box);
     var order = { shipped: 0, testing: 1, planned: 2 };
     METHODS.slice().sort(function (a, b) { return order[a.status] - order[b.status]; }).forEach(function (mth) {
-      var ev = mth.evidence.map(rowByExp).filter(Boolean);
-      if (mth.match) realRows().forEach(function (r) { if (mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
+      var ev = mth.evidence.map(rowByExp).filter(function (r) { return r && !isLive(r); });
+      if (mth.match) realRows().forEach(function (r) { if (!isLive(r) && mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
       var st = mth.status === "testing" && ev.length ? "shipped" : mth.status;
       var stText = mth.status === "testing" && ev.length ? "measured" : STATUS_LABEL[mth.status];
       var result;

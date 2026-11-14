@@ -163,11 +163,12 @@ def render_failures_md(rows: list[dict]) -> str:
 
 
 def upsert_csv(rep: dict, meta: dict, split: str) -> None:
-    RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
-    rows = []
+    rows, head = [], []
     if RESULTS_CSV.is_file():
         with RESULTS_CSV.open(newline="") as fh:
-            rows = list(csv.DictReader(fh))
+            rd = csv.DictReader(fh)
+            rows, head = list(rd), [c for c in (rd.fieldnames or []) if c]
+    head += [c for c in CSV_FIELDS if c not in head]  # keep columns this version does not know
     fam = rep["families"]
     r4 = lambda x: "" if x is None else f"{x:.4f}"  # noqa: E731
     new = {"exp": rep["exp"], "split": split, "timestamp": rep["generated"], "git_sha": meta.get("git_sha") or "",
@@ -179,13 +180,10 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
            "n_dropped": sum(f.get("dropped") or 0 for f in fam.values()),
            "status": "scored", "run_url": run_url()}
-    rows = [r for r in rows if not (r.get("exp") == rep["exp"] and r.get("split") == split)] + [new]
-    tmp = RESULTS_CSV.with_suffix(".csv.tmp")
-    with tmp.open("w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=CSV_FIELDS, extrasaction="ignore")
-        w.writeheader()
-        w.writerows(rows)
-    tmp.replace(RESULTS_CSV)
+    # replace the same exp+split, and exp's score-less live rows (mark_row) under any split label
+    rows = [r for r in rows if not (r.get("exp") == rep["exp"]
+                                    and (r.get("split") == split or r.get("status") in LIVE_STATUSES))] + [new]
+    _write_csv(RESULTS_CSV, head, [{k: v for k, v in r.items() if k in head} for r in rows])
 
 
 def run_url() -> str:
@@ -210,9 +208,11 @@ def mark_row(exp: str, dest, status: str, split: str = "", runner: str = "", act
              notes: str = "", git_sha: str = "") -> int:
     """Record a run's live status in csv `dest` so in-flight runs are visible. Returns rows written.
 
-    running: add (or refresh) a score-less row for exp. A row that already holds a score is left alone
-    (score-only reruns, resumed runs). Any other status only updates exp's rows that still say running,
-    so a scored row is never downgraded. The final `upsert-row` replaces the running row."""
+    running: add a score-less row for exp, or refresh its existing score-less row (empty arguments keep
+    what that row recorded, so a score-only run does not overwrite the generation's metadata). A row that
+    already holds a score is left alone (score-only reruns, resumed runs). Any other status only updates
+    exp's rows that still say running, so a scored row is never downgraded. The final `upsert-row`
+    replaces the running row."""
     from pathlib import Path
     if status not in LIVE_STATUSES:
         raise ValueError(f"status must be one of {', '.join(LIVE_STATUSES)}")
@@ -226,9 +226,10 @@ def mark_row(exp: str, dest, status: str, split: str = "", runner: str = "", act
     if status == "running":
         if any((r.get("overall") or "").strip() for r in mine):
             return 0
-        new = {"exp": exp, "split": split, "timestamp": now(), "git_sha": git_sha, "runner": runner,
-               "action_source": action_source, "notes": notes, "branch": current_branch(),
-               "status": "running", "run_url": run_url()}
+        upd = {"split": split, "git_sha": git_sha, "runner": runner, "action_source": action_source,
+               "notes": notes, "branch": current_branch(), "run_url": run_url()}
+        new = {**(mine[0] if mine else {}), **{k: v for k, v in upd.items() if v},
+               "exp": exp, "timestamp": now(), "status": "running"}
         _write_csv(dest, head, [r for r in rows if r.get("exp") != exp] + [new])
         return 1
     live = [r for r in mine if r.get("status") == "running"]
@@ -267,7 +268,8 @@ def upsert_row_into(exp: str, src, dest) -> int:
     from pathlib import Path
     src, dest = Path(src), Path(dest)
     _, srows = _read_csv_strict(src)
-    mine = [r for r in srows if r.get("exp") == exp]
+    # never copy a score-less live row: the checkout's csv can hold one inherited from main
+    mine = [r for r in srows if r.get("exp") == exp and r.get("status") not in LIVE_STATUSES]
     if not mine:
         raise ValueError(f"{src}: no row for exp {exp!r}")
     if dest.is_file() and dest.stat().st_size:

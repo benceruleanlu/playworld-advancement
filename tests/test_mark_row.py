@@ -89,3 +89,53 @@ def test_cli_runs_without_install_or_data(tmp_path):
     assert got["status"] == "running" and got["notes"] == 'a, "quoted" note' and got["run_url"] == ""
     r = subprocess.run([*cmd[:7], "bogus"], cwd=ROOT, env=env, capture_output=True, text=True)
     assert r.returncode == 2
+
+
+def test_score_only_refresh_keeps_generation_metadata(tmp_path):
+    dest = tmp_path / "main.csv"
+    report.mark_row("e", dest, "running", split="dev", runner="lingbot_world2", action_source="agent", notes="n")
+    report.mark_row("e", dest, "generated")
+    assert report.mark_row("e", dest, "running") == 1      # score-only launch: no metadata sent
+    (r,) = rows_of(dest, "e")
+    assert (r["status"], r["split"], r["runner"], r["action_source"], r["notes"]) == (
+        "running", "dev", "lingbot_world2", "agent", "n")
+    assert report.mark_row("e", dest, "failed") == 1 and rows_of(dest, "e")[0]["status"] == "failed"
+    assert report.mark_row("fresh", dest, "running") == 1  # score-only with no earlier row still shows up
+    assert rows_of(dest, "fresh")[0]["status"] == "running"
+
+
+def test_stale_live_row_in_the_checkout_is_not_copied_to_main(tmp_path):
+    # main has (e, dev, failed); the rerun reports under another split label from a checkout that inherited that row
+    dest, src = tmp_path / "main.csv", tmp_path / "local.csv"
+    live = row("e", split="dev", status="failed", overall="")
+    write(dest, report.CSV_FIELDS, [live])
+    write(src, report.CSV_FIELDS, [live, row("e", split="custom", status="scored")])
+    assert report.upsert_row_into("e", src, dest) == 1
+    assert [(r["split"], r["status"]) for r in rows_of(dest, "e")] == [("custom", "scored")]
+    write(src, report.CSV_FIELDS, [live])
+    with pytest.raises(ValueError, match="no row"):
+        report.upsert_row_into("e", src, tmp_path / "other.csv")
+
+
+def test_upsert_csv_drops_live_rows_and_keeps_unknown_columns(tmp_path, monkeypatch):
+    path = tmp_path / "experiments.csv"
+    monkeypatch.setattr(report, "RESULTS_CSV", path)
+    head = report.CSV_FIELDS + ["future_col"]
+    write(path, head, [row("e", split="custom", status="running", overall=""), row("keep", future_col="x")])
+    rep = {"exp": "e", "generated": "2026-11-15T00:00:00Z", "families": {}, "overall": 2.0, "overall_std": None,
+           "passes": [1], "n_tasks": 1, "n_missing": 0}
+    report.upsert_csv(rep, {"runner": "sana"}, "dev")
+    got_head, rows = read(path)
+    assert got_head == head
+    assert [(r["exp"], r["split"], r["status"]) for r in rows] == [("keep", "dev", ""), ("e", "dev", "scored")]
+    assert rows[0]["future_col"] == "x"
+
+
+def test_dash_led_notes_parse(tmp_path):
+    dest = tmp_path / "e.csv"
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("GITHUB_", "PWA_"))}
+    r = subprocess.run([sys.executable, "-m", "pwa.cli", "mark", "e", "--into", str(dest), "--status", "running",
+                        "--notes=--lingbot-stateless", "--runner=", "--split="], cwd=ROOT, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert rows_of(dest, "e")[0]["notes"] == "--lingbot-stateless"

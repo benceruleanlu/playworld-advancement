@@ -9,11 +9,14 @@ export MAIN_DIR="$RUNNER_TEMP/main"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 if [[ ! -d "$MAIN_DIR" ]]; then
-  git fetch -q --depth 50 origin main
-  git worktree add -q --detach "$MAIN_DIR" FETCH_HEAD
+  git worktree add -q --detach "$MAIN_DIR" HEAD  # contents are replaced by the reset below
 fi
 for i in 1 2 3 4 5; do
-  git -C "$MAIN_DIR" fetch -q --depth 50 origin main
+  # a transient fetch error uses up an attempt instead of aborting the script
+  if ! git -C "$MAIN_DIR" fetch -q --depth 50 origin main; then
+    sleep $((i * 3))
+    continue
+  fi
   git -C "$MAIN_DIR" reset -q --hard FETCH_HEAD
   git -C "$MAIN_DIR" clean -qfd results
   bash -euo pipefail -c "$snippet"

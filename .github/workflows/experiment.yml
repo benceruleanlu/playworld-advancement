@@ -117,17 +117,17 @@ jobs:
 
       - name: Mark running on main
         # Visibility only: a score-less status=running row in main's results csv. Never blocks the run.
-        if: inputs.stage != 'score-only'
+        # A score-only run sends no metadata: its inputs may be defaults, and the row keeps what generation recorded.
         continue-on-error: true
         env:
-          LABEL: ${{ inputs.tasks && 'custom' || inputs.split }}
-          RUNNER: ${{ inputs.runner }}
-          ACTION_SOURCE: ${{ inputs.action_source }}
-          NOTES: ${{ inputs.notes }}
+          LABEL: ${{ inputs.stage != 'score-only' && (inputs.tasks && 'custom' || inputs.split) || '' }}
+          RUNNER: ${{ inputs.stage != 'score-only' && inputs.runner || '' }}
+          ACTION_SOURCE: ${{ inputs.stage != 'score-only' && inputs.action_source || '' }}
+          NOTES: ${{ inputs.stage != 'score-only' && inputs.notes || '' }}
         run: |
           echo "::notice title=experiment::$EXP runner=$RUNNER tasks=$LABEL action_source=$ACTION_SOURCE stage=${{ inputs.stage }}"
           .github/scripts/push_results.sh "results: $EXP running" \
-            'python -m pwa.cli mark "$EXP" --status running --into "$MAIN_DIR/results/experiments.csv" --split "$LABEL" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes "$NOTES"'
+            'python -m pwa.cli mark "$EXP" --status running --into "$MAIN_DIR/results/experiments.csv" --split="$LABEL" --runner="$RUNNER" --action-source="$ACTION_SOURCE" --notes="$NOTES"'
 
       - name: Sync Modal secret
         if: inputs.backend == 'modal' && inputs.stage != 'score-only'
@@ -169,7 +169,7 @@ jobs:
           NOTES: ${{ inputs.notes }}
         run: |
           sel=(--split "$SPLIT"); [[ -n "$TASKS" ]] && sel=(--tasks ${TASKS//,/ })
-          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes "$NOTES"
+          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes="$NOTES"
 
       - name: Fetch rollouts from Modal
         if: inputs.backend == 'modal' && inputs.stage != 'gen-only'
@@ -202,8 +202,8 @@ jobs:
             cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"'
 
       - name: Mark final status on main
-        # gen-only success -> generated; a failed or cancelled job -> failed / cancelled. Only touches a row
-        # that still says running, so a scored row is never downgraded.
+        # gen-only success -> generated; a failed or cancelled job (any stage) -> failed / cancelled. Only touches
+        # a row that still says running, so a scored row is never downgraded.
         if: always() && (job.status != 'success' || inputs.stage == 'gen-only')
         continue-on-error: true
         env:
