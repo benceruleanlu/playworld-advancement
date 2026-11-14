@@ -13,7 +13,7 @@
     <table class="rules">
       <thead><tr><th scope="col">Rule</th><th scope="col">Why</th><th scope="col">Where it lives</th></tr></thead>
       <tbody>
-        <tr><td>Iterate on dev, freeze before heldout</td><td>Tuning on the tasks you report overfits the benchmark.</td><td class="enf"><code>splits/make_splits.py</code> (seed 20261114) fixes the split; scoring heldout only after freeze is a team rule <span class="conv">convention, not code</span></td></tr>
+        <tr><td>Iterate on dev, freeze before heldout</td><td>Tuning on the tasks you report overfits the benchmark.</td><td class="enf"><code>splits/make_splits.py</code> (seed 20261114) fixes the split; scoring heldout only after freeze is a team rule <span class="badge warn">convention, not code</span></td></tr>
         <tr><td>Final numbers are closed loop</td><td>Replaying recorded actions removes the agent, the hardest part of interactive play.</td><td class="enf"><code>--action-source agent|refined</code>; dataset rows badged "open loop, A/B only"</td></tr>
         <tr><td>Silent open-loop fallback is caught</td><td>Upstream falls back to dataset or WAIT actions on agent API errors and still exits 0.</td><td class="enf"><code>pwa gen</code> checks every mp4 and counts <code>[agent] fallback</code> lines</td></tr>
         <tr><td>Every run gets a new name</td><td>Upstream <code>--skip-done</code> silently reuses old videos.</td><td class="enf"><code>pwa gen</code> refuses an existing run directory unless <code>--resume</code></td></tr>

@@ -561,7 +561,7 @@
           var box = el("div", { class: "delta" });
           var v = el("span", { class: "v " + (noise ? "" : (d > 0 ? "good" : "bad")), text: (noise ? "" : (d > 0 ? "▲ " : "▼ ")) + (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) });
           box.appendChild(v);
-          box.appendChild(el("span", { class: "tag " + (noise ? "" : "real"), title: "Threshold: 2x std = " + thr.toFixed(2), text: noise ? "noise" : "real" }));
+          box.appendChild(el("span", { class: "badge " + (noise ? "" : (d > 0 ? "ok" : "bad")), title: "Threshold: 2x std = " + thr.toFixed(2), text: noise ? "noise" : "real" }));
           box.appendChild(el("span", { class: "abs", text: fmt(base[k]) + " → " + fmt(r[k]) }));
           c.appendChild(box);
         }
@@ -735,18 +735,24 @@
         el("div", { class: "head" }, [el("h3", { text: info.name }), el("span", { class: "n", text: info.n + " tasks" })]),
         el("p", { class: "q", text: info.q })
       ]);
+      var bars = el("div", { class: "bars" });
       function bar(name, v, cls, title) {
         var w = v === null ? 0 : Math.max(0, Math.min(1, (v - 1) / (scaleMax - 1))) * 100;
-        var tr = el("div", { class: "track" }, [el("div", { class: "fill " + cls, style: "width:" + w.toFixed(1) + "%" })]);
-        card.appendChild(el("div", { class: "row", title: title || "" }, [el("span", { class: "nm", text: name }), tr, el("span", { class: "v", text: v === null ? "-" : fmt(v) })]));
+        // no fill element at all when there is no score, so an empty track never shows a sliver
+        var tr = el("div", { class: "track" }, v === null || w <= 0 ? [] : [el("div", { class: "fill " + cls, style: "width:" + w.toFixed(1) + "%" })]);
+        bars.appendChild(el("div", { class: "row", title: title || "" }, [el("span", { class: "nm", text: name }), tr,
+          el("span", { class: "v" + (v === null ? " none" : ""), text: v === null ? "not run" : fmt(v) })]));
       }
       rows.forEach(function (r) { bar(r[0], r[1], r[2]); });
       var oursName = b && !isFinal(b) ? "Ours (" + b.n_tasks + " task" + (b.n_tasks === 1 ? "" : "s") + ")" : "Ours";
       if (b) bar(oursName, b[k], "ours" + (isFinal(b) ? "" : " partial"), b.exp + (b[k] === null ? ": no tasks from this family" : ""));
       else bar("Ours", null, "ours", "no closed-loop score yet");
+      card.appendChild(bars);
       var gap = GENIE[k] - 1;
-      card.appendChild(el("span", { class: "tag" + (TARGETED[k] ? " target" : ""),
-        text: TARGETED[k] ? "Primary target: Genie 3 only " + fmt(gap) + " above the floor" : "Hold the line: Genie 3 leads at " + fmt(GENIE[k]) }));
+      card.appendChild(el("div", { class: "foot" }, [
+        el("span", { class: "badge " + (TARGETED[k] ? "accent" : ""), text: TARGETED[k] ? "Primary target" : "Hold the line" }),
+        el("span", { class: "note", text: TARGETED[k] ? "Genie 3 is only " + fmt(gap) + " above the 1.0 floor." : "Genie 3 leads at " + fmt(GENIE[k]) + "." })
+      ]));
       box.appendChild(card);
     });
   }
@@ -764,7 +770,7 @@
       var stKey = mth.status === "testing" && ev.length ? "shipped" : mth.status;
       var stText = mth.status === "testing" && ev.length ? "A/B runs logged" : STATUS_LABEL[mth.status];
       var card = el("div", { class: "card method" }, [
-        el("div", { class: "top" }, [el("h3", { text: mth.title }), el("span", { class: "st " + stKey, text: stText })]),
+        el("div", { class: "top" }, [el("h3", { text: mth.title }), el("span", { class: "badge " + ({ shipped: "ok", testing: "warn", planned: "partial" }[stKey] || ""), text: stText })]),
         el("p", { text: mth.body })
       ]);
       if (ev.length || mth.baseline) {
