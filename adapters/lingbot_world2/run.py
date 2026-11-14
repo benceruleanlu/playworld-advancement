@@ -4,10 +4,14 @@
 Same argv as run_agent.py. `pwa gen EXP --runner lingbot_world2 ...` (14B) or
 `--runner lingbot_world2_1p3b` (1.3B, for cheap iteration).
 
-Baseline v0: every generate() call is a fresh LingBot rollout from `image_path`.
-In closed loop the harness calls generate() once per chunk from the last frame,
-so LingBot's KV cache (its only memory) does NOT persist across agent steps.
-`--action-source dataset` is a single call, so the cache spans the whole rollout.
+Default: a persistent session (session.py). The harness calls generate() once per
+chunk; when the call is the next chunk of the same task (`<task>_chunk_<NN>`) the
+session continues, so LingBot's KV cache (its only memory) spans the whole
+closed-loop rollout. Chunk 01, another task or a `<task>_full` (dataset mode) call
+resets it. Dataset mode is reset plus one long step.
+
+Stateless A/B baseline: `--lingbot-stateless` (stripped before run_agent parses
+argv) or LINGBOT_SESSION=0: every call is a fresh upstream rollout from image_path.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -15,6 +19,8 @@ Env:
   LINGBOT_VARIANT   14b (default) | 1.3b
   LINGBOT_T5_CPU    1 keeps the 11 GB text encoder off the GPU (default: 1 for 14b, 0 for 1.3b)
   LINGBOT_YAW_RAD / LINGBOT_PITCH_RAD   per-frame camera rotation for arrow keys (poses.py)
+  LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
+  LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 """
 import os
 import sys
@@ -25,8 +31,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
+from adapters.lingbot_world2 import session as S  # noqa: E402
 
 run_agent = import_run_agent()
+
+STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
+sys.argv = [a for a in sys.argv if a != "--lingbot-stateless"]
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -62,8 +72,51 @@ class LingBotWorld2Engine:
             local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
             assets_dir=str(assets) if assets else None)
         print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        self.session = None
+        if not STATELESS:
+            self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
+                                            horizon_frames=int(getattr(args, "max_total_frames", 961) or 961))
+        self._last_chunk = None
+        print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
+              + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})"), flush=True)
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
+        if self.session is None:
+            return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
+        return self._generate_session(image_path, prompt, action, output_dir, name, num_frames)
+
+    def _generate_session(self, image_path, prompt, action, output_dir, name, num_frames):
+        """Continue (or reset and start) the persistent session; write <output_dir>/<name>.mp4.
+        Frame counts follow session.frames_returned (33 -> 29 first, 33 after)."""
+        import imageio  # noqa: PLC0415
+        import torch  # noqa: PLC0415
+        from PIL import Image  # noqa: PLC0415
+
+        parsed = S.parse_chunk_name(name)
+        cont = self.session.started and S.is_continuation(self._last_chunk, parsed)
+        self._last_chunk = None  # stays None if this call fails, so the next one resets
+        n = S.chunks_for(num_frames)
+        keys = S.fit_keys(P.parse_action(action), S.keys_needed(n, first=not cont))
+        t0 = time.time()
+        torch.cuda.reset_peak_memory_stats()
+        if not cont:
+            horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
+            self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
+                               int(self.args.seed), horizon_frames=horizon)
+        start = self.session.chunk_id
+        frames = self.session.step(keys)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out = output_dir / f"{name}.mp4"
+        imageio.mimsave(str(out), list(frames), fps=int(self.args.fps))
+        self._last_chunk = parsed
+        dt = time.time() - t0
+        print(f"[lingbot] {name}: {'continue' if cont else 'reset'} latent chunks {start}->{self.session.chunk_id} "
+              f"{len(frames)} frames {frames.shape[2]}x{frames.shape[1]} in {dt:.1f}s ({len(frames) / dt:.1f} fps), "
+              f"peak VRAM {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB", flush=True)
+        return out
+
+    def _generate_stateless(self, image_path, prompt, action, output_dir, name, num_frames):
         """Write <output_dir>/<name>.mp4 continuing from image_path under `action`.
 
         `action` is run_agent's SANA-style string: comma-separated "<key>-<frames>"
@@ -94,7 +147,7 @@ class LingBotWorld2Engine:
         out = output_dir / f"{name}.mp4"
         imageio.mimsave(str(out), list(frames), fps=int(self.args.fps))
         dt = time.time() - t0
-        print(f"[lingbot] {name}: {len(frames)} frames {frames.shape[2]}x{frames.shape[1]} in {dt:.1f}s "
+        print(f"[lingbot] {name}: stateless {len(frames)} frames {frames.shape[2]}x{frames.shape[1]} in {dt:.1f}s "
               f"({len(frames) / dt:.1f} fps), peak VRAM {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB", flush=True)
         return out
 

@@ -47,6 +47,9 @@ on:
         default: "2"
       notes:
         default: ""
+      extra:
+        description: Extra runner args (Modal backend), e.g. --lingbot-stateless
+        default: ""
 
 concurrency:
   group: experiment-${{ inputs.exp }}
@@ -131,9 +134,11 @@ jobs:
           ACTION_SOURCE: ${{ inputs.action_source }}
           NUM_SHARDS: ${{ inputs.num_shards }}
           NOTES: ${{ inputs.notes }}
+          EXTRA: ${{ inputs.extra }}
         run: |
           modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
-            --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES"
+            --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
+            --extra="$EXTRA"
 
       - name: Generate (local)
         if: inputs.backend == 'local' && inputs.stage != 'score-only'
