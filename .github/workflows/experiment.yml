@@ -3,7 +3,7 @@ name: experiment
 # Manual: Actions tab -> experiment -> Run workflow.
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
 # backend=local: generation runs on this runner (no GPU; use runner=tests/fake_runner.py to test the pipeline).
-# Scoring (Gemini) and reporting always run on this runner. The results/experiments.csv row is committed to main.
+# Scoring (Gemini) and reporting always run on this runner. The results/experiments.csv row is committed to main from any branch.
 
 on:
   workflow_dispatch:
@@ -81,6 +81,11 @@ jobs:
       - name: Validate experiment name
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+      - name: Check agent key
+        if: inputs.action_source != 'dataset' && inputs.stage != 'score-only'
+        run: |
+          # Without a key upstream silently falls back to dataset/WAIT actions (open loop) and exits 0.
+          [[ -n "$PLAYER_API_KEY" ]] || { echo "::error::action_source=${{ inputs.action_source }} needs the PLAYER_API_KEY repo secret" >&2; exit 2; }
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -164,14 +169,21 @@ jobs:
           { echo; echo '### Failures'; echo '```'; pwa failures "$EXP"; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Commit experiment log
-        if: github.ref == 'refs/heads/main' && inputs.stage != 'gen-only'
+        # Runs from any branch: the row (with the branch's git_sha from meta.json) is upserted into main's CSV.
+        if: inputs.stage != 'gen-only'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add results/experiments.csv
-          git diff --cached --quiet && exit 0
-          git commit -q -m "results: $EXP"
-          for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && exit 0; sleep 5; done
+          git checkout -q -- results/experiments.csv
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -B results-main origin/main || exit 1
+            pwa report "$EXP" > /dev/null
+            git add results/experiments.csv
+            git diff --cached --quiet && exit 0
+            git commit -q -m "results: $EXP"
+            git push -q origin HEAD:main && exit 0
+            git reset -q --hard origin/main; sleep 5
+          done
           exit 1
 
       - uses: actions/upload-artifact@v4
