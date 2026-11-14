@@ -604,13 +604,13 @@
       // like-for-like only: same 1.3B runner as the stateless baseline
       match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
     { title: "A. Insight progress scheduler", status: "planned", fams: ["insight"],
-      body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls.", links: [], evidence: [] },
+      body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls. In review (#32): condition LingBot on the scene caption instead of the agent goal, which is \"wait and observe\" on 29 of 30 Insight tasks.", links: [["#32", PR + "32"]], evidence: [] },
     { title: "B. Control and gate fixes", status: "testing", fams: ["gc", "if", "outsight"],
       body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. Built: opt-in LingBot turn calibration, so one dataset token turns 22.5 degrees of yaw or 20 of pitch as the task prompts assume, instead of the default 34 and 11 degrees. Planned: pose-checked correction, and re-injecting the first frame when the pose returns near start.",
       links: [["#23", PR + "23"]], evidence: [],
       match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
     { title: "C. Out-of-sight state tracker", status: "planned", fams: ["outsight"],
-      body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor.", links: [], evidence: [] },
+      body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor. In review (#37): a model of what LingBot's KV cache still holds (a 6-latent sink plus the last 8 latents, about 2 s) and a GPU probe that turns away and back to test whether recall fails exactly when the view is evicted.", links: [["#37", PR + "37"]], evidence: [] },
     { title: "D. Evaluation harness", status: "shipped", fams: [],
       body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
       links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
