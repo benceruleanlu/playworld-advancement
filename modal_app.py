@@ -100,7 +100,7 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         # Shards share runs/EXP; pwa keeps per-shard meta files, so --resume is safe here.
         argv.append("--resume")
     if notes:
-        argv += ["--notes", notes]
+        argv.append(f"--notes={notes}")  # one token, so notes starting with a dash still parse
     if extra:
         argv += ["--", *extra.split()]
     prov = {

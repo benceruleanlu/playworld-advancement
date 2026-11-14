@@ -1,13 +1,30 @@
 <section id="data" aria-labelledby="h-board">
   <h2 id="h-board" class="sec">Leaderboard</h2>
-  <p class="sub">Every logged experiment next to the paper's published models. Click a column to sort; the filters here also drive the charts below. Empty cells mean the value was not measured, not zero. The best value in each score column is underlined, but only rows passing every protocol check compare fairly with the paper rows. The protocol column (wider screens) shows which final-number checks a row passes.</p>
-  <div class="cklegend" id="cklegend"></div>
-  <div class="filters" id="filters">
-    <label>Runner <select id="f-runner"></select></label>
-    <label>Split <select id="f-split"></select></label>
-    <label>Action source <select id="f-action"></select></label>
-    <label>Branch <select id="f-branch"></select></label>
-    <label class="check"><input type="checkbox" id="f-tests"> Show pipeline tests <span id="hidden-count" class="std"></span></label>
-  </div>
+  <p class="sub">Every logged run, next to the paper's models. Click a column to sort.</p>
   <div class="scroll" id="board-scroll"><table id="board"><tbody><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr></tbody></table></div>
+  <div class="tools">
+    <details class="tool" id="filters-wrap"><summary>Filter runs</summary>
+      <div class="filters" id="filters">
+        <label>Runner <select id="f-runner"></select></label>
+        <label>Split <select id="f-split"></select></label>
+        <label>Action source <select id="f-action"></select></label>
+        <label>Branch <select id="f-branch"></select></label>
+        <label class="check"><input type="checkbox" id="f-tests"> Show pipeline tests <span id="hidden-count" class="std"></span></label>
+      </div>
+    </details>
+    <details class="tool" id="compare"><summary>Compare to a baseline</summary>
+      <p class="callout" style="margin-top:0">Per-family deltas against any run or paper model. Deltas under 2x the pass-to-pass std are labelled noise (same rule as <code>pwa compare</code>; the overall std is used for every family, or the paper's 0.105 when missing).</p>
+      <div class="filters"><label>Baseline <select id="cmp-base"></select></label></div>
+      <div class="scroll"><table id="cmp"></table></div>
+      <p class="callout" id="cmp-note"></p>
+    </details>
+    <details class="tool"><summary>How to read this table</summary>
+      <ul class="plain">
+        <li>Empty cells mean not measured, not zero.</li>
+        <li>The best value in each score column is underlined. Only rows that pass every protocol check compare fairly with the paper rows.</li>
+        <li>The filters also drive the charts in Progress.</li>
+      </ul>
+      <div class="cklegend" id="cklegend"></div>
+    </details>
+  </div>
 </section>

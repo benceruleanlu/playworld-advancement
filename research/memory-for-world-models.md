@@ -12,7 +12,7 @@ Matrix-Game 3.0 (MG3) already ships pose-retrieved frame memory, so "add a memor
 
 ## What PlayWorld measures
 
-- Not a duration. A 1 to 5 rubric judged by Gemini 3.1 Pro, averaged over geometry consistency, interaction fidelity, out-of-sight evolution, insight evolution.
+- A 1 to 5 rubric judged by Gemini 3.1 Pro, averaged over geometry consistency, interaction fidelity, out-of-sight evolution, insight evolution.
 - Validity gate: a rollout failing trajectory validity or subject reachability gets 1. MG3 passes 68.2% of the time, Genie 3 87.1%.
 - MG3: 1.14 overall, exactly 1.00 on out-of-sight and insight. Whether that is the gate or a true memory failure is unknown (unverified). Check with `pwa failures`.
 - Protocol: Claude Haiku 4.5 agent, WASD, arrows, WAIT, up to 40 steps (10 to 60 s), 171 cases.
@@ -50,7 +50,7 @@ Details and risks:
 
 ## 2026 trends
 
-- Pose-keyed memory has won over raw frame recall: Matrix-Game 3.5 (3D patch retrieval, no new parameters), World-T3 (fixed-size fast-weight memory, revisit PSNR 13.52 to 18.31 dB), WorldCrafter, RELIC. All need training; no code found.
+- Pose-keyed memory is replacing raw frame recall: Matrix-Game 3.5 (3D patch retrieval, no new parameters), World-T3 (fixed-size fast-weight memory, revisit PSNR 13.52 to 18.31 dB), WorldCrafter, RELIC. All need training; no code found.
 - Memory is moving into the KV cache and test-time state, which is why training-free options exist.
 - Drift is treated as a memory problem, since stored frames are corrupted by accumulated error (residual modelling, LongForcing, self-forcing).
 - Memory is trained jointly with few-step distillation; 16 to 40 FPS is the baseline.

@@ -7,25 +7,28 @@ import Ruler from "../components/Ruler.astro";
 import WhereWeWin from "../components/WhereWeWin.astro";
 import Leaderboard from "../components/Leaderboard.astro";
 import Progress from "../components/Progress.astro";
-import Compare from "../components/Compare.astro";
+import Scenes from "../components/Scenes.astro";
 import Methods from "../components/Methods.astro";
 import Rigor from "../components/Rigor.astro";
 import Team from "../components/Team.astro";
 ---
 <Base>
+  <a class="skip" href="#top">Skip to results</a>
   <Nav />
-  <div class="wrap" id="top" aria-busy="true">
-    <Hero />
-    <Ruler />
+  <main class="wrap" id="top" aria-busy="true" tabindex="-1">
+    <div class="view lead">
+      <Hero />
+      <Ruler />
+    </div>
     <WhereWeWin />
     <Leaderboard />
     <Progress />
-    <Compare />
+    <Scenes />
     <Methods />
     <Rigor />
     <Team />
-    <footer id="foot"></footer>
-  </div>
+  </main>
+  <footer class="wrap" id="foot"></footer>
   <script>
     import "../scripts/app.js";
   </script>

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from . import core
 from .core import FAMILIES, PwaError, log
@@ -107,9 +108,28 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("exp")
     p.add_argument("--into", required=True, help="destination experiments.csv (e.g. a checkout of main)")
 
+    p = mk("mark", "record a run's live status (running|generated|failed|cancelled) in a results csv (used by the workflow)")
+    p.add_argument("exp")
+    p.add_argument("--into", required=True, help="destination experiments.csv (e.g. a checkout of main)")
+    p.add_argument("--status", required=True, choices=["running", "generated", "failed", "cancelled"])
+    p.add_argument("--split", default="")
+    p.add_argument("--runner", default="")
+    p.add_argument("--action-source", default="")
+    p.add_argument("--notes", default="")
+
+    p = mk("media", "small web copies of a run's rollouts plus a manifest for the results site (used by the workflow)")
+    p.add_argument("exp")
+    _sel_args(p)
+    p.add_argument("--out", required=True, help="directory for the clips, posters and EXP.json")
+    p.add_argument("--base-url", default="", help="URL prefix the assets will be served from (the run's release download URL)")
+    p.add_argument("--release-url", default="", help="page that lists all of the run's files")
+    p.add_argument("--index", default="", help="index.json to add this run to (e.g. results/media/index.json in a checkout of main)")
+    p.add_argument("--height", type=int, default=480)
+
     p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason")
     p.add_argument("exp")
     _sel_args(p)
+    p.add_argument("--all", action="store_true", help="every task, not only failures")
     p.add_argument("--json", action="store_true")
     p.add_argument("--md", action="store_true", help="GitHub markdown table")
     return ap
@@ -241,8 +261,30 @@ def dispatch(a) -> int:  # noqa: C901
         log(f"[pwa] upserted {n} row(s) for {a.exp} into {a.into}")
         return 0
 
+    if a.cmd == "mark":
+        try:
+            n = report.mark_row(a.exp, a.into, a.status, a.split, a.runner, a.action_source, a.notes,
+                                core.provenance().get("git_sha") or "")
+        except (ValueError, OSError) as e:
+            raise PwaError(str(e)) from e
+        log(f"[pwa] marked {a.exp} {a.status} in {a.into} ({n} row(s))")
+        return 0
+
+    if a.cmd == "media":
+        from . import media
+        man = media.build(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), Path(a.out), a.base_url,
+                          a.release_url, a.height)
+        if man is None:
+            emit({"exp": a.exp, "skipped": "pipeline test"}, True)
+            return 0
+        if a.index:
+            media.update_index(Path(a.index), man)
+        emit({k: v for k, v in man.items() if k != "tasks"} | {"n_tasks": len(man["tasks"]),
+              "n_videos": sum(1 for t in man["tasks"] if t["video"])}, True)
+        return 0
+
     if a.cmd == "failures":
-        rows = report.failures(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks))
+        rows = report.failures(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), a.all)
         text = "\n".join(f"{r['task_id']}\t{r['family']}\t{report.f2(r['mean']).strip()}\t"
                          f"{','.join(r['status'])}\t{r['reason']}" for r in rows)
         if a.md:

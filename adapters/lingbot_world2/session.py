@@ -59,7 +59,7 @@ def keys_needed(n_chunks: int, first: bool) -> int:
 def frames_returned(n_chunks: int, first: bool) -> int:
     """Frames a step returns. First: 16n-3, starting with the input frame.
     Continuation: the previous last frame then 16n new ones; the harness drops
-    the first frame of every chunk after the first, so stitching is seamless."""
+    the first frame of every chunk after the first, so stitching leaves no gap."""
     return keys_needed(n_chunks, first) + 1
 
 

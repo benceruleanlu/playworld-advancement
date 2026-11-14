@@ -1,4 +1,6 @@
 name: experiment
+# Shown in the Actions list and the API, so a run can be identified while it is still in progress.
+run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
 
 # Manual: Actions tab -> experiment -> Run workflow.
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
@@ -113,6 +115,20 @@ jobs:
         run: |
           [[ -d data/gc/images ]] || python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data')"
 
+      - name: Mark running on main
+        # Visibility only: a score-less status=running row in main's results csv. Never blocks the run.
+        # A score-only run sends no metadata: its inputs may be defaults, and the row keeps what generation recorded.
+        continue-on-error: true
+        env:
+          LABEL: ${{ inputs.stage != 'score-only' && (inputs.tasks && 'custom' || inputs.split) || '' }}
+          RUNNER: ${{ inputs.stage != 'score-only' && inputs.runner || '' }}
+          ACTION_SOURCE: ${{ inputs.stage != 'score-only' && inputs.action_source || '' }}
+          NOTES: ${{ inputs.stage != 'score-only' && inputs.notes || '' }}
+        run: |
+          echo "::notice title=experiment::$EXP runner=$RUNNER tasks=$LABEL action_source=$ACTION_SOURCE stage=${{ inputs.stage }}"
+          .github/scripts/push_results.sh "results: $EXP running" \
+            'python -m pwa.cli mark "$EXP" --status running --into "$MAIN_DIR/results/experiments.csv" --split="$LABEL" --runner="$RUNNER" --action-source="$ACTION_SOURCE" --notes="$NOTES"'
+
       - name: Sync Modal secret
         if: inputs.backend == 'modal' && inputs.stage != 'score-only'
         run: |
@@ -153,7 +169,7 @@ jobs:
           NOTES: ${{ inputs.notes }}
         run: |
           sel=(--split "$SPLIT"); [[ -n "$TASKS" ]] && sel=(--tasks ${TASKS//,/ })
-          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes "$NOTES"
+          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes="$NOTES"
 
       - name: Fetch rollouts from Modal
         if: inputs.backend == 'modal' && inputs.stage != 'gen-only'
@@ -169,29 +185,64 @@ jobs:
         if: inputs.stage != 'gen-only'
         run: |
           site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
-          pwa report "$EXP" --md --site-url "$site" | tee -a "$GITHUB_STEP_SUMMARY"
+          pwa report "$EXP" --md --site-url "$site" | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/report.md"
           { echo; echo '### Failures'; echo; pwa failures "$EXP" --md; } >> "$GITHUB_STEP_SUMMARY" || true
+          # Per-task verifier reasons for every task, committed to main as results/reports/EXP.md below.
+          { echo; echo '### Tasks'; echo; pwa failures "$EXP" --all --md; } >> "$RUNNER_TEMP/report.md" || true
+
+      - name: Publish scenes (GitHub Release run-EXP)
+        # Small web copies of every rollout go to a release; the manifest the site reads is committed below.
+        # A failure here must not lose the scored row, so it never fails the job.
+        if: inputs.stage != 'gen-only'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="run-$EXP"
+          repo="https://github.com/$GITHUB_REPOSITORY"
+          out="$RUNNER_TEMP/media"
+          pwa media "$EXP" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag"
+          shopt -s nullglob
+          files=("$out"/*.mp4 "$out"/*.jpg)
+          # pipeline tests and runs without rollouts publish nothing (pwa media writes no clips for them)
+          if (( ${#files[@]} == 0 )); then echo "no rollouts to publish"; rm -f "$out/$EXP.json"; exit 0; fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+            gh release edit "$tag" --notes-file "$out/RELEASE_NOTES.md"
+          else
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "Scenes: $EXP" \
+              --notes-file "$out/RELEASE_NOTES.md" --latest=false
+          fi
+          # reached only if every upload above succeeded (bash -e); the commit step publishes the manifest only then
+          touch "$out/.published"
 
       - name: Commit experiment log
         if: inputs.stage != 'gen-only'
         run: |
-          # Runs on any branch record their row on main, from a separate checkout of main, so no branch code reaches main.
-          main_dir="$RUNNER_TEMP/main"
-          git fetch -q --depth 50 origin main
-          git worktree add -q --detach "$main_dir" FETCH_HEAD
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for i in 1 2 3; do
-            git -C "$main_dir" fetch -q --depth 50 origin main
-            git -C "$main_dir" reset -q --hard FETCH_HEAD
-            pwa upsert-row "$EXP" --into "$main_dir/results/experiments.csv"
-            git -C "$main_dir" add results/experiments.csv
-            git -C "$main_dir" diff --cached --quiet && exit 0
-            git -C "$main_dir" commit -q -m "results: $EXP"
-            git -C "$main_dir" push -q origin HEAD:main && exit 0
-            sleep 5
-          done
-          exit 1
+          # Runs on any branch record their row and report on main, from a separate checkout of main, so no
+          # branch code reaches main. The row replaces the status=running row written at launch.
+          .github/scripts/push_results.sh "results: $EXP" '
+            pwa upsert-row "$EXP" --into "$MAIN_DIR/results/experiments.csv"
+            mkdir -p "$MAIN_DIR/results/reports"
+            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"
+            if [[ -f "$RUNNER_TEMP/media/.published" && -f "$RUNNER_TEMP/media/$EXP.json" ]]; then
+              mkdir -p "$MAIN_DIR/results/media"
+              cp "$RUNNER_TEMP/media/$EXP.json" "$MAIN_DIR/results/media/$EXP.json"
+              python -c "import json, pathlib, sys; from pwa import media; media.update_index(pathlib.Path(sys.argv[1]), json.load(open(sys.argv[2])))" \
+                "$MAIN_DIR/results/media/index.json" "$RUNNER_TEMP/media/$EXP.json"
+            fi'
+
+      - name: Mark final status on main
+        # gen-only success -> generated; a failed or cancelled job (any stage) -> failed / cancelled. Only touches
+        # a row that still says running, so a scored row is never downgraded.
+        if: always() && (job.status != 'success' || inputs.stage == 'gen-only')
+        continue-on-error: true
+        env:
+          STATUS: ${{ job.status == 'success' && 'generated' || (job.status == 'cancelled' && 'cancelled' || 'failed') }}
+        run: |
+          .github/scripts/push_results.sh "results: $EXP $STATUS" \
+            'python -m pwa.cli mark "$EXP" --status "$STATUS" --into "$MAIN_DIR/results/experiments.csv"'
 
       - uses: actions/upload-artifact@v4
         if: always()

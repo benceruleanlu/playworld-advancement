@@ -7,6 +7,7 @@
   var TARGET = 2.12;
   var FALLBACK_STD = Math.sqrt(0.011);
   var FULL_TASKS = 171;
+  var DEV_TASKS = 24;
   var FAMS = [["gc", "GC"], ["if", "IF"], ["insight", "Insight"], ["outsight", "Out-of-sight"]];
   var REFS = [
     { exp: "Genie 3", gc: 2.74, if: 2.40, insight: 1.51, outsight: 1.81, overall: 2.12 },
@@ -43,9 +44,13 @@
   function fmt(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : "-"; }
   function dashCell(td) { td.appendChild(el("span", { class: "dash", text: "-" })); }
   function isTest(r) { return /fake_runner/.test(r.runner || ""); }
+  /* Score-less status row the experiment workflow writes while a run is in flight, or when it failed. Not a result. */
+  function isLive(r) { return r.overall === null && /^(running|generated|failed|cancelled)$/.test(r.status || ""); }
   function isOpen(r) { return r.action_source === "dataset"; }
   function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
+  // real run too small to estimate a score: fewer than a dev split of tasks, or a single verifier pass
+  function isSmoke(r) { return !isTest(r) && ((r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   function fmtTime(t) {
@@ -102,7 +107,8 @@
         sha: (o.git_sha || "").trim(), runner: (o.runner || "").trim(), action_source: (o.action_source || "").trim(),
         gc: num(o.gc), if: num(o.if), insight: num(o.insight), outsight: num(o.outsight),
         overall: num(o.overall), overall_std: num(o.overall_std), passes: num(o.passes),
-        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), n_dropped: num(o.n_dropped), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(), order: idx
+        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), n_dropped: num(o.n_dropped), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(),
+        status: (o.status || "").trim().toLowerCase(), run_url: (o.run_url || "").trim(), order: idx
       });
     });
     return out;
@@ -130,26 +136,22 @@
     });
   }
 
-  /* ---------- tiles ---------- */
-  function tile(label, big, note, cls, small) {
-    return el("div", { class: "card tile" }, [
-      el("div", { class: "label", text: label }),
-      el("div", { class: "big" + (small ? " small" : "") + (cls ? " " + cls : ""), text: big }),
-      el("div", { class: "note", text: note })
-    ]);
-  }
+  /* ---------- stat strip ---------- */
   function renderTiles() {
     var box = $("tiles"); clear(box);
-    var real = realRows(), hiddenTests = ALL.length - real.length;
+    var nonTest = realRows(), hiddenTests = ALL.length - nonTest.length;
+    var real = nonTest.filter(function (r) { return !isLive(r); });
     var closed = real.filter(isClosed).length, open = real.filter(isOpen).length;
     var finals = real.filter(isFinal).length;
-    box.appendChild(tile("Runs logged", String(real.length), closed + " closed loop, " + open + " open-loop A/B" + (hiddenTests ? "; " + hiddenTests + " pipeline test" + (hiddenTests > 1 ? "s" : "") + " hidden" : "")));
-    box.appendChild(tile("Pass every protocol check", finals + " / " + real.length, finals ? "eligible as a final number" : "none yet: final run comes after code freeze", finals ? "good" : ""));
     var held = real.filter(function (r) { return r.split === "heldout" || r.split === "all"; }).length;
-    box.appendChild(tile("Held-out split", held ? held + " run" + (held > 1 ? "s" : "") : "unused", held ? "logged on split heldout or all" : "no logged run uses split heldout or all (147 tasks)", "", true));
     var last = null;
     ALL.forEach(function (r) { if (r.t !== null && (last === null || r.t > last)) last = r.t; });
-    box.appendChild(tile("Last updated", last === null ? "-" : fmtTime(last), last === null ? "no timestamps" : ago(last) + " (UTC)", "", true));
+    function stat(strong, rest, title) { return el("span", { class: "stat", title: title }, [el("b", { text: strong }), document.createTextNode(" " + rest)]); }
+    [stat(String(real.length), "runs logged", closed + " closed loop, " + open + " open-loop A/B" + (hiddenTests ? "; " + hiddenTests + " pipeline test" + (hiddenTests > 1 ? "s" : "") + " hidden" : "")),
+     stat(finals + " of " + real.length, "pass every protocol check", finals ? "eligible as a final number" : "none yet: the final run comes after code freeze"),
+     stat(held ? held + " run" + (held > 1 ? "s" : "") : "Held-out split", held ? "on the held-out split" : "unused", "147 held-out tasks; " + (held ? held + " logged run(s) use split heldout or all" : "no logged run uses split heldout or all")),
+     stat("Updated", last === null ? "-" : ago(last), last === null ? "no timestamps" : fmtTime(last) + " UTC")
+    ].forEach(function (n) { box.appendChild(n); });
   }
 
   /* ---------- filters ---------- */
@@ -192,11 +194,13 @@
   function badgesFor(r) {
     var b = el("div", { class: "badges" });
     if (r.ref) { b.appendChild(el("span", { class: "badge", text: "paper, full benchmark" })); return b; }
+    if (isLive(r)) b.appendChild(el("span", { class: "badge" + (r.status === "failed" || r.status === "cancelled" ? " warn" : ""), title: "Status row from the experiment workflow. Not a score.", text: r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status }));
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
     if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "action_source=dataset replays dataset actions. Valid for fast A/B only, never for final numbers.", text: "! open loop, A/B only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", text: "closed loop" }));
     if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run launched from branch " + r.branch + ", not main. The code behind this score is not merged.", text: "! unmerged code" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
+    if (isSmoke(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or under 2 verifier passes. A pipeline check, not a score estimate.", text: "smoke test" }));
     return b;
   }
   function sortVal(r, k) {
@@ -380,7 +384,7 @@
           svg.appendChild(bar);
         }
         var label = gr[1] + ", " + s.name + ": " + (v === null ? "no score" : fmt(v));
-        var hit = sv("rect", { class: "hit", x: x - gap / 2 - 1, y: m.t, width: bw + gap + 2, height: ph, tabindex: "0", "aria-label": label });
+        var hit = sv("rect", { class: "hit", x: x - gap / 2 - 1, y: m.t, width: bw + gap + 2, height: ph, tabindex: "0", role: "img", "aria-label": label });
         var show = function (ev) {
           if (bar) bar.classList.add("hover");
           var b = hit.getBoundingClientRect(), hb = host.getBoundingClientRect(), cb = $("c-bars").getBoundingClientRect();
@@ -458,13 +462,13 @@
     var sorted = pts.slice().sort(function (a, b) { return a.t - b.t || a.order - b.order; });
     var best = null, path = "";
     sorted.forEach(function (p) {
-      if (!isClosed(p)) return;
+      if (!isClosed(p) || isSmoke(p)) return;
       if (best === null || p.overall > best) {
         path += (path ? "H" + x(p.t) + "V" + y(p.overall) : "M" + x(p.t) + "," + y(p.overall)); best = p.overall;
       }
     });
     if (path) {
-      var lastClosed = sorted.filter(isClosed).pop();
+      var lastClosed = sorted.filter(function (p) { return isClosed(p) && !isSmoke(p); }).pop();
       path += "H" + (W - m.r);
       svg.appendChild(sv("path", { d: path, fill: "none", stroke: "var(--ink)", "stroke-width": 2, "stroke-linejoin": "round" }));
       void lastClosed;
@@ -473,7 +477,7 @@
     var marks = [];
     pts.forEach(function (p) {
       var cls = runnerClass(p.runner), cx = x(p.t), cy = y(p.overall);
-      var c = sv("circle", { class: "k" + cls, cx: cx, cy: cy, r: 5, "stroke-width": 2, tabindex: "0",
+      var c = sv("circle", { class: "k" + cls, cx: cx, cy: cy, r: 5, "stroke-width": 2, tabindex: "0", role: "img",
         fill: isOpen(p) ? "var(--surface)" : "currentColor", "aria-label": p.exp + ", overall " + fmt(p.overall) + ", " + (isOpen(p) ? "open loop" : "closed loop") });
       var show = function () {
         var cb = $("c-line").getBoundingClientRect(), b = c.getBoundingClientRect();
@@ -578,10 +582,20 @@
   /* ---------- footer ---------- */
   function renderFoot() {
     var f = $("foot"); clear(f);
+    function A(href, text) { return el("a", { href: href, target: "_blank", rel: "noopener", text: text }); }
+    function T(t) { return document.createTextNode(t); }
     f.appendChild(el("p", { text: "Data source: " + source }));
     f.appendChild(el("p", { text: "Rows: results/experiments.csv in the repo, written by pwa report. Paper rows are from the PlayWorld paper (full benchmark, 171 tasks). Our rows use the split shown, so only split=all closed-loop rows are comparable to them." }));
-    f.appendChild(el("p", null, [el("a", { href: "https://github.com/" + REPO, target: "_blank", rel: "noopener", text: "Repository" }),
-      document.createTextNode(" | "), el("a", { href: "https://github.com/" + REPO + "/blob/main/results/experiments.csv", target: "_blank", rel: "noopener", text: "experiments.csv" })]));
+    f.appendChild(el("p", null, [A("https://github.com/" + REPO, "Repository"), T(" | "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "experiments.csv")]));
+    var ul = el("ul", { class: "credits", "aria-label": "Credits" });
+    function li(kids) { ul.appendChild(el("li", null, kids)); }
+    li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., \u201CPlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives\u201D, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources\u2019 terms.")]);
+    li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, \u201CInfinite Worlds with Versatile Interactions\u201D, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/benceruleanlu/playworld-advancement/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
+    li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-4.1-mini.")]);
+    li([T("Site built with "), A("https://astro.build", "Astro"), T(".")]);
+    f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
+    f.appendChild(ul);
   }
 
   /* ---------- story content (edit here as work lands) ---------- */
@@ -592,27 +606,35 @@
     insight: { name: "Insight evolution", n: 30, q: "Does a process in view (melting, filling, growing) actually progress?" },
     outsight: { name: "Out-of-sight evolution", n: 43, q: "When the camera looks away and back, has the hidden world moved on plausibly?" }
   };
-  var TARGETED = { insight: 1, outsight: 1 };
   // status: shipped | testing | planned. evidence: experiment names in results/experiments.csv.
   var METHODS = [
-    { title: "Base model: LingBot-World v2", status: "shipped", fams: ["gc", "if", "insight", "outsight"],
+    { title: "Base model: LingBot-World v2", status: "shipped",
+      what: "Runs LingBot-World v2 (1.3B and 14B) in the closed-loop harness, with each key mapped to per-frame camera poses.", fams: ["gc", "if", "insight", "outsight"],
       body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples.",
       links: [["#14", PR + "14"]], evidence: ["lb13-stateless-gc005-v1"] },
-    { title: "Persistent session memory", status: "testing", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world forgets itself every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser.",
+    { title: "Persistent session memory", status: "testing",
+      what: "Keeps the KV cache, noise, camera track and decoder cache across agent steps instead of restarting every chunk.", fams: ["gc", "outsight"],
+      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, a one-task smoke test) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
-      match: function (r) { return /^lingbot/.test(r.runner) && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
-    { title: "A. Insight progress scheduler", status: "planned", fams: ["insight"],
-      body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls.", links: [], evidence: [] },
-    { title: "B. Control and gate fixes", status: "planned", fams: ["gc", "if", "outsight"],
-      body: "Calibrate action magnitudes and check the resulting pose, because a failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality. Re-inject the first frame when the pose returns near start.", links: [], evidence: [] },
-    { title: "C. Out-of-sight state tracker", status: "planned", fams: ["outsight"],
-      body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor.", links: [], evidence: [] },
-    { title: "D. Evaluation harness", status: "shipped", fams: [],
+      // like-for-like only: same 1.3B runner as the stateless baseline
+      match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
+    { title: "A. Insight progress scheduler", status: "planned",
+      what: "Condition LingBot on the scene caption instead of the agent goal.", fams: ["insight"],
+      body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls. In review (#32): condition LingBot on the scene caption instead of the agent goal, which is \"wait and observe\" on 29 of 30 Insight tasks.", links: [["#32", PR + "32"]], evidence: [] },
+    { title: "B. Control and gate fixes", status: "testing",
+      what: "Opt-in turn calibration: one dataset token turns 22.5° yaw or 20° pitch, as the prompts assume (default 34° and 11°).", fams: ["gc", "if", "outsight"],
+      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. Built: opt-in LingBot turn calibration, so one dataset token turns 22.5 degrees of yaw or 20 of pitch as the task prompts assume, instead of the default 34 and 11 degrees. In review (#46): opt-in re-anchoring for GC tasks, which shows the model the input image again when the commanded camera track returns to the start pose; not yet run on a GPU. Planned: pose-checked correction.",
+      links: [["#23", PR + "23"], ["#46", PR + "46"]], evidence: [],
+      match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
+    { title: "C. Out-of-sight state tracker", status: "planned",
+      what: "A model of what the KV cache still holds, and a turn-away-and-back probe.", fams: ["outsight"],
+      body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor. In review (#37): a model of what LingBot's KV cache still holds (a 6-latent sink plus the last 8 latents, about 2 s) and a GPU probe that turns away and back to test whether recall fails exactly when the view is evicted. The analysis in issue #48 finds that all 43 out-of-sight dataset trajectories end at the starting view, which stays in the pinned latents, and that the rubric caps an unchanged return at 1.0. If so, the question for this family is whether the scene progresses while unseen, not whether the view is recalled. None of the tests planned there has run.", links: [["#37", PR + "37"]], evidence: [] },
+    { title: "D. Evaluation harness", status: "shipped",
+      what: "pwa CLI, sharded Modal generation, and a workflow that scores every run and logs it to the shared CSV.", fams: [],
       body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
-      links: [["#16", PR + "16"]], evidence: [] }
+      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
   ];
-  var STATUS_LABEL = { shipped: "shipped", testing: "built, A/B pending", planned: "planned" };
+  var STATUS_LABEL = { shipped: "in use", testing: "built", planned: "open PR" };
 
   /* ---------- protocol checks ---------- */
   var CHECKS = [
@@ -649,7 +671,7 @@
   function realRows() { return ALL.filter(function (r) { return !isTest(r); }); }
   function bestClosed() {
     var best = null;
-    realRows().forEach(function (r) { if (isClosed(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
+    realRows().forEach(function (r) { if (isClosed(r) && !isSmoke(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
     return best;
   }
   function bestFinal() {
@@ -671,12 +693,29 @@
       head = "In progress: best closed-loop score so far is " + fmt(bc.overall) + " on " + bc.n_tasks + " task" + (bc.n_tasks === 1 ? "" : "s") + ".";
       why = "Not yet comparable to Genie 3's 2.12. A final number must pass every protocol check: closed loop, all 171 tasks, 2+ verifier passes, every task scored, code on main, run after code freeze.";
     } else {
-      head = "In progress: no closed-loop score logged yet.";
-      why = "Rows appear here as soon as the experiment workflow finishes a run.";
+      var ns = realRows().filter(function (r) { return isClosed(r) && isSmoke(r); }).length;
+      head = "In progress: no dev-scale closed-loop score yet.";
+      why = (ns ? ns + " closed-loop smoke test" + (ns === 1 ? " is" : "s are") + " logged, but too small to estimate a score. " : "No closed-loop run is logged yet. ") +
+        "Dev-scale means all " + DEV_TASKS + " dev tasks with 2+ verifier passes.";
     }
-    box.className = "status " + cls; clear(box);
-    box.appendChild(el("span", { class: "dot", "aria-hidden": "true" }));
-    box.appendChild(el("div", null, [el("p", null, [el("b", { text: head })]), el("p", { class: "why", text: why })]));
+    // headline card: one number, one status chip, one comparison line; the protocol detail sits behind a disclosure
+    var shown = fin || bc;
+    box.className = "scorecard card " + cls; clear(box);
+    box.appendChild(el("div", { class: "label", text: fin ? "Final score" : "Best closed-loop score" }));
+    var big = el("div", { class: "big" }, [document.createTextNode(shown ? fmt(shown.overall) : "-")]);
+    if (fin && fin.overall_std !== null) big.appendChild(el("span", { class: "pm", text: " ± " + fmt(fin.overall_std) }));
+    box.appendChild(big);
+    box.appendChild(el("div", { class: "badges" }, [fin
+      ? el("span", { class: "badge " + (cls === "ok" ? "ok" : "warn"), text: "All 171 tasks" })
+      : bc ? el("span", { class: "badge warn", text: "Partial: " + bc.n_tasks + " of " + FULL_TASKS + " tasks" })
+           : el("span", { class: "badge", text: realRows().some(function (r) { return isClosed(r) && isSmoke(r); }) ? "Smoke tests only" : "No closed-loop run yet" })]));
+    var vs = "Genie 3: " + TARGET.toFixed(2) + " (paper)";
+    if (fin) vs = (fin.overall - TARGET >= 0 ? "+" : "-") + Math.abs(fin.overall - TARGET).toFixed(2) + " vs Genie 3 " + TARGET.toFixed(2) + (Math.abs(fin.overall - TARGET) >= 2 * (fin.overall_std || FALLBACK_STD) ? "" : ", within noise");
+    box.appendChild(el("p", { class: "vs", text: vs }));
+    var det = el("details", { class: "why" }, [el("summary", { text: fin ? "How this was measured" : "Why isn't this final yet?" }),
+      el("p", null, [document.createTextNode(head + " " + why + " "), el("a", { href: "#rigor", text: "How we measure" })])]);
+    box.appendChild(det);
+    box.appendChild(el("p", { class: "scale", text: "Scores run 1 to 5; higher is better." }));
   }
   function renderRuler() {
     var host = $("ruler"); clear(host);
@@ -697,7 +736,7 @@
       svg.appendChild(sv("line", { x1: x(t), x2: x(t), y1: axisY + 4, y2: axisY + 9, stroke: "var(--axis)" }));
       if (Math.abs(x(t) - oursX) > 16) svg.appendChild(sv("text", { x: x(t), y: axisY + 22, "text-anchor": t === 1 ? "start" : (t >= hi ? "end" : "middle"), text: t.toFixed(1) }));
     }
-    svg.appendChild(sv("text", { x: x(hi), y: axisY - 10, "text-anchor": "end", style: "fill:var(--good)", text: "beats Genie 3 →" }));
+    svg.appendChild(sv("text", { x: x(hi), y: axisY - 10, "text-anchor": "end", style: "fill:var(--good)", text: "above Genie 3" }));
     // reference markers, labels staggered on two rows above the axis
     var refs = REFS.slice().sort(function (a, b) { return a.overall - b.overall; });
     refs.forEach(function (r, i) {
@@ -718,43 +757,42 @@
         text: "Ours " + fmt(ours.overall) + (partial ? " (" + ours.n_tasks + " task" + (ours.n_tasks === 1 ? "" : "s") + ", partial)" : "") }));
     }
     host.appendChild(svg);
-    $("ruler-cap").textContent = "Reference scores are the PlayWorld paper's full-benchmark numbers. " +
-      (ours ? (isFinal(ours) ? "Ours is the best run passing every protocol check." : "Ours is the best closed-loop run so far; the hollow marker means it is not yet a full-benchmark result.")
-            : "Our marker appears after the first closed-loop run.") + " Axis is zoomed to 1-" + hi + " of the 1-5 scale.";
+    $("ruler-cap").textContent = "Paper scores on all 171 tasks; axis shows 1 to " + hi + " of 5. " +
+      (ours ? (isFinal(ours) ? "Ours passes every protocol check." : "Hollow marker: ours is not a full-benchmark result yet.") : "Our marker appears after the first dev-scale closed-loop run.");
   }
 
   /* ---------- families ---------- */
+  // one table: family, paper scores, our headline run, and our gap to Genie 3
   function renderFams() {
-    var box = $("fams"); clear(box);
-    var scaleMax = 3;
-    FAMS.forEach(function (f) {
-      var k = f[0], info = FAMINFO[k], b = bestFinal() || bestClosed();
-      var top = null; REFS.forEach(function (r) { if (r !== GENIE && (!top || r[k] > top[k])) top = r; });
-      var rows = [[ "Genie 3", GENIE[k], "ref" ], [ top.exp.replace("-World2", " v2"), top[k], "ref" ]];
-      var card = el("div", { class: "card fam" }, [
-        el("div", { class: "head" }, [el("h3", { text: info.name }), el("span", { class: "n", text: info.n + " tasks" })]),
-        el("p", { class: "q", text: info.q })
-      ]);
-      var bars = el("div", { class: "bars" });
-      function bar(name, v, cls, title) {
-        var w = v === null ? 0 : Math.max(0, Math.min(1, (v - 1) / (scaleMax - 1))) * 100;
-        // no fill element at all when there is no score, so an empty track never shows a sliver
-        var tr = el("div", { class: "track" }, v === null || w <= 0 ? [] : [el("div", { class: "fill " + cls, style: "width:" + w.toFixed(1) + "%" })]);
-        bars.appendChild(el("div", { class: "row", title: title || "" }, [el("span", { class: "nm", text: name }), tr,
-          el("span", { class: "v" + (v === null ? " none" : ""), text: v === null ? "not run" : fmt(v) })]));
-      }
-      rows.forEach(function (r) { bar(r[0], r[1], r[2]); });
-      var oursName = b && !isFinal(b) ? "Ours (" + b.n_tasks + " task" + (b.n_tasks === 1 ? "" : "s") + ")" : "Ours";
-      if (b) bar(oursName, b[k], "ours" + (isFinal(b) ? "" : " partial"), b.exp + (b[k] === null ? ": no tasks from this family" : ""));
-      else bar("Ours", null, "ours", "no closed-loop score yet");
-      card.appendChild(bars);
-      var gap = GENIE[k] - 1;
-      card.appendChild(el("div", { class: "foot" }, [
-        el("span", { class: "badge " + (TARGETED[k] ? "accent" : ""), text: TARGETED[k] ? "Primary target" : "Hold the line" }),
-        el("span", { class: "note", text: TARGETED[k] ? "Genie 3 is only " + fmt(gap) + " above the 1.0 floor." : "Genie 3 leads at " + fmt(GENIE[k]) + "." })
-      ]));
-      box.appendChild(card);
+    var t = $("fams"); clear(t);
+    var b = bestFinal() || bestClosed();
+    var top = null; REFS.forEach(function (r) { if (r !== GENIE && r.exp === "LingBot-World2") top = r; });
+    var oursHead = b && !isFinal(b) ? "Ours (" + b.n_tasks + " task" + (b.n_tasks === 1 ? "" : "s") + ")" : "Ours";
+    var hr = el("tr");
+    [["Family", "Family", "exp"], ["Genie 3", "G3", "num"], ["LingBot v2", "LB", "num"], [oursHead, "Ours", "num"], ["Ours vs Genie 3", "Gap", "num"]].forEach(function (h) {
+      hr.appendChild(el("th", { class: h[2], scope: "col" }, headLabel([0, h[0], 0, 0, h[1]])));
     });
+    t.appendChild(el("thead", null, [hr]));
+    var tb = el("tbody"), q = $("fam-q"); clear(q);
+    FAMS.forEach(function (f) {
+      var k = f[0], info = FAMINFO[k], tr = el("tr");
+      tr.appendChild(el("td", { class: "exp" }, [el("div", { class: "nm", text: info.name }), el("div", { class: "meta-line", text: info.n + " tasks" })]));
+      var lead = GENIE[k] >= top[k] ? "g" : "l";
+      tr.appendChild(el("td", { class: "num" + (lead === "g" ? " best" : ""), text: fmt(GENIE[k]) }));
+      tr.appendChild(el("td", { class: "num" + (lead === "l" ? " best" : ""), text: fmt(top[k]) }));
+      var o = el("td", { class: "num" });
+      if (b && b[k] !== null) o.textContent = fmt(b[k]); else o.appendChild(el("span", { class: "dash", title: "No dev-scale closed-loop run scores this family yet; smoke tests are not counted", text: "none yet" }));
+      tr.appendChild(o);
+      var g = el("td", { class: "num" });
+      if (b && b[k] !== null) {
+        var d = b[k] - GENIE[k];
+        g.appendChild(el("span", { class: "badge " + (isFinal(b) ? (d >= 0 ? "ok" : "bad") : "partial"), title: isFinal(b) ? "" : "Partial run: not comparable to the paper's full-benchmark score", text: (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) }));
+      } else dashCell(g);
+      tr.appendChild(g);
+      tb.appendChild(tr);
+      q.appendChild(el("li", null, [el("b", { text: info.name + ": " }), document.createTextNode(info.q)]));
+    });
+    t.appendChild(tb);
   }
 
   /* ---------- methods ---------- */
@@ -762,33 +800,33 @@
     var hit = null; ALL.forEach(function (r) { if (r.exp === name && (!hit || (r.t || 0) > (hit.t || 0))) hit = r; });
     return hit;
   }
+  // one row per change: name, status, measured result; description and PR links open on click
   function renderMethods() {
     var box = $("methods"); clear(box);
-    METHODS.forEach(function (mth) {
-      var ev = mth.evidence.map(rowByExp).filter(Boolean);
-      if (mth.match) realRows().forEach(function (r) { if (mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
-      var stKey = mth.status === "testing" && ev.length ? "shipped" : mth.status;
-      var stText = mth.status === "testing" && ev.length ? "A/B runs logged" : STATUS_LABEL[mth.status];
-      var card = el("div", { class: "card method" }, [
-        el("div", { class: "top" }, [el("h3", { text: mth.title }), el("span", { class: "badge " + ({ shipped: "ok", testing: "warn", planned: "partial" }[stKey] || ""), text: stText })]),
-        el("p", { text: mth.body })
+    var order = { shipped: 0, testing: 1, planned: 2 };
+    METHODS.slice().sort(function (a, b) { return order[a.status] - order[b.status]; }).forEach(function (mth) {
+      var ev = mth.evidence.map(rowByExp).filter(function (r) { return r && !isLive(r); });
+      if (mth.match) realRows().forEach(function (r) { if (!isLive(r) && mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
+      var st = mth.status === "testing" && ev.length ? "shipped" : mth.status;
+      var stText = mth.status === "testing" && ev.length ? "measured" : STATUS_LABEL[mth.status];
+      var result;
+      if (ev.length) result = el("span", { class: "res" }, [el("b", { text: fmt(ev[0].overall) }), document.createTextNode(" on " + ev[0].n_tasks + " task" + (ev[0].n_tasks === 1 ? "" : "s"))]);
+      else if (mth.status === "planned") result = el("span", { class: "res none", text: "not merged" });
+      else if (!mth.fams.length) result = el("span", { class: "res none", text: "infrastructure" });
+      else result = el("span", { class: "res none", text: mth.baseline ? "no like-for-like run" : "not measured" });
+      var summary = el("summary", null, [
+        el("span", { class: "nm", text: mth.title.replace(/^[A-D]\. /, "") }),
+        el("span", { class: "badge " + ({ shipped: "ok", testing: "warn", planned: "partial" }[st] || ""), text: stText }),
+        result
       ]);
-      if (ev.length || mth.baseline) {
-        var ul = el("ul");
-        ev.forEach(function (r) {
-          ul.appendChild(el("li", { text: r.exp + ": " + (r.overall === null ? "unscored" : fmt(r.overall)) + " overall, " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + ", " + (isClosed(r) ? "closed loop" : "open loop") }));
-        });
-        if (mth.baseline && !ev.length) {
-          var br = rowByExp(mth.baseline);
-          ul.appendChild(el("li", { text: "A/B baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + ". Session run pending." }));
-        }
-        card.appendChild(el("div", { class: "ev" }, [el("b", { text: "Evidence" }), ul]));
-      }
-      var meta = el("div", { class: "meta" });
-      if (mth.fams.length) meta.appendChild(el("span", { text: "Targets: " + mth.fams.map(function (k) { return FAMINFO[k].name.split(" ")[0]; }).join(", ") }));
-      mth.links.forEach(function (l) { meta.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
-      if (meta.childNodes.length) card.appendChild(meta);
-      box.appendChild(card);
+      var body = el("div", { class: "more" }, [el("p", { text: mth.what || mth.body })]);
+      if (mth.what && mth.body) body.appendChild(el("p", { class: "std", text: mth.body }));
+      if (ev.length) body.appendChild(el("p", { class: "std", text: "Runs: " + ev.map(function (r) { return r.exp + " (" + fmt(r.overall) + ", " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop") + ")"; }).join("; ") }));
+      else if (mth.baseline) { var br = rowByExp(mth.baseline); body.appendChild(el("p", { class: "std", text: "Baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + "." })); }
+      var links = el("p", { class: "links" });
+      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+      if (links.childNodes.length) body.appendChild(links);
+      box.appendChild(el("li", null, [el("details", null, [summary, body])]));
     });
   }
 
@@ -837,6 +875,112 @@
     t.appendChild(tb);
   }
 
+  /* ---------- scenes ---------- */
+  var MEDIA_RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/media/";
+  var scenesExp = "", scenesFam = "", scenesIdx = null, scenesMan = null, scenesAll = false, scenesDefault = "", SCENES_SHOWN = 4;
+  function getJson(name) {
+    return get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
+  }
+  function sceneCard(t) {
+    var famName = FAMINFO[t.family] ? FAMINFO[t.family].name : (t.family || "-");
+    var media = el("div", { class: "media" });
+    if (t.video) {
+      media.appendChild(el("img", { src: t.poster || "", alt: "First frames of " + t.task_id, loading: "lazy" }));
+      var pb = el("button", { class: "play", type: "button", "aria-label": "Play " + t.task_id });
+      pb.addEventListener("click", function () {
+        var v = el("video", { controls: "", playsinline: "", preload: "none", src: t.video, poster: t.poster || null, "aria-label": "Rollout of " + t.task_id });
+        v.muted = true;
+        clear(media); media.appendChild(v);
+        var pr = v.play(); if (pr && pr.catch) pr.catch(function () { /* autoplay refused: controls stay */ });
+        v.focus();
+      });
+      media.appendChild(pb);
+    } else {
+      if (t.poster) media.appendChild(el("img", { src: t.poster, alt: "First frames of " + t.task_id, loading: "lazy" }));
+      media.appendChild(el("div", { class: "novid", text: "No video" }));
+    }
+    var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
+    var row = el("div", { class: "row" }, [
+      el("b", { text: t.task_id }),
+      el("span", { class: "sc", text: typeof t.mean === "number" ? fmt(t.mean) : "unscored" })
+    ]);
+    var row2 = el("div", { class: "row" }, [
+      el("span", { class: "fam", text: famName }),
+      el("span", { class: "badge " + (ok ? "ok" : "warn"), text: st.length ? st.join(", ") : "no status" })
+    ]);
+    var kids = [media, row, row2];
+    if (t.reason) kids.push(el("details", null, [el("summary", { text: "Verifier reason" }), el("p", { text: t.reason })]));
+    return el("article", { class: "scene" }, kids);
+  }
+  function renderScenes() {
+    var grid = $("sc-grid"), empty = $("sc-empty"), filt2 = $("scenes-filters");
+    if (!grid) return;
+    clear(grid);
+    var runs = scenesIdx && scenesIdx.runs ? scenesIdx.runs : [];
+    if (!runs.length) {
+      empty.hidden = false; empty.textContent = "No scenes published yet. Each scored run adds its rollouts to a GitHub Release.";
+      filt2.hidden = true; $("sc-note").hidden = true; $("sc-files").hidden = true; return;
+    }
+    filt2.hidden = false;
+    var rs = $("sc-run"), fs = $("sc-fam");
+    clear(rs); runs.forEach(function (r) {
+      var o = el("option", { value: r.exp, text: r.exp + " (" + r.n_tasks + " tasks)" }); if (r.exp === scenesExp) o.selected = true; rs.appendChild(o);
+    });
+    var run = runs.filter(function (r) { return r.exp === scenesExp; })[0];
+    if (run && run.release_url && /^https:/.test(run.release_url)) { $("sc-files").href = run.release_url; $("sc-files").hidden = false; } else $("sc-files").hidden = true;
+    renderSceneModel();
+    if (!scenesMan) { empty.hidden = false; empty.textContent = "Could not load the manifest for " + scenesExp + "."; return; }
+    var tasks = scenesMan.tasks || [];
+    clear(fs); fs.appendChild(el("option", { value: "", text: "All families" }));
+    FAMS.forEach(function (f) { var o = el("option", { value: f[0], text: FAMINFO[f[0]].name }); if (f[0] === scenesFam) o.selected = true; fs.appendChild(o); });
+    var list = tasks.filter(function (t) { return !scenesFam || t.family === scenesFam; });
+    empty.hidden = list.length > 0; if (!list.length) empty.textContent = "No tasks in this family for this run.";
+    $("sc-note").hidden = !list.some(function (t) { return t.reason; });
+    var shown = scenesAll ? list : list.slice(0, SCENES_SHOWN);
+    shown.forEach(function (t) { grid.appendChild(sceneCard(t)); });
+    if (list.length > SCENES_SHOWN) {
+      var b = el("button", { class: "scmore", type: "button", text: scenesAll ? "Show fewer" : "Show all " + list.length + " scenes" });
+      b.addEventListener("click", function () { scenesAll = !scenesAll; renderScenes(); });
+      grid.appendChild(el("div", { style: "grid-column:1/-1" }, [b]));
+    }
+  }
+  var scenesReq = 0;
+  function loadManifest() {
+    // a response for a run the visitor has since switched away from is dropped, so cards always match the picker
+    var req = ++scenesReq, exp = scenesExp;
+    scenesMan = null; scenesAll = false;
+    return getJson(exp + ".json").then(function (m) { if (req === scenesReq && m && m.exp === exp) scenesMan = m; })
+      .catch(function () { if (req === scenesReq) scenesMan = null; });
+  }
+  // credit the model that generated this run's rollouts, from its manifest
+  function renderSceneModel() {
+    var box = $("sc-model"); if (!box) return; clear(box);
+    var m = scenesMan && scenesMan.model; if (!m || !m.name) return;
+    box.appendChild(document.createTextNode("Generated with "));
+    if (m.url && /^https:/.test(m.url)) box.appendChild(el("a", { href: m.url, target: "_blank", rel: "noopener", text: m.name }));
+    else box.appendChild(document.createTextNode(m.name));
+    var who = [m.org, m.license].filter(Boolean).join(", ");
+    box.appendChild(document.createTextNode((who ? " (" + who + ")" : "") + ". "));
+  }
+  function loadScenes() {
+    return getJson("index.json").then(function (ix) {
+      var runs = (ix && ix.runs) || [];
+      runs.sort(function (a, b) { return a.generated < b.generated ? 1 : a.generated > b.generated ? -1 : 0; });
+      scenesIdx = { runs: runs };
+      scenesDefault = runs.length ? runs[0].exp : "";
+      if (!runs.some(function (r) { return r.exp === scenesExp; })) scenesExp = scenesDefault;
+      return scenesExp ? loadManifest() : null;
+    }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); syncUrl(); });
+  }
+  function wireScenes() {
+    $("sc-run").addEventListener("change", function (e) {
+      scenesExp = e.target.value;
+      var req = scenesReq + 1;
+      loadManifest().then(function () { if (req === scenesReq) { renderScenes(); syncUrl(); } });
+    });
+    $("sc-fam").addEventListener("change", function (e) { scenesFam = e.target.value; scenesAll = false; renderScenes(); });
+  }
+
   /* ---------- render all ---------- */
   function renderAll() {
     var vis = visible();
@@ -854,6 +998,7 @@
     filt.tests = q.get("tests") === "1";
     var sv = q.get("sort") || "", d = sv.charAt(0) === "-" ? -1 : 1, sk = sv.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
+    scenesExp = q.get("scenes") || "";
     cmpBase = q.get("base") || ""; // unknown values fall back to the default in renderCompare
   }
   function syncUrl() {
@@ -863,6 +1008,7 @@
       if (filt.tests) q.set("tests", "1"); else q.delete("tests");
       if (sort.key === "overall" && sort.dir < 0) q.delete("sort"); else q.set("sort", (sort.dir < 0 ? "-" : "") + sort.key);
       if (cmpBase && cmpBase !== cmpAuto) q.set("base", cmpBase); else q.delete("base");
+      if (scenesExp && scenesExp !== scenesDefault) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
       var qs = q.toString();
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed or file: origins may refuse */ }
@@ -894,6 +1040,7 @@
     $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
     $("f-branch").addEventListener("change", function (e) { filt.branch = e.target.value; renderAll(); });
     $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderAll(); });
+    $("charts-wrap").addEventListener("toggle", function () { if ($("charts-wrap").open) { var v = visible(); renderBars(v); renderLine(v); } });
     $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); syncUrl(); });
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {
@@ -925,8 +1072,8 @@
       return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
     });
   }
-  wire(); addAnchors();
+  wire(); wireScenes(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); });
+    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); });
 })();

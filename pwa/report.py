@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+import os
 
 from .aggregate import aggregate_pass, mean_std, upstream_cross_check
 from .core import FAMILIES, current_branch, RESULTS_CSV, RUNS, exp_dir, log, now, read_json, read_meta, video_path, write_json
@@ -19,7 +20,9 @@ REFERENCE = {
 FALLBACK_STD = math.sqrt(0.011)
 CSV_FIELDS = ["exp", "split", "timestamp", "git_sha", "runner", "action_source", "gc", "if", "insight",
               "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes", "branch",
-              "n_dropped"]
+              "n_dropped", "status", "run_url"]
+# status: running (launched), generated (gen-only done), scored, failed, cancelled. Blank on rows older than the column.
+LIVE_STATUSES = ("running", "generated", "failed", "cancelled")
 
 
 def load_pass(exp: str, k: int, sel: list[dict]) -> tuple[dict, dict]:
@@ -160,11 +163,12 @@ def render_failures_md(rows: list[dict]) -> str:
 
 
 def upsert_csv(rep: dict, meta: dict, split: str) -> None:
-    RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
-    rows = []
+    rows, head = [], []
     if RESULTS_CSV.is_file():
         with RESULTS_CSV.open(newline="") as fh:
-            rows = list(csv.DictReader(fh))
+            rd = csv.DictReader(fh)
+            rows, head = list(rd), [c for c in (rd.fieldnames or []) if c]
+    head += [c for c in CSV_FIELDS if c not in head]  # keep columns this version does not know
     fam = rep["families"]
     r4 = lambda x: "" if x is None else f"{x:.4f}"  # noqa: E731
     new = {"exp": rep["exp"], "split": split, "timestamp": rep["generated"], "git_sha": meta.get("git_sha") or "",
@@ -174,14 +178,66 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": meta.get("notes", ""),
            "branch": meta.get("branch") or current_branch(),
            # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
-           "n_dropped": sum(f.get("dropped") or 0 for f in fam.values())}
-    rows = [r for r in rows if not (r.get("exp") == rep["exp"] and r.get("split") == split)] + [new]
-    tmp = RESULTS_CSV.with_suffix(".csv.tmp")
+           "n_dropped": sum(f.get("dropped") or 0 for f in fam.values()),
+           "status": "scored", "run_url": run_url()}
+    # replace the same exp+split, and exp's score-less live rows (mark_row) under any split label
+    rows = [r for r in rows if not (r.get("exp") == rep["exp"]
+                                    and (r.get("split") == split or r.get("status") in LIVE_STATUSES))] + [new]
+    _write_csv(RESULTS_CSV, head, [{k: v for k, v in r.items() if k in head} for r in rows])
+
+
+def run_url() -> str:
+    """This GitHub Actions run's page, or '' outside Actions."""
+    e = os.environ
+    if not (e.get("GITHUB_SERVER_URL") and e.get("GITHUB_REPOSITORY") and e.get("GITHUB_RUN_ID")):
+        return ""
+    return f"{e['GITHUB_SERVER_URL']}/{e['GITHUB_REPOSITORY']}/actions/runs/{e['GITHUB_RUN_ID']}"
+
+
+def _write_csv(dest, head: list[str], rows: list[dict]) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".csv.tmp")
     with tmp.open("w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=CSV_FIELDS, extrasaction="ignore")
+        w = csv.DictWriter(fh, fieldnames=head, restval="", extrasaction="raise")
         w.writeheader()
         w.writerows(rows)
-    tmp.replace(RESULTS_CSV)
+    tmp.replace(dest)
+
+
+def mark_row(exp: str, dest, status: str, split: str = "", runner: str = "", action_source: str = "",
+             notes: str = "", git_sha: str = "") -> int:
+    """Record a run's live status in csv `dest` so in-flight runs are visible. Returns rows written.
+
+    running: add a score-less row for exp, or refresh its existing score-less row (empty arguments keep
+    what that row recorded, so a score-only run does not overwrite the generation's metadata). A row that
+    already holds a score is left alone (score-only reruns, resumed runs). Any other status only updates
+    exp's rows that still say running, so a scored row is never downgraded. The final `upsert-row`
+    replaces the running row."""
+    from pathlib import Path
+    if status not in LIVE_STATUSES:
+        raise ValueError(f"status must be one of {', '.join(LIVE_STATUSES)}")
+    dest = Path(dest)
+    if dest.is_file() and dest.stat().st_size:
+        head, rows = _read_csv_strict(dest)
+    else:
+        head, rows = list(CSV_FIELDS), []
+    head += [c for c in CSV_FIELDS if c not in head]
+    mine = [r for r in rows if r.get("exp") == exp]
+    if status == "running":
+        if any((r.get("overall") or "").strip() for r in mine):
+            return 0
+        upd = {"split": split, "git_sha": git_sha, "runner": runner, "action_source": action_source,
+               "notes": notes, "branch": current_branch(), "run_url": run_url()}
+        new = {**(mine[0] if mine else {}), **{k: v for k, v in upd.items() if v},
+               "exp": exp, "timestamp": now(), "status": "running"}
+        _write_csv(dest, head, [r for r in rows if r.get("exp") != exp] + [new])
+        return 1
+    live = [r for r in mine if r.get("status") == "running"]
+    for r in live:
+        r["status"], r["timestamp"] = status, now()
+    if live:
+        _write_csv(dest, head, rows)
+    return len(live)
 
 
 def _read_csv_strict(path) -> tuple[list[str], list[dict]]:
@@ -212,7 +268,8 @@ def upsert_row_into(exp: str, src, dest) -> int:
     from pathlib import Path
     src, dest = Path(src), Path(dest)
     _, srows = _read_csv_strict(src)
-    mine = [r for r in srows if r.get("exp") == exp]
+    # never copy a score-less live row: the checkout's csv can hold one inherited from main
+    mine = [r for r in srows if r.get("exp") == exp and r.get("status") not in LIVE_STATUSES]
     if not mine:
         raise ValueError(f"{src}: no row for exp {exp!r}")
     if dest.is_file() and dest.stat().st_size:
@@ -224,14 +281,10 @@ def upsert_row_into(exp: str, src, dest) -> int:
             if col not in head:
                 head.append(col)
     keys = {(r["exp"], r.get("split", "")) for r in mine}
-    rows = [r for r in rows if (r.get("exp"), r.get("split", "")) not in keys] + mine
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".csv.tmp")
-    with tmp.open("w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=head, restval="", extrasaction="raise")
-        w.writeheader()
-        w.writerows(rows)
-    tmp.replace(dest)
+    # also drop exp's score-less live rows (mark_row), whatever split label they were launched with
+    rows = [r for r in rows if (r.get("exp"), r.get("split", "")) not in keys
+            and not (r.get("exp") == exp and r.get("status") in LIVE_STATUSES)] + mine
+    _write_csv(dest, head, rows)
     return len(mine)
 
 
@@ -292,7 +345,8 @@ def render_compare(c: dict) -> str:
     return out.getvalue()
 
 
-def failures(exp: str, sel: list[dict]) -> list[dict]:
+def failures(exp: str, sel: list[dict], all_tasks: bool = False) -> list[dict]:
+    """Tasks that are missing, gate-failed or scored 1.0, with the verifier's reason; every task with all_tasks."""
     rep = build(exp, sel)
     out = []
     for t in sel:
@@ -304,7 +358,7 @@ def failures(exp: str, sel: list[dict]) -> list[dict]:
             continue
         if not rep["passes"]:
             bad = ["missing"]
-        if not bad and not low:
+        if not bad and not low and not all_tasks:
             continue
         reasons = []
         for k in rep["passes"]:
@@ -318,7 +372,7 @@ def failures(exp: str, sel: list[dict]) -> list[dict]:
                 reasons.append(s["summary_zh"])
             if s.get("error"):
                 reasons.append(f"verifier error: {s['error']}")
-        status = sorted(set(bad)) or ["score_1.0"]
+        status = sorted(set(bad)) or (["score_1.0"] if low else ["ok"])
         out.append({"task_id": tid, "family": t["family"], "mean": tr["mean"], "status": status,
                     "reason": reasons[0] if reasons else ""})
     return out
