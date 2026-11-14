@@ -59,6 +59,7 @@ env:
   EXP: ${{ inputs.exp }}
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   GEMINI_MODEL: gemini-3.1-pro-preview
+  GOOGLE_GENAI_API_VERSION: v1beta
   PLAYER_API_PROVIDER: ${{ vars.PLAYER_API_PROVIDER || 'openai' }}
   PLAYER_API_URL: ${{ vars.PLAYER_API_URL || 'https://api.openai.com/v1' }}
   PLAYER_MODEL: ${{ vars.PLAYER_MODEL || 'gpt-4.1-mini' }}
@@ -146,7 +147,7 @@ jobs:
           { echo; echo '### Failures'; echo '```'; pwa failures "$EXP"; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Commit experiment log
-        if: inputs.stage != 'gen-only'
+        if: github.ref == 'refs/heads/main' && inputs.stage != 'gen-only'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
