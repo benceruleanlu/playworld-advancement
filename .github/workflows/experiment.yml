@@ -84,10 +84,18 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
-      - name: Install
+      - name: Install FFmpeg
+        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
+        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - name: Install dataset client
+        run: pip install -q huggingface_hub
+      - name: Install Modal CLI
+        if: inputs.backend == 'modal'
+        run: pip install -q modal
+      - name: Install local rollout and verifier dependencies
+        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
         run: |
-          pip install -q -e third_party/PlayWorld huggingface_hub modal
+          pip install -q -e third_party/PlayWorld
           pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
           pip install -q -e .
       - uses: actions/cache@v4

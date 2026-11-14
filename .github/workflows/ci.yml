@@ -20,7 +20,13 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - name: Set up FFmpeg
+        run: |
+          pip install -q --only-binary=:all: imageio-ffmpeg==0.6.0
+          mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
+          ln -s "$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -version
+          echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
       - run: |
           pip install -q -e third_party/PlayWorld huggingface_hub pytest
           pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
