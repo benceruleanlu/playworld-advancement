@@ -1,6 +1,6 @@
 <section id="progress" aria-labelledby="h-progress">
   <h2 id="h-progress" class="sec">Progress</h2>
-  <p class="sub">Each closed-loop run that set a new best on its split, and whether the gain clears the noise bar.</p>
+  <p class="sub">Each run that beat our previous best on the same tasks, and whether the gain is big enough to count.</p>
   <div class="scroll"><table id="records"></table></div>
   <details class="tool" id="charts-wrap"><summary>Show charts</summary>
     <div class="charts">
@@ -14,7 +14,7 @@
       </div>
       <div class="card chart" id="c-line">
         <h2>Overall score over time</h2>
-        <p class="sub" style="margin-bottom:4px;font-size:13px">UTC. Hollow markers are open-loop runs.</p>
+        <p class="sub" style="margin-bottom:4px;font-size:13px">Times in UTC. Hollow dots are runs with replayed moves.</p>
         <div class="legend" id="line-legend"></div>
         <div id="line-svg"></div>
         <details><summary>Table view</summary><div id="line-table"></div></details>
@@ -23,5 +23,5 @@
     </div>
     <p class="callout">Charts follow the leaderboard filters. Bars start at 0, though scores cannot go below 1.</p>
   </details>
-  <p class="callout">Open-loop and pipeline-test runs are left out. Custom task lists are never compared, since the CSV does not record which tasks they used.</p>
+  <p class="callout">Runs with replayed moves and pipeline tests are left out. Runs on hand-picked tasks are not compared, because the log does not record which tasks they used.</p>
 </section>
