@@ -41,6 +41,14 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 
 `adapters/<name>/run.py` imports upstream `run_agent`, applies `adapters/common/agent_api.patch` (sets auth by `PLAYER_API_PROVIDER`), swaps `SanaWMEngine` for our engine, and calls `main()`. Wrappers compose around `generate()`, e.g. `AnchorMemory(base_engine)`. `matrix_game3/run.py` is a stub to fill in.
 
+`lingbot_world2` (14B) and `lingbot_world2_1p3b` (1.3B) run LingBot-World v2 causal-fast (PlayWorld paper: 1.82 overall via its web demo). Notes:
+
+- The released code is conditioned on camera poses only; its WASD/IJKL files are never read. `adapters/lingbot_world2/poses.py` turns each key into per-frame camera deltas (signs checked against upstream examples; rotation rates via `LINGBOT_YAW_RAD` / `LINGBOT_PITCH_RAD`).
+- v0 is stateless per `generate()` call: in closed loop the KV cache (LingBot's only memory) resets every chunk. `--action-source dataset` is one call, so the cache spans the rollout. A persistent `reset/step` session is the next step.
+- Clips are 4n+1 frames with latent length a multiple of 4, so a 33-frame chunk comes back as 45 frames. Pass `-- --chunk-frames 29` for exact chunks.
+- Weights live in the `pwa-weights` Volume under `/weights/lingbot` (`modal run prefetch_lingbot.py --variant 14b|1.3b`; the workflow does this). Outside the workflow set `PWA_RUNNER=<runner>` when calling `modal run modal_app.py` so the LingBot image is selected.
+- License: CC BY-NC-SA 4.0 (non-commercial, share-alike). Code is cloned into the image at a pinned commit, not vendored.
+
 ### Upstream quirks (verified)
 
 - IF third-person gate crashes upstream ("third person" vs "third-person"); `pwa` uses the embedded IF check instead.

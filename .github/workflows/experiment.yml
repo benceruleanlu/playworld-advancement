@@ -20,7 +20,7 @@ on:
         description: Comma-separated task IDs (overrides split)
         default: ""
       runner:
-        description: sana | matrix_game3 | path (tests/fake_runner.py for a pipeline test)
+        description: sana | matrix_game3 | lingbot_world2 | lingbot_world2_1p3b | path (tests/fake_runner.py for a pipeline test)
         default: sana
       action_source:
         type: choice
@@ -68,6 +68,7 @@ env:
   MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
   MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
   PWA_MODAL_GPU: ${{ inputs.gpu }}
+  PWA_RUNNER: ${{ inputs.runner }}
 
 jobs:
   run:
@@ -112,6 +113,10 @@ jobs:
           modal secret create pwa --force \
             PLAYER_API_PROVIDER="$PLAYER_API_PROVIDER" PLAYER_API_URL="$PLAYER_API_URL" \
             PLAYER_MODEL="$PLAYER_MODEL" PLAYER_API_KEY="$PLAYER_API_KEY" HF_TOKEN="$HF_TOKEN" >/dev/null
+
+      - name: Prefetch LingBot weights on CPU
+        if: inputs.backend == 'modal' && inputs.stage != 'score-only' && startsWith(inputs.runner, 'lingbot')
+        run: modal run prefetch_lingbot.py --variant "${{ inputs.runner == 'lingbot_world2_1p3b' && '1.3b' || '14b' }}"
 
       - name: Prefetch SANA weights on CPU
         if: inputs.backend == 'modal' && inputs.stage != 'score-only' && inputs.runner == 'sana'
