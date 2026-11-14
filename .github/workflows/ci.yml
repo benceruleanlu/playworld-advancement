@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - run: |
+          pip install -q -e third_party/PlayWorld huggingface_hub pytest
+          pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
+          pip install -q -e .
+      - name: Dataset metadata (json only)
+        run: python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data', allow_patterns=['*.json'])"
+      - run: python -m pytest -q

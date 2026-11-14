@@ -206,8 +206,13 @@ def git(*args, cwd: Path = ROOT) -> str | None:
 
 def provenance() -> dict:
     status = git("status", "--porcelain", "--", ".", ":!runs", ":!results")
-    return {"git_sha": git("rev-parse", "HEAD"), "git_dirty": bool(status) if status is not None else None,
-            "submodule_sha": git("rev-parse", "HEAD", cwd=PLAYWORLD), "hostname": socket.gethostname()}
+    # Remote containers (Modal) get code without .git; the launcher passes these through.
+    dirty = bool(status) if status is not None else None
+    if dirty is None and os.environ.get("PWA_GIT_DIRTY") in ("0", "1"):
+        dirty = os.environ["PWA_GIT_DIRTY"] == "1"
+    return {"git_sha": git("rev-parse", "HEAD") or os.environ.get("PWA_GIT_SHA"), "git_dirty": dirty,
+            "submodule_sha": git("rev-parse", "HEAD", cwd=PLAYWORLD) or os.environ.get("PWA_SUBMODULE_SHA"),
+            "hostname": socket.gethostname()}
 
 
 def write_json(path: Path, obj) -> None:

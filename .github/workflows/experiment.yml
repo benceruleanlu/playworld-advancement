@@ -1,0 +1,165 @@
+name: experiment
+
+# Manual: Actions tab -> experiment -> Run workflow.
+# backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
+# backend=local: generation runs on this runner (no GPU; use runner=tests/fake_runner.py to test the pipeline).
+# Scoring (Gemini) and reporting always run on this runner. The results/experiments.csv row is committed to main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      exp:
+        description: Experiment name (new name per run)
+        required: true
+      split:
+        description: Task split
+        type: choice
+        options: [dev, heldout, all]
+        default: dev
+      tasks:
+        description: Comma-separated task IDs (overrides split)
+        default: ""
+      runner:
+        description: sana | matrix_game3 | path (tests/fake_runner.py for a pipeline test)
+        default: sana
+      action_source:
+        type: choice
+        options: [dataset, agent, refined]
+        default: dataset
+      backend:
+        type: choice
+        options: [modal, local]
+        default: modal
+      gpu:
+        description: Modal GPU type
+        type: choice
+        options: [H100, A100-80GB, L40S]
+        default: H100
+      num_shards:
+        description: Parallel GPUs on Modal
+        default: "4"
+      stage:
+        type: choice
+        options: [full, gen-only, score-only]
+        default: full
+      passes:
+        description: Verifier passes
+        default: "2"
+      notes:
+        default: ""
+
+concurrency:
+  group: experiment-${{ inputs.exp }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  EXP: ${{ inputs.exp }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GEMINI_MODEL: gemini-3.1-pro-preview
+  PLAYER_API_PROVIDER: ${{ vars.PLAYER_API_PROVIDER || 'openai' }}
+  PLAYER_API_URL: ${{ vars.PLAYER_API_URL || 'https://api.openai.com/v1' }}
+  PLAYER_MODEL: ${{ vars.PLAYER_MODEL || 'gpt-4.1-mini' }}
+  PLAYER_API_KEY: ${{ secrets.PLAYER_API_KEY }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+  MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+  PWA_MODAL_GPU: ${{ inputs.gpu }}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Validate experiment name
+        run: |
+          [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - name: Install
+        run: |
+          pip install -q -e third_party/PlayWorld huggingface_hub modal
+          pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
+          pip install -q -e .
+      - uses: actions/cache@v4
+        with:
+          path: data
+          key: playworld-bench-v1
+      - name: Dataset
+        run: |
+          [[ -d data/gc/images ]] || python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data')"
+
+      - name: Sync Modal secret
+        if: inputs.backend == 'modal' && inputs.stage != 'score-only'
+        run: |
+          modal secret create pwa --force \
+            PLAYER_API_PROVIDER="$PLAYER_API_PROVIDER" PLAYER_API_URL="$PLAYER_API_URL" \
+            PLAYER_MODEL="$PLAYER_MODEL" PLAYER_API_KEY="$PLAYER_API_KEY" HF_TOKEN="$HF_TOKEN" >/dev/null
+
+      - name: Generate (Modal)
+        if: inputs.backend == 'modal' && inputs.stage != 'score-only'
+        env:
+          SPLIT: ${{ inputs.split }}
+          TASKS: ${{ inputs.tasks }}
+          RUNNER: ${{ inputs.runner }}
+          ACTION_SOURCE: ${{ inputs.action_source }}
+          NUM_SHARDS: ${{ inputs.num_shards }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
+            --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES"
+
+      - name: Generate (local)
+        if: inputs.backend == 'local' && inputs.stage != 'score-only'
+        env:
+          SPLIT: ${{ inputs.split }}
+          TASKS: ${{ inputs.tasks }}
+          RUNNER: ${{ inputs.runner }}
+          ACTION_SOURCE: ${{ inputs.action_source }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          sel=(--split "$SPLIT"); [[ -n "$TASKS" ]] && sel=(--tasks ${TASKS//,/ })
+          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes "$NOTES"
+
+      - name: Fetch rollouts from Modal
+        if: inputs.backend == 'modal' && inputs.stage != 'gen-only'
+        run: mkdir -p runs && modal volume get pwa-runs "/$EXP" runs/ --force
+
+      - name: Score
+        if: inputs.stage != 'gen-only'
+        env:
+          PASSES: ${{ inputs.passes }}
+        run: pwa score "$EXP" --passes "$PASSES" --workers 6
+
+      - name: Report
+        if: inputs.stage != 'gen-only'
+        run: |
+          pwa report "$EXP" | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo; echo '### Failures'; echo '```'; pwa failures "$EXP"; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Commit experiment log
+        if: inputs.stage != 'gen-only'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/experiments.csv
+          git diff --cached --quiet && exit 0
+          git commit -q -m "results: $EXP"
+          for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && exit 0; sleep 5; done
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: run-${{ inputs.exp }}
+          path: runs/${{ inputs.exp }}
+          retention-days: 14
+          if-no-files-found: ignore

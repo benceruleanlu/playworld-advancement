@@ -48,6 +48,17 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 - `run_agent.main()` always exits 0, and agent API errors silently fall back to dataset/WAIT actions. `pwa gen` checks mp4s and warns on agent fallback lines. A bad key gives an open-loop rollout, not an error.
 - Wait-only insight tasks always regenerate, even with `--resume`.
 
+### Remote runs (GitHub Actions + Modal)
+
+Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes.
+
+- `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, commits the `results/experiments.csv` row to main, and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
+- `backend=local` with `runner=tests/fake_runner.py`: full pipeline test with no GPU.
+- Full 171-task runs: `stage=gen-only` first, then `stage=score-only` (jobs cap at ~6 h).
+- Repo secrets: `GEMINI_API_KEY`, `PLAYER_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, optional `HF_TOKEN`. Optional repo variables: `PLAYER_API_PROVIDER`, `PLAYER_API_URL`, `PLAYER_MODEL`.
+- From a laptop: `modal run modal_app.py --exp NAME --split dev --num-shards 4`, then `modal volume get pwa-runs /NAME runs/`, then `pwa score NAME`.
+- The SANA image install in `modal_app.py` is unverified until the first real run.
+
 ## Plan (30 hours)
 
 Submission due Sunday 14:30: repo link, 2-minute demo video, short description. No commits before the event starts.
