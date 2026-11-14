@@ -79,6 +79,8 @@ def parser() -> argparse.ArgumentParser:
     _sel_args(p)
     p.add_argument("--strict", action="store_true", help="count unscored/no-review rollouts as 1.0 (not written to csv)")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--md", action="store_true", help="GitHub markdown output (for $GITHUB_STEP_SUMMARY)")
+    p.add_argument("--site-url", default=None, help="link to append in --md output")
 
     p = mk("compare", "per-family and per-task deltas B - A, with noise flags")
     p.add_argument("exp_a")
@@ -101,10 +103,15 @@ def parser() -> argparse.ArgumentParser:
     _score_args(p)
     p.add_argument("--json", action="store_true", help="print report JSON on stdout")
 
+    p = mk("upsert-row", "copy EXP's row from this checkout's results csv into another csv (used by the workflow)")
+    p.add_argument("exp")
+    p.add_argument("--into", required=True, help="destination experiments.csv (e.g. a checkout of main)")
+
     p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason")
     p.add_argument("exp")
     _sel_args(p)
     p.add_argument("--json", action="store_true")
+    p.add_argument("--md", action="store_true", help="GitHub markdown table")
     return ap
 
 
@@ -203,7 +210,11 @@ def dispatch(a) -> int:  # noqa: C901
     if a.cmd in ("report", "run"):
         sel = core.select_for_exp(a.exp, a.split, a.family, a.tasks)
         rep = report.report(a.exp, sel, _split_label(a, a.exp), getattr(a, "strict", False))
-        emit(rep, a.json, report.render(rep, core.read_meta(a.exp)))
+        if a.cmd == "report" and a.md and not a.json:
+            text = report.render_md(rep, core.read_meta(a.exp), a.site_url)
+        else:
+            text = report.render(rep, core.read_meta(a.exp))
+        emit(rep, a.json, text)
         if a.cmd == "run":
             return 1 if gen_failed or score_failed else 0
         return 0 if rep["passes"] else 1
@@ -222,10 +233,20 @@ def dispatch(a) -> int:  # noqa: C901
         emit(c, a.json, report.render_compare(c))
         return 0
 
+    if a.cmd == "upsert-row":
+        try:
+            n = report.upsert_row_into(a.exp, core.RESULTS_CSV, a.into)
+        except (ValueError, OSError) as e:
+            raise PwaError(str(e)) from e
+        log(f"[pwa] upserted {n} row(s) for {a.exp} into {a.into}")
+        return 0
+
     if a.cmd == "failures":
         rows = report.failures(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks))
         text = "\n".join(f"{r['task_id']}\t{r['family']}\t{report.f2(r['mean']).strip()}\t"
                          f"{','.join(r['status'])}\t{r['reason']}" for r in rows)
+        if a.md:
+            text = report.render_failures_md(rows)
         emit(rows, a.json, text or "(no failures)")
         return 0
     return 2
