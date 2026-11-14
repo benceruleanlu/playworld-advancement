@@ -127,6 +127,7 @@ class PoseTrack:
     def __init__(self):
         self.last = np.eye(4)        # absolute pose of the latest pixel frame
         self.prev_latent = None      # absolute pose of the latest latent frame
+        self.latents = []            # absolute pose of every latent so far (cache_model)
 
     def advance(self, keys: list[str]) -> np.ndarray:
         first = self.prev_latent is None
@@ -140,6 +141,7 @@ class PoseTrack:
                 lat.append(cur)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
         self.last, self.prev_latent = cur, lat[-1]
+        self.latents += lat
         return normalise_translation(rel)
 
 
@@ -213,8 +215,8 @@ class LingBotSession:
         head_dim = cfg.dim // cfg.num_heads
         if pipe.local_attn_size > -1:
             self.kv_size = self.frame_seqlen * pipe.local_attn_size
-        else:
-            self.kv_size = self.frame_seqlen * ROPE_LATENTS
+        else:  # global cache: size it to the horizon, not the 1024-latent RoPE table
+            self.kv_size = self.frame_seqlen * self.y.shape[1]
         self.kv = pipe._initialize_self_kv_cache(
             num_layers=cfg.num_layers, shape=[1, self.kv_size, cfg.num_heads, head_dim],
             dtype=pipe.pipe_dtype, device=dev)
@@ -296,6 +298,9 @@ class LingBotSession:
         end_lat = (self.chunk_id + n_chunks) * CHUNK
         if end_lat > ROPE_LATENTS:
             raise RuntimeError(f"rollout would reach {end_lat} latents; the RoPE table has {ROPE_LATENTS}")
+        if pipe.local_attn_size < 0 and end_lat * self.frame_seqlen > self.kv_size:
+            raise RuntimeError(f"global KV cache holds {self.kv_size // self.frame_seqlen} latents; "
+                               f"reset with a longer horizon_frames to reach {end_lat}")
         if end_lat > self.y.shape[1]:
             self._encode_y(min(ROPE_LATENTS, end_lat + 8 * CHUNK))
 
@@ -342,6 +347,18 @@ class LingBotSession:
             frames = np.concatenate([self._last_frame[None], frames])
         self._last_frame = frames[-1].copy()
         return frames
+
+    def cache_report(self, since_chunk: int = 0) -> dict:
+        """cache_model.chunk_report for this rollout's chunks >= since_chunk, plus what the
+        cache holds now (global latent indices). Pure bookkeeping, no GPU work."""
+        from adapters.lingbot_world2 import cache_model as C  # noqa: PLC0415
+        local = int(getattr(self.pipe, "local_attn_size", -1))
+        sink = int(getattr(self.pipe, "sink_size", 0))
+        lat = np.stack(self.track.latents)
+        rows = [r for r in C.chunk_report(lat, local, sink) if r["chunk"] >= since_chunk]
+        last = self.chunk_id - 1
+        held = C.visible(last, local, sink) + list(range(last * CHUNK, self.chunk_id * CHUNK)) if last >= 0 else []
+        return {"local_attn": local, "sink": sink, "latents": len(lat), "resident": held, "rows": rows}
 
     def _decode(self, lat):
         """New latents -> new pixel frames [3, F, H, W] in [-1, 1]."""
