@@ -79,10 +79,13 @@ def frame_count(n_frames: int) -> int:
 
 
 def build_poses(action: str, num_frames: int) -> np.ndarray:
-    """float32 [F, 4, 4] camera-to-world poses; F = frame_count(...). Frames past
-    the action string repeat its last key so padding does not freeze the camera."""
+    """float32 [F, 4, 4] camera-to-world poses; F = frame_count(num_frames).
+
+    num_frames is the budget, as in the upstream harness (closed loop passes
+    "w-29" with num_frames=29): deltas past it are dropped. Frames past the
+    action string repeat its last key so padding does not freeze the camera."""
     keys = parse_action(action)
-    total = frame_count(max(num_frames, len(keys) + 1))
+    total = frame_count(num_frames if num_frames > 0 else len(keys) + 1)
     keys += [keys[-1] if keys else "none"] * (total - 1 - len(keys))
     poses = [np.eye(4)]
     for k in keys[: total - 1]:

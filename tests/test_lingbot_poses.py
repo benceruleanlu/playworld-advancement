@@ -29,3 +29,11 @@ def test_padding_repeats_last_key_and_turn_then_walk():
     q = P.build_poses("l-10,w-18", 29)
     assert q[-1, 0, 3] > 0 and q[-1, 2, 3] > 0  # walks along the turned heading
     assert P.intrinsics(29).shape == (29, 4)
+
+
+def test_harness_closed_loop_args_keep_frame_budget():
+    # run_agent passes action=f"{key}-{chunk_frames}" with num_frames=chunk_frames
+    assert len(P.build_poses("w-29", 29)) == 29
+    assert len(P.build_poses("w-33", 33)) == 45
+    # dataset mode passes num_frames = sum(frames) + 1
+    assert len(P.build_poses("w-80,d-100,none-50", 231)) == P.frame_count(231)
