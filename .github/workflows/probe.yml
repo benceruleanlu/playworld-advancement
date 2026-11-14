@@ -1,0 +1,130 @@
+name: probe
+# LingBot memory probe on one Modal GPU (adapters/lingbot_world2/probe.py via probe_lingbot.py).
+# Dispatch from a ref that contains probe_lingbot.py. No scoring, no results row: the output is
+# runs/EXP/probe (clips, per-rollout JSON, summary.tsv), shown in the step summary and uploaded.
+run-name: "probe ${{ inputs.exp }} · ${{ inputs.variant }} · ${{ inputs.tasks }} · ${{ inputs.windows }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      exp:
+        description: Experiment name (new name per run)
+        required: true
+      variant:
+        description: LingBot variant
+        type: choice
+        options: ["1.3b", "14b"]
+        default: "1.3b"
+      tasks:
+        description: Comma-separated task IDs
+        default: "OE034"
+      angles:
+        description: Comma-separated yaw angles in degrees
+        default: "45"
+      holds:
+        description: Comma-separated hold lengths in frames
+        default: "0"
+      windows:
+        description: Comma-separated local_attn:sink windows, e.g. 18:6,36:6,-1:0
+        default: "18:6,-1:0"
+      dino:
+        description: Also compute DINOv2 similarity
+        type: boolean
+        default: false
+      gpu:
+        description: Modal GPU type
+        type: choice
+        options: [H100, A100-80GB, L40S]
+        default: H100
+
+concurrency:
+  group: probe-${{ inputs.exp }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  EXP: ${{ inputs.exp }}
+  VARIANT: ${{ inputs.variant }}
+  TASKS: ${{ inputs.tasks }}
+  ANGLES: ${{ inputs.angles }}
+  HOLDS: ${{ inputs.holds }}
+  WINDOWS: ${{ inputs.windows }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+  MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+  PWA_MODAL_GPU: ${{ inputs.gpu }}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Validate inputs
+        run: |
+          [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+          [[ "$TASKS" =~ ^[A-Za-z0-9_,]+$ ]] || { echo "tasks must be comma-separated task IDs" >&2; exit 2; }
+          [[ "$ANGLES" =~ ^[0-9.,]+$ && "$HOLDS" =~ ^[0-9,]+$ ]] || { echo "angles and holds must be comma-separated numbers" >&2; exit 2; }
+          [[ "$WINDOWS" =~ ^-?[0-9]+:[0-9]+(,-?[0-9]+:[0-9]+)*$ ]] || { echo "windows must look like 18:6,-1:0" >&2; exit 2; }
+          [[ -f probe_lingbot.py ]] || { echo "this ref has no probe_lingbot.py; dispatch from a branch that contains the probe" >&2; exit 2; }
+          echo "::notice title=probe::$EXP variant=$VARIANT tasks=$TASKS angles=$ANGLES holds=$HOLDS windows=$WINDOWS dino=${{ inputs.dino }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dataset client and Modal CLI
+        run: pip install -q huggingface_hub modal
+      - uses: actions/cache@v4
+        with:
+          path: data
+          key: playworld-bench-v1
+      - name: Dataset
+        run: |
+          [[ -d data/gc/images ]] || python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data')"
+
+      - name: Prefetch LingBot weights on CPU
+        run: modal run prefetch_lingbot.py --variant "$VARIANT"
+
+      - name: Probe (Modal)
+        run: |
+          flags=(); [[ "${{ inputs.dino }}" == "true" ]] && flags+=(--dino)
+          modal run probe_lingbot.py --exp "$EXP" --variant "$VARIANT" --tasks "$TASKS" \
+            --angles "$ANGLES" --holds "$HOLDS" --windows="$WINDOWS" "${flags[@]}"
+
+      - name: Fetch probe output from Modal
+        if: always()
+        run: mkdir -p "runs/$EXP" && modal volume get pwa-runs "/$EXP/probe" "runs/$EXP/" --force
+
+      - name: Summary
+        if: always()
+        run: |
+          f="runs/$EXP/probe/summary.tsv"
+          [[ -f "$f" ]] || { echo "no summary.tsv: the probe did not finish" >&2; exit 1; }
+          {
+            echo "### Probe $EXP"
+            echo
+            python - "$f" <<'PY'
+          import csv, sys
+          rows = list(csv.reader(open(sys.argv[1]), delimiter="\t"))
+          keep = [i for i, h in enumerate(rows[0]) if h in ("task", "angle", "hold", "local_attn", "sink", "frames", "secs")
+                  or h.endswith(("_n", "_psnr", "_dino"))]
+          for n, r in enumerate(rows):
+              print("| " + " | ".join(r[i] if i < len(r) and r[i] != "" else "-" for i in keep) + " |")
+              if n == 0:
+                  print("|" + "---|" * len(keep))
+          PY
+            echo
+            echo "cached / evicted: whether the outbound latent a return frame is paired with was still in the KV cache."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ inputs.exp }}
+          path: runs/${{ inputs.exp }}/probe
+          retention-days: 14
+          if-no-files-found: ignore
