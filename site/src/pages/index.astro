@@ -1,0 +1,32 @@
+---
+// Static shell. All numbers are rendered client-side by src/scripts/app.js from the live CSV.
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Hero from "../components/Hero.astro";
+import Ruler from "../components/Ruler.astro";
+import WhereWeWin from "../components/WhereWeWin.astro";
+import Leaderboard from "../components/Leaderboard.astro";
+import Progress from "../components/Progress.astro";
+import Compare from "../components/Compare.astro";
+import Methods from "../components/Methods.astro";
+import Rigor from "../components/Rigor.astro";
+import Team from "../components/Team.astro";
+---
+<Base>
+  <Nav />
+  <div class="wrap" id="top">
+    <Hero />
+    <Ruler />
+    <WhereWeWin />
+    <Leaderboard />
+    <Progress />
+    <Compare />
+    <Methods />
+    <Rigor />
+    <Team />
+    <footer id="foot"></footer>
+  </div>
+  <script>
+    import "../scripts/app.js";
+  </script>
+</Base>

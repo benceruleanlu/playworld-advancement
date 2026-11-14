@@ -1,0 +1,27 @@
+<section id="rigor" aria-labelledby="h-rigor">
+  <h2 id="h-rigor" class="sec">How we measure</h2>
+  <p class="sub">A world-model score is easy to inflate by accident: replay recorded actions instead of letting an agent play, tune on the test set, or call a lucky verifier pass a gain. This is the protocol every reported number goes through, and where each rule lives in the code (or, where it is only a team convention, we say so).</p>
+  <div class="pipe" aria-label="Evaluation pipeline">
+    <div class="card step"><h3>Fixed splits</h3><p>171 tasks. A seeded 24-task dev set (6 per family) for iteration; 147 held out, unscored until code freeze.</p></div>
+    <div class="card step"><h3>Closed-loop play</h3><p>An LLM agent (<code>gpt-4.1-mini</code>) watches each chunk and picks the next action. No replayed dataset actions in final numbers.</p></div>
+    <div class="card step"><h3>Official verifier</h3><p>Upstream Gemini 3.1 Pro rubric judge at upstream FPS, resolution, JPEG and sampling. The judge sees the same neutral model name for every run.</p></div>
+    <div class="card step"><h3>Repeat passes</h3><p>Score every rollout 2+ times. Report mean and pass-to-pass std per family.</p></div>
+    <div class="card step"><h3>Noise rule</h3><p>A delta under 2x the pass std is labelled noise, never a win. With one pass, the paper's variance (std 0.105) is used.</p></div>
+    <div class="card step"><h3>Traceable log</h3><p>Each run appends a row to <code>results/experiments.csv</code> with commit SHA and launch branch. This page reads it live.</p></div>
+  </div>
+  <div class="scroll" style="margin-top:12px">
+    <table class="rules">
+      <thead><tr><th scope="col">Rule</th><th scope="col">Why</th><th scope="col">Where it lives</th></tr></thead>
+      <tbody>
+        <tr><td>Iterate on dev, freeze before heldout</td><td>Tuning on the tasks you report overfits the benchmark.</td><td class="enf"><code>splits/make_splits.py</code> (seed 20261114) fixes the split; scoring heldout only after freeze is a team rule <span class="conv">convention, not code</span></td></tr>
+        <tr><td>Final numbers are closed loop</td><td>Replaying recorded actions removes the agent, the hardest part of interactive play.</td><td class="enf"><code>--action-source agent|refined</code>; dataset rows badged "open loop, A/B only"</td></tr>
+        <tr><td>Silent open-loop fallback is caught</td><td>Upstream falls back to dataset or WAIT actions on agent API errors and still exits 0.</td><td class="enf"><code>pwa gen</code> checks every mp4 and counts <code>[agent] fallback</code> lines</td></tr>
+        <tr><td>Every run gets a new name</td><td>Upstream <code>--skip-done</code> silently reuses old videos.</td><td class="enf"><code>pwa gen</code> refuses an existing run directory unless <code>--resume</code></td></tr>
+        <tr><td>Verifier settings are untouched</td><td>Comparable to the paper's leaderboard only at the same judge settings.</td><td class="enf"><code>pwa score</code> runs the upstream verifier from the pinned submodule; only the IF third-person gate is re-implemented, because upstream crashes on it</td></tr>
+        <tr><td>Missing scores are visible</td><td>Dropping a failed rollout can quietly raise the mean.</td><td class="enf"><code>pwa report</code> logs missing videos (<code>n_missing</code>) and unscored rollouts (<code>n_dropped</code>); <code>--strict</code> scores both as 1.0</td></tr>
+        <tr><td>Gains must clear the noise</td><td>Verifier passes disagree; a single lucky pass is not an improvement.</td><td class="enf"><code>pwa compare</code> and the <a href="#progress">Progress</a> table use 2x pass std</td></tr>
+        <tr><td>Branch code is flagged</td><td>A score should describe code anyone can check out from main.</td><td class="enf">Workflow records <code>branch</code>; non-main rows badged "unmerged code"</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>

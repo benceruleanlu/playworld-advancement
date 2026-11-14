@@ -1,0 +1,13 @@
+<section id="data" aria-labelledby="h-board">
+  <h2 id="h-board" class="sec">Leaderboard</h2>
+  <p class="sub">Every logged experiment next to the paper's published models. Click a column to sort; the filters here also drive the charts below. Empty cells mean the value was not measured, not zero. The best value in each score column is underlined, but only rows passing every protocol check compare fairly with the paper rows. The protocol column (wider screens) shows which final-number checks a row passes.</p>
+  <div class="cklegend" id="cklegend"></div>
+  <div class="filters" id="filters">
+    <label>Runner <select id="f-runner"></select></label>
+    <label>Split <select id="f-split"></select></label>
+    <label>Action source <select id="f-action"></select></label>
+    <label>Branch <select id="f-branch"></select></label>
+    <label class="check"><input type="checkbox" id="f-tests"> Show pipeline tests <span id="hidden-count" class="std"></span></label>
+  </div>
+  <div class="scroll" id="board-scroll"><table id="board"></table></div>
+</section>
