@@ -1,15 +1,15 @@
 <section id="rigor" aria-labelledby="h-rigor">
   <h2 id="h-rigor" class="sec">How we measure</h2>
-  <p class="sub">A world-model score is easy to inflate by accident. Replaying recorded actions instead of letting an agent play, tuning on the test set, or counting one lucky verifier pass as a gain all do it. Every reported number goes through the protocol below. The last column says where each rule is enforced, and marks the one that is only a team convention.</p>
-  <div class="pipe" aria-label="Evaluation pipeline">
-    <div class="card step"><h3>Fixed splits</h3><p>171 tasks. A seeded 24-task dev set (6 per family) for iteration; 147 held out, unscored until code freeze.</p></div>
-    <div class="card step"><h3>Closed-loop play</h3><p>An LLM agent (<code>gpt-4.1-mini</code>) watches each chunk and picks the next action. No replayed dataset actions in final numbers.</p></div>
-    <div class="card step"><h3>Official verifier</h3><p>Upstream Gemini 3.1 Pro rubric judge at upstream FPS, resolution, JPEG and sampling. The judge sees the same neutral model name for every run.</p></div>
-    <div class="card step"><h3>Repeat passes</h3><p>Score every rollout 2+ times. Report mean and pass-to-pass std per family.</p></div>
-    <div class="card step"><h3>Noise rule</h3><p>A delta under 2x the pass std is labelled noise, never a win. With one pass, the paper's variance (std 0.105) is used.</p></div>
-    <div class="card step"><h3>Traceable log</h3><p>Each run appends a row to <code>results/experiments.csv</code> with commit SHA and launch branch. This page reads it live.</p></div>
+  <p class="sub">The protocol behind every number on this page.</p>  <div class="pipe" aria-label="Evaluation pipeline">
+    <div class="card step"><h3>Fixed splits</h3><p>171 tasks: a seeded 24-task dev set for iteration, 147 held out until code freeze.</p></div>
+    <div class="card step"><h3>Closed-loop play</h3><p>An LLM agent (<code>gpt-4.1-mini</code>) picks every action. No replayed dataset actions in final numbers.</p></div>
+    <div class="card step"><h3>Official verifier</h3><p>The upstream Gemini 3.1 Pro judge at upstream settings; it sees the same neutral model name for every run.</p></div>
+    <div class="card step"><h3>Repeat passes</h3><p>A final number needs 2+ verifier passes; we report mean and pass-to-pass std.</p></div>
+    <div class="card step"><h3>Noise rule</h3><p>A delta under 2x the pass std is labelled noise, never a gain.</p></div>
+    <div class="card step"><h3>Traceable log</h3><p>Each run is a CSV row with its commit and branch. This page reads it live.</p></div>
   </div>
-  <div class="scroll" style="margin-top:12px">
+  <details class="rules-wrap"><summary>The 8 rules, and where each is enforced in code</summary>
+  <div class="scroll" style="margin-top:10px">
     <table class="rules">
       <thead><tr><th scope="col">Rule</th><th scope="col">Why</th><th scope="col">Where it lives</th></tr></thead>
       <tbody>
@@ -24,4 +24,5 @@
       </tbody>
     </table>
   </div>
+  </details>
 </section>

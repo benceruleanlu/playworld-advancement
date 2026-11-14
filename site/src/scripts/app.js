@@ -587,30 +587,35 @@
     insight: { name: "Insight evolution", n: 30, q: "Does a process in view (melting, filling, growing) actually progress?" },
     outsight: { name: "Out-of-sight evolution", n: 43, q: "When the camera looks away and back, has the hidden world moved on plausibly?" }
   };
-  var TARGETED = { insight: 1, outsight: 1 };
   // status: shipped | testing | planned. evidence: experiment names in results/experiments.csv.
   var METHODS = [
-    { title: "Base model: LingBot-World v2", status: "shipped", fams: ["gc", "if", "insight", "outsight"],
+    { title: "Base model: LingBot-World v2", status: "shipped",
+      what: "Runs LingBot-World v2 (1.3B and 14B) in the closed-loop harness, with each key mapped to per-frame camera poses.", fams: ["gc", "if", "insight", "outsight"],
       body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples.",
       links: [["#14", PR + "14"]], evidence: ["lb13-stateless-gc005-v1"] },
-    { title: "Persistent session memory", status: "testing", fams: ["gc", "outsight"],
+    { title: "Persistent session memory", status: "testing",
+      what: "Keeps the KV cache, noise, camera track and decoder cache across agent steps instead of restarting every chunk.", fams: ["gc", "outsight"],
       body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, 2.20 on one task) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
       // like-for-like only: same 1.3B runner as the stateless baseline
       match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
-    { title: "A. Insight progress scheduler", status: "planned", fams: ["insight"],
+    { title: "A. Insight progress scheduler", status: "planned",
+      what: "Condition LingBot on the scene caption instead of the agent goal.", fams: ["insight"],
       body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls. In review (#32): condition LingBot on the scene caption instead of the agent goal, which is \"wait and observe\" on 29 of 30 Insight tasks.", links: [["#32", PR + "32"]], evidence: [] },
-    { title: "B. Control and gate fixes", status: "testing", fams: ["gc", "if", "outsight"],
+    { title: "B. Control and gate fixes", status: "testing",
+      what: "Opt-in turn calibration: one dataset token turns 22.5° yaw or 20° pitch, as the prompts assume (default 34° and 11°).", fams: ["gc", "if", "outsight"],
       body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. Built: opt-in LingBot turn calibration, so one dataset token turns 22.5 degrees of yaw or 20 of pitch as the task prompts assume, instead of the default 34 and 11 degrees. Planned: pose-checked correction, and re-injecting the first frame when the pose returns near start.",
       links: [["#23", PR + "23"]], evidence: [],
       match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
-    { title: "C. Out-of-sight state tracker", status: "planned", fams: ["outsight"],
+    { title: "C. Out-of-sight state tracker", status: "planned",
+      what: "A model of what the KV cache still holds, and a turn-away-and-back probe.", fams: ["outsight"],
       body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor. In review (#37): a model of what LingBot's KV cache still holds (a 6-latent sink plus the last 8 latents, about 2 s) and a GPU probe that turns away and back to test whether recall fails exactly when the view is evicted.", links: [["#37", PR + "37"]], evidence: [] },
-    { title: "D. Evaluation harness", status: "shipped", fams: [],
+    { title: "D. Evaluation harness", status: "shipped",
+      what: "pwa CLI, sharded Modal generation, and a workflow that scores every run and logs it to the shared CSV.", fams: [],
       body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
       links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
   ];
-  var STATUS_LABEL = { shipped: "shipped", testing: "built, A/B pending", planned: "planned" };
+  var STATUS_LABEL = { shipped: "in use", testing: "built, not measured", planned: "open PR" };
 
   /* ---------- protocol checks ---------- */
   var CHECKS = [
@@ -710,7 +715,7 @@
       svg.appendChild(sv("line", { x1: x(t), x2: x(t), y1: axisY + 4, y2: axisY + 9, stroke: "var(--axis)" }));
       if (Math.abs(x(t) - oursX) > 16) svg.appendChild(sv("text", { x: x(t), y: axisY + 22, "text-anchor": t === 1 ? "start" : (t >= hi ? "end" : "middle"), text: t.toFixed(1) }));
     }
-    svg.appendChild(sv("text", { x: x(hi), y: axisY - 10, "text-anchor": "end", style: "fill:var(--good)", text: "beats Genie 3 →" }));
+    svg.appendChild(sv("text", { x: x(hi), y: axisY - 10, "text-anchor": "end", style: "fill:var(--good)", text: "above Genie 3" }));
     // reference markers, labels staggered on two rows above the axis
     var refs = REFS.slice().sort(function (a, b) { return a.overall - b.overall; });
     refs.forEach(function (r, i) {
@@ -760,10 +765,11 @@
       if (b) bar(oursName, b[k], "ours" + (isFinal(b) ? "" : " partial"), b.exp + (b[k] === null ? ": no tasks from this family" : ""));
       else bar("Ours", null, "ours", "no closed-loop score yet");
       card.appendChild(bars);
-      var gap = GENIE[k] - 1;
       card.appendChild(el("div", { class: "foot" }, [
-        el("span", { class: "badge " + (TARGETED[k] ? "accent" : ""), text: TARGETED[k] ? "Primary target" : "Don't regress" }),
-        el("span", { class: "note", text: TARGETED[k] ? "Genie 3 is only " + fmt(gap) + " above the 1.0 floor." : "Genie 3 leads at " + fmt(GENIE[k]) + "." })
+        (b && b[k] !== null)
+          ? el("span", { class: "badge " + (isFinal(b) ? (b[k] >= GENIE[k] ? "ok" : "bad") : "partial"), text: "Ours vs Genie 3: " + (b[k] - GENIE[k] >= 0 ? "+" : "-") + Math.abs(b[k] - GENIE[k]).toFixed(2) + (isFinal(b) ? "" : " (partial)") })
+          : el("span", { class: "badge", text: "Ours: not measured yet" }),
+        el("span", { class: "note", text: "Paper: Genie 3 " + (GENIE[k] >= top[k] ? "leads " + top.exp.replace("-World2", " v2") + " by " + fmt(GENIE[k] - top[k]) : "trails " + top.exp.replace("-World2", " v2") + " by " + fmt(top[k] - GENIE[k])) + "." })
       ]));
       box.appendChild(card);
     });
@@ -776,32 +782,37 @@
   }
   function renderMethods() {
     var box = $("methods"); clear(box);
+    var open = [];
     METHODS.forEach(function (mth) {
+      if (mth.status === "planned") { open.push(mth); return; }
       var ev = mth.evidence.map(rowByExp).filter(Boolean);
       if (mth.match) realRows().forEach(function (r) { if (mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
       var stKey = mth.status === "testing" && ev.length ? "shipped" : mth.status;
       var stText = mth.status === "testing" && ev.length ? "A/B runs logged" : STATUS_LABEL[mth.status];
       var card = el("div", { class: "card method" }, [
-        el("div", { class: "top" }, [el("h3", { text: mth.title }), el("span", { class: "badge " + ({ shipped: "ok", testing: "warn", planned: "partial" }[stKey] || ""), text: stText })]),
-        el("p", { text: mth.body })
+        el("div", { class: "top" }, [el("h3", { text: mth.title }), el("span", { class: "badge " + ({ shipped: "ok", testing: "warn" }[stKey] || ""), text: stText })]),
+        el("p", { class: "what", text: mth.what || mth.body })
       ]);
-      if (ev.length || mth.baseline) {
-        var ul = el("ul");
-        ev.forEach(function (r) {
-          ul.appendChild(el("li", { text: r.exp + ": " + (r.overall === null ? "unscored" : fmt(r.overall)) + " overall, " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + ", " + (isClosed(r) ? "closed loop" : "open loop") }));
-        });
-        if (mth.baseline && !ev.length) {
-          var br = rowByExp(mth.baseline);
-          ul.appendChild(el("li", { text: "A/B baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + ". Like-for-like run pending." }));
-        }
-        card.appendChild(el("div", { class: "ev" }, [el("b", { text: "Evidence" }), ul]));
-      }
+      // measured: the logged runs behind the card, or a plain statement that there are none
+      var measured;
+      if (ev.length) measured = ev.map(function (r) { return r.exp + ": " + (r.overall === null ? "unscored" : fmt(r.overall)) + " on " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop"); }).join("; ");
+      else if (mth.baseline) { var br = rowByExp(mth.baseline); measured = "Baseline only: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + ". No like-for-like run yet."; }
+      else measured = mth.fams.length ? "No scored run yet." : "Infrastructure; not scored.";
+      card.appendChild(el("p", { class: "measured" }, [el("b", { text: "Measured: " }), document.createTextNode(measured)]));
+      if (mth.what && mth.body) card.appendChild(el("details", null, [el("summary", { text: "Details" }), el("p", { text: mth.body })]));
       var meta = el("div", { class: "meta" });
-      if (mth.fams.length) meta.appendChild(el("span", { text: "Targets: " + mth.fams.map(function (k) { return FAMINFO[k].name.split(" ")[0]; }).join(", ") }));
+      if (mth.fams.length) meta.appendChild(el("span", { text: "Families: " + mth.fams.map(function (k) { return FAMINFO[k].name.split(" ")[0]; }).join(", ") }));
       mth.links.forEach(function (l) { meta.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
       if (meta.childNodes.length) card.appendChild(meta);
       box.appendChild(card);
     });
+    var list = $("methods-open"); clear(list);
+    open.forEach(function (mth) {
+      var li = el("li", null, [el("b", { text: mth.title + ": " }), document.createTextNode((mth.what || mth.body) + " ")]);
+      mth.links.forEach(function (l) { li.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+      list.appendChild(li);
+    });
+    $("methods-open-wrap").hidden = !open.length;
   }
 
   /* ---------- record progression ---------- */
