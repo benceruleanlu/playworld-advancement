@@ -615,7 +615,7 @@
       body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
       links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
   ];
-  var STATUS_LABEL = { shipped: "in use", testing: "built, not measured", planned: "open PR" };
+  var STATUS_LABEL = { shipped: "in use", testing: "built", planned: "open PR" };
 
   /* ---------- protocol checks ---------- */
   var CHECKS = [
@@ -780,39 +780,34 @@
     var hit = null; ALL.forEach(function (r) { if (r.exp === name && (!hit || (r.t || 0) > (hit.t || 0))) hit = r; });
     return hit;
   }
+  // one row per change: name, status, measured result; description and PR links open on click
   function renderMethods() {
     var box = $("methods"); clear(box);
-    var open = [];
-    METHODS.forEach(function (mth) {
-      if (mth.status === "planned") { open.push(mth); return; }
+    var order = { shipped: 0, testing: 1, planned: 2 };
+    METHODS.slice().sort(function (a, b) { return order[a.status] - order[b.status]; }).forEach(function (mth) {
       var ev = mth.evidence.map(rowByExp).filter(Boolean);
       if (mth.match) realRows().forEach(function (r) { if (mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
-      var stKey = mth.status === "testing" && ev.length ? "shipped" : mth.status;
-      var stText = mth.status === "testing" && ev.length ? "A/B runs logged" : STATUS_LABEL[mth.status];
-      var card = el("div", { class: "card method" }, [
-        el("div", { class: "top" }, [el("h3", { text: mth.title }), el("span", { class: "badge " + ({ shipped: "ok", testing: "warn" }[stKey] || ""), text: stText })]),
-        el("p", { class: "what", text: mth.what || mth.body })
+      var st = mth.status === "testing" && ev.length ? "shipped" : mth.status;
+      var stText = mth.status === "testing" && ev.length ? "measured" : STATUS_LABEL[mth.status];
+      var result;
+      if (ev.length) result = el("span", { class: "res" }, [el("b", { text: fmt(ev[0].overall) }), document.createTextNode(" on " + ev[0].n_tasks + " task" + (ev[0].n_tasks === 1 ? "" : "s"))]);
+      else if (mth.status === "planned") result = el("span", { class: "res none", text: "not merged" });
+      else if (!mth.fams.length) result = el("span", { class: "res none", text: "infrastructure" });
+      else result = el("span", { class: "res none", text: mth.baseline ? "no like-for-like run" : "not measured" });
+      var summary = el("summary", null, [
+        el("span", { class: "nm", text: mth.title.replace(/^[A-D]\. /, "") }),
+        el("span", { class: "badge " + ({ shipped: "ok", testing: "warn", planned: "partial" }[st] || ""), text: stText }),
+        result
       ]);
-      // measured: the logged runs behind the card, or a plain statement that there are none
-      var measured;
-      if (ev.length) measured = ev.map(function (r) { return r.exp + ": " + (r.overall === null ? "unscored" : fmt(r.overall)) + " on " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop"); }).join("; ");
-      else if (mth.baseline) { var br = rowByExp(mth.baseline); measured = "Baseline only: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + ". No like-for-like run yet."; }
-      else measured = mth.fams.length ? "No scored run yet." : "Infrastructure; not scored.";
-      card.appendChild(el("p", { class: "measured" }, [el("b", { text: "Measured: " }), document.createTextNode(measured)]));
-      if (mth.what && mth.body) card.appendChild(el("details", null, [el("summary", { text: "Details" }), el("p", { text: mth.body })]));
-      var meta = el("div", { class: "meta" });
-      if (mth.fams.length) meta.appendChild(el("span", { text: "Families: " + mth.fams.map(function (k) { return FAMINFO[k].name.split(" ")[0]; }).join(", ") }));
-      mth.links.forEach(function (l) { meta.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
-      if (meta.childNodes.length) card.appendChild(meta);
-      box.appendChild(card);
+      var body = el("div", { class: "more" }, [el("p", { text: mth.what || mth.body })]);
+      if (mth.what && mth.body) body.appendChild(el("p", { class: "std", text: mth.body }));
+      if (ev.length) body.appendChild(el("p", { class: "std", text: "Runs: " + ev.map(function (r) { return r.exp + " (" + fmt(r.overall) + ", " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop") + ")"; }).join("; ") }));
+      else if (mth.baseline) { var br = rowByExp(mth.baseline); body.appendChild(el("p", { class: "std", text: "Baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + "." })); }
+      var links = el("p", { class: "links" });
+      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+      if (links.childNodes.length) body.appendChild(links);
+      box.appendChild(el("li", null, [el("details", null, [summary, body])]));
     });
-    var list = $("methods-open"); clear(list);
-    open.forEach(function (mth) {
-      var li = el("li", null, [el("b", { text: mth.title + ": " }), document.createTextNode((mth.what || mth.body) + " ")]);
-      mth.links.forEach(function (l) { li.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
-      list.appendChild(li);
-    });
-    $("methods-open-wrap").hidden = !open.length;
   }
 
   /* ---------- record progression ---------- */
