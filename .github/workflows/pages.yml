@@ -38,6 +38,7 @@ jobs:
         working-directory: site
         run: |
           npm ci --no-audit --no-fund
+          mkdir -p public
           cp ../results/experiments.csv public/experiments.csv
           npm run build
       - uses: actions/configure-pages@v5
