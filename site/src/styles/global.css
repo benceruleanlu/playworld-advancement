@@ -2,7 +2,7 @@
   color-scheme: light;
   --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #6f6d68;
   --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.05);
-  --good: #006300; --bad: #b02a2a; --warn: #9a6400; --link: #1c5cab; --accent: #1c5cab;
+  --good: #006300; --bad: #b02a2a; --warn: #8a5900; --link: #1c5cab; --accent: #1c5cab;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --other: #898781; --ref: #898781;
 }
 @media (prefers-color-scheme: dark) {
@@ -103,9 +103,9 @@ section.tight { margin-top: 28px; }
 .cklegend span { display: inline-flex; gap: 6px; align-items: center; }
 /* dashboard (kept) */
 .filters { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; margin-bottom: 12px; }
-.filters label, .field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink2); }
+.filters label, .field { display: flex; flex-direction: column; min-width: 0; max-width: 100%; gap: 2px; font-size: 12px; color: var(--ink2); }
 .filters .check { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); padding-bottom: 6px; }
-select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+select { min-width: 0; text-overflow: ellipsis; font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
 select:focus-visible, input:focus-visible, button:focus-visible, summary:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -121,7 +121,7 @@ td .nm { font-weight: 600; }
 .meta-line { font-size: 12px; color: var(--ink2); margin-top: 1px; white-space: normal; }
 .meta-line.notes { font-style: italic; }
 th .short { display: none; }
-.chart th .long { display: none; } .chart th .short { display: inline; }
+.chart th .long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .chart th .short { display: inline; }
 .chart td.exp, .chart th.exp { min-width: 0; }
 .chart th, .chart td { padding: 6px 6px; }
 td.notes { white-space: normal; min-width: 160px; max-width: 280px; color: var(--ink2); overflow-wrap: anywhere; }
@@ -178,15 +178,18 @@ details table { margin-top: 6px; }
 .callout { font-size: 13px; color: var(--ink2); margin: 8px 0 0; }
 .team { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 14px; }
 .team a { margin-left: 4px; font-size: 13px; }
-footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--ink2); }
+footer { margin-top: 0; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--ink2); }
 footer p { margin: 4px 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 8px; top: -48px; z-index: 20; padding: 8px 12px; border-radius: 8px; background: var(--ink); color: var(--page); font-weight: 600; text-decoration: none; }
+.skip:focus { top: 8px; }
+main:focus { outline: none; } /* focused only as the skip-link target */
 @media (max-width: 900px) {
   .hide-sm { display: none; }
   .delta .badge { display: flex; width: fit-content; margin: 3px 0 0 auto; }
 }
 @media (max-width: 720px) {
-  th .long { display: none; } th .short { display: inline; }
+  th .long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } th .short { display: inline; }
   td.exp, th.exp { min-width: 0; max-width: none; }
   th, td { padding: 6px 5px; font-size: 12px; }
   th:first-child, td:first-child { padding-left: 9px; }
