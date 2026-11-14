@@ -6,7 +6,7 @@
 GPU type: PWA_MODAL_GPU (default H100). Secrets: Modal secret `pwa` holding the
 config/env.sh keys (PLAYER_API_*, HF_TOKEN). Weights cache in the `pwa-weights` Volume.
 
-The SANA install below is a first guess at upstream's setup; verify on the first run.
+SANA install mirrors upstream environment_setup.sh at the pinned commit.
 """
 from __future__ import annotations
 
@@ -18,20 +18,30 @@ import modal
 
 ROOT = Path(__file__).resolve().parent
 GPU = os.environ.get("PWA_MODAL_GPU", "H100")
-SANA_REF = os.environ.get("PWA_SANA_REF", "main")
+SANA_REF = os.environ.get("PWA_SANA_REF", "27303b8de8e3f02f5dc96acf14705a0e04fca355")  # pinned 2026-11-14
 
 app = modal.App("playworld-advancement")
 runs_vol = modal.Volume.from_name("pwa-runs", create_if_missing=True)
 weights_vol = modal.Volume.from_name("pwa-weights", create_if_missing=True)
 
+# Mirrors NVlabs/Sana environment_setup.sh (cu128 torch stack, mmcv without build
+# isolation, Pi3 --no-deps). SANA uses its xFormers/SDPA fallback for video
+# attention, avoiding a source build of flash-attn for the pinned Torch stack.
 image = (
-    modal.Image.from_registry("nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04", add_python="3.11")
-    .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0")
-    .pip_install("torch", "torchvision", "httpx", "imageio", "imageio-ffmpeg",
-                 "opencv-python-headless", "Pillow", "numpy", "pyrallis")
-    .run_commands(f"git clone --depth 1 --branch {SANA_REF} https://github.com/NVlabs/Sana /opt/Sana",
-                  "cd /opt/Sana && pip install -e .")
+    modal.Image.from_registry("nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04", add_python="3.11")
+    .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0", "build-essential", "ninja-build")
+    .pip_install("pip", "wheel", "setuptools<80", "packaging", "ninja")
+    .run_commands(
+        "pip install --index-url https://download.pytorch.org/whl/cu128 "
+        "torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 xformers==0.0.33.post2",
+        "pip install --no-build-isolation mmcv==1.7.2",
+        f"git clone https://github.com/NVlabs/Sana /opt/Sana && cd /opt/Sana && git checkout {SANA_REF}",
+        "cd /opt/Sana && pip install -e .",
+        "pip install --no-deps git+https://github.com/yyfz/Pi3.git",
+    )
+    .pip_install("httpx", "imageio", "imageio-ffmpeg", "opencv-python-headless", "Pillow", "pyrallis")
     .env({
+        "DISABLE_FLASH_ATTN": "1",
         "SANA_ROOT": "/opt/Sana",
         "HF_HOME": "/weights/hf",
         "PWA_ROOT": "/repo",
@@ -41,6 +51,15 @@ image = (
     })
     .add_local_dir(ROOT, "/repo", ignore=[".git", ".venv", "runs", "results", "**/__pycache__", "*.egg-info"])
 )
+
+# Runner-specific image. PWA_RUNNER must be set when launching a lingbot runner
+# (the workflow sets it); the image bakes it in so containers pick the same branch.
+RUNNER_ENV = os.environ.get("PWA_RUNNER", "")
+if RUNNER_ENV.startswith("lingbot"):
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from adapters.lingbot_world2.modal_image import build as _lingbot_image
+    image = _lingbot_image(ROOT, RUNNER_ENV)
 
 
 @app.function(image=image, gpu=GPU, timeout=6 * 3600,
@@ -69,6 +88,8 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
     import re
     if not re.fullmatch(r"[A-Za-z0-9._-]+", exp):
         raise SystemExit(f"bad experiment name {exp!r}")
+    if runner.startswith("lingbot") != RUNNER_ENV.startswith("lingbot"):
+        raise SystemExit(f"runner {runner!r} needs a matching image: rerun with PWA_RUNNER={runner} in the environment")
     existing = {e.path.strip("/") for e in runs_vol.listdir("/")}
     if exp in existing and not resume:
         # Shards always pass --resume to pwa, so this is the overwrite guard.
