@@ -130,26 +130,21 @@
     });
   }
 
-  /* ---------- tiles ---------- */
-  function tile(label, big, note, cls, small) {
-    return el("div", { class: "card tile" }, [
-      el("div", { class: "label", text: label }),
-      el("div", { class: "big" + (small ? " small" : "") + (cls ? " " + cls : ""), text: big }),
-      el("div", { class: "note", text: note })
-    ]);
-  }
+  /* ---------- stat strip ---------- */
   function renderTiles() {
     var box = $("tiles"); clear(box);
     var real = realRows(), hiddenTests = ALL.length - real.length;
     var closed = real.filter(isClosed).length, open = real.filter(isOpen).length;
     var finals = real.filter(isFinal).length;
-    box.appendChild(tile("Runs logged", String(real.length), closed + " closed loop, " + open + " open-loop A/B" + (hiddenTests ? "; " + hiddenTests + " pipeline test" + (hiddenTests > 1 ? "s" : "") + " hidden" : "")));
-    box.appendChild(tile("Pass every protocol check", finals + " / " + real.length, finals ? "eligible as a final number" : "none yet: final run comes after code freeze", finals ? "good" : ""));
     var held = real.filter(function (r) { return r.split === "heldout" || r.split === "all"; }).length;
-    box.appendChild(tile("Held-out split", held ? held + " run" + (held > 1 ? "s" : "") : "unused", held ? "logged on split heldout or all" : "no logged run uses split heldout or all (147 tasks)", "", true));
     var last = null;
     ALL.forEach(function (r) { if (r.t !== null && (last === null || r.t > last)) last = r.t; });
-    box.appendChild(tile("Last updated", last === null ? "-" : fmtTime(last), last === null ? "no timestamps" : ago(last) + " (UTC)", "", true));
+    function stat(strong, rest, title) { return el("span", { class: "stat", title: title }, [el("b", { text: strong }), document.createTextNode(" " + rest)]); }
+    [stat(String(real.length), "runs logged", closed + " closed loop, " + open + " open-loop A/B" + (hiddenTests ? "; " + hiddenTests + " pipeline test" + (hiddenTests > 1 ? "s" : "") + " hidden" : "")),
+     stat(finals + " of " + real.length, "pass every protocol check", finals ? "eligible as a final number" : "none yet: the final run comes after code freeze"),
+     stat(held ? held + " run" + (held > 1 ? "s" : "") : "Held-out split", held ? "on the held-out split" : "unused", "147 held-out tasks; " + (held ? held + " logged run(s) use split heldout or all" : "no logged run uses split heldout or all")),
+     stat("Updated", last === null ? "-" : ago(last), last === null ? "no timestamps" : fmtTime(last) + " UTC")
+    ].forEach(function (n) { box.appendChild(n); });
   }
 
   /* ---------- filters ---------- */
@@ -677,9 +672,24 @@
       head = "In progress: no closed-loop score logged yet.";
       why = "Rows appear here as soon as the experiment workflow finishes a run.";
     }
-    box.className = "status " + cls; clear(box);
-    box.appendChild(el("span", { class: "dot", "aria-hidden": "true" }));
-    box.appendChild(el("div", null, [el("p", null, [el("b", { text: head })]), el("p", { class: "why", text: why })]));
+    // headline card: one number, one status chip, one comparison line; the protocol detail sits behind a disclosure
+    var shown = fin || bc;
+    box.className = "scorecard card " + cls; clear(box);
+    box.appendChild(el("div", { class: "label", text: fin ? "Final score" : "Best closed-loop score" }));
+    var big = el("div", { class: "big" }, [document.createTextNode(shown ? fmt(shown.overall) : "-")]);
+    if (fin && fin.overall_std !== null) big.appendChild(el("span", { class: "pm", text: " ± " + fmt(fin.overall_std) }));
+    box.appendChild(big);
+    box.appendChild(el("div", { class: "badges" }, [fin
+      ? el("span", { class: "badge " + (cls === "ok" ? "ok" : "warn"), text: "All 171 tasks" })
+      : bc ? el("span", { class: "badge warn", text: "Partial: " + bc.n_tasks + " of " + FULL_TASKS + " tasks" })
+           : el("span", { class: "badge", text: "No closed-loop run yet" })]));
+    var vs = "Genie 3: " + TARGET.toFixed(2) + " (paper)";
+    if (fin) vs = (fin.overall - TARGET >= 0 ? "+" : "-") + Math.abs(fin.overall - TARGET).toFixed(2) + " vs Genie 3 " + TARGET.toFixed(2) + (Math.abs(fin.overall - TARGET) >= 2 * (fin.overall_std || FALLBACK_STD) ? "" : ", within noise");
+    box.appendChild(el("p", { class: "vs", text: vs }));
+    var det = el("details", { class: "why" }, [el("summary", { text: fin ? "How this was measured" : "Why isn't this final yet?" }),
+      el("p", null, [document.createTextNode(head + " " + why + " "), el("a", { href: "#rigor", text: "How we measure" })])]);
+    box.appendChild(det);
+    box.appendChild(el("p", { class: "scale", text: "Scores run 1 to 5; higher is better." }));
   }
   function renderRuler() {
     var host = $("ruler"); clear(host);
@@ -721,9 +731,8 @@
         text: "Ours " + fmt(ours.overall) + (partial ? " (" + ours.n_tasks + " task" + (ours.n_tasks === 1 ? "" : "s") + ", partial)" : "") }));
     }
     host.appendChild(svg);
-    $("ruler-cap").textContent = "Reference scores are the PlayWorld paper's full-benchmark numbers. " +
-      (ours ? (isFinal(ours) ? "Ours is the best run passing every protocol check." : "Ours is the best closed-loop run so far; the hollow marker means it is not yet a full-benchmark result.")
-            : "Our marker appears after the first closed-loop run.") + " Axis is zoomed to 1-" + hi + " of the 1-5 scale.";
+    $("ruler-cap").textContent = "Paper scores on all 171 tasks; axis shows 1 to " + hi + " of 5. " +
+      (ours ? (isFinal(ours) ? "Ours passes every protocol check." : "Hollow marker: ours is not a full-benchmark result yet.") : "Our marker appears after the first closed-loop run.");
   }
 
   /* ---------- families ---------- */
