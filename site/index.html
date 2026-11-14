@@ -52,6 +52,14 @@ nav.top a.nl:hover { color: var(--ink); text-decoration: underline; }
 .status .why { color: var(--ink2); font-size: 13px; margin-top: 2px; }
 h2 { font-size: 16px; margin: 0 0 4px; font-weight: 650; }
 h2.sec { font-size: 22px; letter-spacing: -.005em; margin-bottom: 6px; }
+.sechead { display: flex; align-items: baseline; gap: 8px; }
+.sechead h2 { margin-bottom: 6px; }
+.sechead a.anchor { color: var(--ink2); text-decoration: none; font-size: 16px; opacity: 0; padding: 2px 6px; border-radius: 6px; transition: opacity .15s; }
+.sechead:hover a.anchor, .sechead a.anchor:focus-visible { opacity: 1; }
+.sechead a.anchor:hover { color: var(--link); }
+.sechead .copied { color: var(--ink2); font-size: 13px; }
+@media (hover: none) { .sechead a.anchor { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sechead a.anchor { transition: none; } }
 h3 { font-size: 15px; margin: 0 0 4px; font-weight: 650; }
 .sub { color: var(--ink2); font-size: 14px; margin: 0 0 14px; max-width: 75ch; }
 section { margin-top: 44px; }
@@ -225,7 +233,7 @@ footer p { margin: 4px 0; }
     <a class="nl" href="#progress">Progress</a>
     <a class="nl" href="#method">What we changed</a>
     <a class="nl" href="#rigor">How we measure</a>
-    <a class="nl" href="#h-team">Team</a>
+    <a class="nl" href="#team">Team</a>
   </div>
 </nav>
 <div class="wrap" id="top">
@@ -332,7 +340,7 @@ footer p { margin: 4px 0; }
   </div>
 </section>
 
-<section aria-labelledby="h-team">
+<section id="team" aria-labelledby="h-team">
   <h2 id="h-team" class="sec">Team</h2>
   <p class="sub">Built at the <a href="https://iterate.inc/ai-research">Iterate AI Research Hackathon</a>, San Francisco, November 2026.</p>
   <ul class="team">
@@ -464,8 +472,8 @@ footer p { margin: 4px 0; }
   var sel = []; // chosen experiment keys for the bar chart, in slot order
   var slotOf = {}; // exp key -> slot 1..4, stable while selected
   var touched = false;
-  var cmpBase = "";
-  function key(r) { return r.exp + "\u0000" + r.split; }
+  var cmpBase = "", cmpAuto = "";
+  function key(r) { return r.exp + "@" + r.split; } // exp names are [A-Za-z0-9._-], so "@" is unambiguous and URL-friendly
 
   function visible() {
     return ALL.filter(function (r) {
@@ -608,7 +616,7 @@ footer p { margin: 4px 0; }
       var b = el("button", { type: "button", title: "Sort by " + c[1] }, headLabel(c).concat([el("span", { class: "arrow", "aria-hidden": "true", text: sort.key === c[0] ? (sort.dir > 0 ? "▲" : "▼") : "" })]));
       b.addEventListener("click", function () {
         if (sort.key === c[0]) sort.dir = -sort.dir; else { sort.key = c[0]; sort.dir = c[3] || c[0] === "t" ? -1 : 1; }
-        renderBoard();
+        renderBoard(); syncUrl();
       });
       th.appendChild(b); hr.appendChild(th);
     });
@@ -879,10 +887,9 @@ footer p { margin: 4px 0; }
     var s = $("cmp-base"); clear(s);
     opts.forEach(function (o) { s.appendChild(el("option", { value: o[0], text: o[1] })); });
     var valid = opts.some(function (o) { return o[0] === cmpBase; });
-    if (!valid) {
-      var firstClosed = scored.filter(isClosed).sort(function (a, b) { return (a.t || 0) - (b.t || 0); })[0];
-      cmpBase = firstClosed ? key(firstClosed) : (scored[0] ? key(scored[0]) : "ref:" + GENIE.exp);
-    }
+    var firstClosed = scored.filter(isClosed).sort(function (a, b) { return (a.t || 0) - (b.t || 0); })[0];
+    cmpAuto = firstClosed ? key(firstClosed) : (scored[0] ? key(scored[0]) : "ref:" + GENIE.exp);
+    if (!valid) cmpBase = cmpAuto;
     s.value = cmpBase;
     var base = null; opts.forEach(function (o) { if (o[0] === cmpBase) base = o[2]; });
     var t = $("cmp"); clear(t);
@@ -1186,6 +1193,49 @@ footer p { margin: 4px 0; }
     pruneSel(vis);
     renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords();
     renderTiles(); renderBoard(); renderBarChips(vis); renderBars(vis); renderLine(vis); renderCompare(vis);
+    syncUrl();
+  }
+  /* ---------- shareable URL state ---------- */
+  var URLKEYS = [["runner", "runner"], ["split", "split"], ["action", "action"], ["branch", "branch"]];
+  function readUrl() {
+    var q = new URLSearchParams(location.search);
+    URLKEYS.forEach(function (k) { filt[k[1]] = q.get(k[0]) || ""; }); // unknown values are dropped by renderFilters
+    filt.tests = q.get("tests") === "1";
+    var sv = q.get("sort") || "", d = sv.charAt(0) === "-" ? -1 : 1, sk = sv.replace(/^-/, "");
+    if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
+    cmpBase = q.get("base") || ""; // unknown values fall back to the default in renderCompare
+  }
+  function syncUrl() {
+    try {
+      var q = new URLSearchParams(location.search);
+      URLKEYS.forEach(function (k) { if (filt[k[1]]) q.set(k[0], filt[k[1]]); else q.delete(k[0]); });
+      if (filt.tests) q.set("tests", "1"); else q.delete("tests");
+      if (sort.key === "overall" && sort.dir < 0) q.delete("sort"); else q.set("sort", (sort.dir < 0 ? "-" : "") + sort.key);
+      if (cmpBase && cmpBase !== cmpAuto) q.set("base", cmpBase); else q.delete("base");
+      var qs = q.toString();
+      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+    } catch (e) { /* sandboxed or file: origins may refuse */ }
+  }
+  /* ---------- copy-link anchors on section headings ---------- */
+  function addAnchors() {
+    Array.prototype.forEach.call(document.querySelectorAll("section[id] > h2.sec"), function (h) {
+      var id = h.parentNode.id, text = h.textContent;
+      var wrap = el("div", { class: "sechead" });
+      var a = el("a", { class: "anchor", href: "#" + id, "aria-label": "Link to " + text, text: "#" });
+      var note = el("span", { class: "copied", role: "status", "aria-live": "polite" });
+      var timer = null;
+      h.parentNode.insertBefore(wrap, h); wrap.appendChild(h); wrap.appendChild(a); wrap.appendChild(note);
+      a.addEventListener("click", function (e) {
+        if (!(navigator.clipboard && navigator.clipboard.writeText)) return; // plain navigation
+        e.preventDefault();
+        var url = location.origin + location.pathname + location.search + "#" + id;
+        navigator.clipboard.writeText(url).then(function () {
+          history.replaceState(null, "", location.pathname + location.search + "#" + id);
+          note.textContent = "Copied"; clearTimeout(timer);
+          timer = setTimeout(function () { note.textContent = ""; }, 1800);
+        }, function () { location.hash = id; });
+      });
+    });
   }
   function wire() {
     $("f-runner").addEventListener("change", function (e) { filt.runner = e.target.value; renderAll(); });
@@ -1193,7 +1243,7 @@ footer p { margin: 4px 0; }
     $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
     $("f-branch").addEventListener("change", function (e) { filt.branch = e.target.value; renderAll(); });
     $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderAll(); });
-    $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); });
+    $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); syncUrl(); });
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {
       if (window.innerWidth === lastW) return; lastW = window.innerWidth;
@@ -1224,10 +1274,10 @@ footer p { margin: 4px 0; }
       return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
     });
   }
-  wire();
+  wire(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { renderFilters(); renderFoot(); renderCkLegend(); renderAll(); });
+    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); });
 })();
 </script>
 </body>
