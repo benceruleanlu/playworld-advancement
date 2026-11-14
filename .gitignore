@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# secrets
+config/env.sh
+
+# dataset is downloaded by setup.sh (not redistributed here)
+data/
+
+# rollouts, verifier outputs, previews (large)
+runs/
+outputs/
+evaluation/
+
+# results/experiments.csv IS committed: it is the shared experiment log
