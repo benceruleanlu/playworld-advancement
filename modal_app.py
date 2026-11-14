@@ -25,7 +25,8 @@ runs_vol = modal.Volume.from_name("pwa-runs", create_if_missing=True)
 weights_vol = modal.Volume.from_name("pwa-weights", create_if_missing=True)
 
 # Mirrors NVlabs/Sana environment_setup.sh (cu128 torch stack, mmcv without build
-# isolation, Pi3 --no-deps, flash-attn). Transformer Engine is skipped (bf16 only).
+# isolation, Pi3 --no-deps). SANA uses its xFormers/SDPA fallback for video
+# attention, avoiding a source build of flash-attn for the pinned Torch stack.
 image = (
     modal.Image.from_registry("nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04", add_python="3.11")
     .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0", "build-essential", "ninja-build")
@@ -37,10 +38,10 @@ image = (
         f"git clone https://github.com/NVlabs/Sana /opt/Sana && cd /opt/Sana && git checkout {SANA_REF}",
         "cd /opt/Sana && pip install -e .",
         "pip install --no-deps git+https://github.com/yyfz/Pi3.git",
-        "MAX_JOBS=16 pip install --no-build-isolation 'flash-attn>=2.7.0'",
     )
     .pip_install("httpx", "imageio", "imageio-ffmpeg", "opencv-python-headless", "Pillow", "pyrallis")
     .env({
+        "DISABLE_FLASH_ATTN": "1",
         "SANA_ROOT": "/opt/Sana",
         "HF_HOME": "/weights/hf",
         "PWA_ROOT": "/repo",
