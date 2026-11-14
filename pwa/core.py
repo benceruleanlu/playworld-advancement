@@ -204,13 +204,20 @@ def git(*args, cwd: Path = ROOT) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def current_branch() -> str:
+    """Ref name the run was launched from: Actions' GITHUB_REF_NAME, else the checked-out branch, else ''."""
+    b = os.environ.get("GITHUB_REF_NAME") or git("rev-parse", "--abbrev-ref", "HEAD") or os.environ.get("PWA_GIT_BRANCH") or ""
+    return "" if b == "HEAD" else b
+
+
 def provenance() -> dict:
     status = git("status", "--porcelain", "--", ".", ":!runs", ":!results")
     # Remote containers (Modal) get code without .git; the launcher passes these through.
     dirty = bool(status) if status is not None else None
     if dirty is None and os.environ.get("PWA_GIT_DIRTY") in ("0", "1"):
         dirty = os.environ["PWA_GIT_DIRTY"] == "1"
-    return {"git_sha": git("rev-parse", "HEAD") or os.environ.get("PWA_GIT_SHA"), "git_dirty": dirty,
+    return {"git_sha": git("rev-parse", "HEAD") or os.environ.get("PWA_GIT_SHA"), "branch": current_branch(),
+            "git_dirty": dirty,
             "submodule_sha": git("rev-parse", "HEAD", cwd=PLAYWORLD) or os.environ.get("PWA_SUBMODULE_SHA"),
             "hostname": socket.gethostname()}
 

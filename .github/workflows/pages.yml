@@ -1,0 +1,38 @@
+name: pages
+
+# Deploys site/ (plus a bundled copy of results/experiments.csv as the fallback) to GitHub Pages.
+# The page fetches the live CSV from main at view time; the bundled copy is only a fallback.
+# One-time admin setting: Settings -> Pages -> Source: "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "results/experiments.csv"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bundle fallback CSV
+        run: cp results/experiments.csv site/experiments.csv
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

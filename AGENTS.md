@@ -28,9 +28,10 @@ Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doc
 - `pwa tasks [--split dev|heldout|all|PATH] [--family ..] [--json]` list tasks.
 - `pwa gen EXP --split dev --runner sana|NAME|PATH --action-source dataset|agent|refined [--shard i --num-shards n] [--resume] [--notes ..] [-- runner args]` rollouts to `runs/EXP/videos/`, plus `meta.json`, `gen.log`.
 - `pwa score EXP [--passes 2] [--workers 4] [--dry-run] [--force]` verifier into `runs/EXP/eval/pass<k>/`; idempotent.
-- `pwa report EXP [--split ..] [--strict] [--json]` per-family means, std, gate passes, missing; upserts `results/experiments.csv`.
+- `pwa report EXP [--split ..] [--strict] [--json] [--md [--site-url U]]` per-family means, std, gate passes, missing; upserts `results/experiments.csv`.
 - `pwa compare A B [--json]` deltas B minus A, flags noise (< 2x pass std).
-- `pwa failures EXP [--json]` missing, gate-failed, or 1.0 tasks with the verifier's reason.
+- `pwa failures EXP [--json] [--md]` missing, gate-failed, or 1.0 tasks with the verifier's reason.
+- `pwa upsert-row EXP --into PATH` copy EXP's row from this checkout's `results/experiments.csv` into another CSV by column name (adds missing columns, fails on malformed files); used by the workflow.
 - `pwa ls [--json]` experiments and status.
 - `pwa preview EXP TASK` export the contact sheets the judge sees.
 - `pwa run EXP ...` gen + score + report.
@@ -44,8 +45,9 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 `lingbot_world2` (14B) and `lingbot_world2_1p3b` (1.3B) run LingBot-World v2 causal-fast (PlayWorld paper: 1.82 overall via its web demo). Notes:
 
 - The released code is conditioned on camera poses only; its WASD/IJKL files are never read. `adapters/lingbot_world2/poses.py` turns each key into per-frame camera deltas (signs checked against upstream examples; rotation rates via `LINGBOT_YAW_RAD` / `LINGBOT_PITCH_RAD`).
-- v0 is stateless per `generate()` call: in closed loop the KV cache (LingBot's only memory) resets every chunk. `--action-source dataset` is one call, so the cache spans the rollout. A persistent `reset/step` session is the next step.
-- Clips are 4n+1 frames with latent length a multiple of 4, so a 33-frame chunk comes back as 45 frames. Pass `-- --chunk-frames 29` for exact chunks.
+- Default is a persistent session (`adapters/lingbot_world2/session.py`, `reset/step`): the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache survive across agent steps. `<task>_chunk_<NN>` following chunk NN-1 of the same task continues; chunk 01, another task or `<task>_full` (dataset mode: reset plus one long step) resets. A/B baseline: `-- --lingbot-stateless` (Actions input `extra`) or `LINGBOT_SESSION=0`, a fresh upstream rollout per call. `LINGBOT_STREAM_DECODE=0` re-decodes all latents per step instead of streaming.
+- Session frame accounting: a request of F frames runs n = round((F-1)/16) latent chunks; the first step returns 16n-3 frames (input frame first), later steps the previous last frame plus 16n new ones, so the harness stitch is seamless (default 33 -> 29, then 33). The stateless path rounds up to 4n+1 frames with latent length a multiple of 4 (33 -> 45; `-- --chunk-frames 29` for exact chunks).
+- Translation normalisation: upstream divides by the max per-latent translation of the whole sequence, unknown in closed loop. The session divides by a fixed 4 (one latent of straight single-key motion) and clips norms above 1, which equals upstream whenever the fastest latent is straight single-key motion.
 - Weights live in the `pwa-weights` Volume under `/weights/lingbot` (`modal run prefetch_lingbot.py --variant 14b|1.3b`; the workflow does this). Outside the workflow set `PWA_RUNNER=<runner>` when calling `modal run modal_app.py` so the LingBot image is selected.
 - License: CC BY-NC-SA 4.0 (non-commercial, share-alike). Code is cloned into the image at a pinned commit, not vendored.
 
@@ -58,14 +60,18 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 
 ### Remote runs (GitHub Actions + Modal)
 
-Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes.
+Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes, extra (runner args, e.g. `--lingbot-stateless`).
 
-- `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, commits the `results/experiments.csv` row to main, and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
+- `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, records the `results/experiments.csv` row on main (from any branch; see below), and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
 - `backend=local` with `runner=tests/fake_runner.py`: full pipeline test with no GPU.
 - Full 171-task runs: `stage=gen-only` first, then `stage=score-only` (jobs cap at ~6 h).
 - Repo secrets: `GEMINI_API_KEY`, `PLAYER_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, optional `HF_TOKEN`. Optional repo variables: `PLAYER_API_PROVIDER`, `PLAYER_API_URL`, `PLAYER_MODEL`.
 - From a laptop: `modal run modal_app.py --exp NAME --split dev --num-shards 4`, then `modal volume get pwa-runs /NAME runs/`, then `pwa score NAME`.
 - The SANA image install in `modal_app.py` is unverified until the first real run.
+
+### Results site
+
+Live at https://benceruleanlu.github.io/playworld-advancement/ (static page in `site/index.html`, no build step). It fetches `results/experiments.csv` from `main` at view time, so new rows appear without a redeploy; the `experiments.csv` bundled by the workflow is only a fallback. Rows from runs on any branch land on main's CSV: the Commit step upserts just that row (`pwa upsert-row EXP --into <main checkout>`) into a separate checkout of main and pushes one commit touching only `results/experiments.csv`, so branch code never reaches main. The `branch` column records the launch ref (`GITHUB_REF_NAME`, else `git rev-parse --abbrev-ref HEAD`); the site shows it, filters on it, and badges any non-`main` branch as "unmerged code". Rows without the column show a dash. `.github/workflows/pages.yml` deploys `site/` with the official Pages actions on pushes to `main` touching `site/**` or `results/experiments.csv`, and on manual `workflow_dispatch`. One-time admin setting: Settings -> Pages -> Source: "GitHub Actions"; the site goes live on the first run of the workflow. Honesty badges follow the rules above: `dataset` is "open loop, A/B only", non-`all` splits are "partial", `fake_runner` rows are "pipeline test" (hidden by default). Preview locally with `?csv=name.csv` (same-origin file). The Actions step summary uses `pwa report EXP --md` and `pwa failures EXP --md`.
 
 ## Plan (30 hours)
 
@@ -76,10 +82,11 @@ Submission due Sunday 14:30: repo link, 2-minute demo video, short description. 
 | Model | GC | IF | Insight | Out-of-sight | Overall |
 |---|---|---|---|---|---|
 | Genie 3 | 2.74 | 2.40 | 1.51 | 1.81 | 2.12 |
+| LingBot-World v2 (web demo) | 2.04 | 2.13 | 1.95 | 1.16 | 1.82 |
 | SANA-WM | 1.72 | 1.89 | 1.13 | 1.16 | 1.48 |
 | Matrix-Game-3.0 | 1.30 | 1.25 | 1.00 | 1.00 | 1.14 |
 
-Genie 3 is weak on insight and out-of-sight. That is where we win.
+Genie 3 is weak on insight and out-of-sight. That is where we win. LingBot already beats Genie 3 on insight (1.95 vs 1.51); its gap is out-of-sight (1.16) and GC.
 
 ### Timeline
 

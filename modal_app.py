@@ -105,6 +105,7 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         argv += ["--", *extra.split()]
     prov = {
         "PWA_GIT_SHA": _git("rev-parse", "HEAD"),
+        "PWA_GIT_BRANCH": os.environ.get("GITHUB_REF_NAME") or _git("rev-parse", "--abbrev-ref", "HEAD"),
         "PWA_GIT_DIRTY": "1" if _git("status", "--porcelain", "--", ".", ":!runs", ":!results") else "0",
         "PWA_SUBMODULE_SHA": _git("rev-parse", "HEAD", cwd=ROOT / "third_party" / "PlayWorld"),
     }
