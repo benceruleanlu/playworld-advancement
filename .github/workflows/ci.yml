@@ -34,3 +34,21 @@ jobs:
       - name: Dataset metadata (json only)
         run: python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data', allow_patterns=['*.json'])"
       - run: python -m pytest -q
+
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build the Astro results site
+        working-directory: site
+        run: |
+          npm ci --no-audit --no-fund
+          cp ../results/experiments.csv public/experiments.csv
+          npm run build
+          test -s dist/index.html

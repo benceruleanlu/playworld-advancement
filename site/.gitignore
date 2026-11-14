@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.astro/
+# copied from results/experiments.csv at build time (fallback when the live fetch fails)
+public/experiments.csv
