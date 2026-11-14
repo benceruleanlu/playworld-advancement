@@ -23,7 +23,9 @@ def build(root: Path, runner: str) -> modal.Image:
             "tokenizers>=0.20.3", "accelerate>=1.1.1", "tqdm", "imageio[ffmpeg]", "easydict", "ftfy",
             "imageio-ffmpeg", "numpy>=1.23.5,<2", "scipy", "einops", "safetensors", FLASH_ATTN,
             # upstream run_agent
-            "httpx", "Pillow")
+            "httpx", "Pillow",
+            # LINGBOT_LORA (rl/policy.apply_lora_file)
+            "peft==0.17.1")
         .run_commands(f"git clone https://github.com/Robbyant/lingbot-world-v2 /opt/lingbot "
                       f"&& cd /opt/lingbot && git checkout {LINGBOT_REF}")
         .env({

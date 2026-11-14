@@ -43,6 +43,9 @@ run_agent = import_run_agent()
 STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
 TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL", "0") == "1"
 sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal")]
+for a in [a for a in sys.argv if a.startswith("--lingbot-lora=")]:  # Actions `extra`: --lingbot-lora=PATH
+    os.environ["LINGBOT_LORA"] = a.split("=", 1)[1]
+    sys.argv.remove(a)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -78,6 +81,10 @@ class LingBotWorld2Engine:
             local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
             assets_dir=str(assets) if assets else None)
         print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        if os.environ.get("LINGBOT_LORA"):  # cycle-RL adapter from rl/train.py
+            from rl.policy import apply_lora_file  # noqa: PLC0415
+            r = apply_lora_file(self.pipe.model, os.environ["LINGBOT_LORA"])
+            print(f"[lingbot] LoRA rank {r} from {os.environ['LINGBOT_LORA']}", flush=True)
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,

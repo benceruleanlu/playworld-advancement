@@ -51,6 +51,17 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 - Translation normalisation: upstream divides by the max per-latent translation of the whole sequence, unknown in closed loop. The session divides by a fixed 4 (one latent of straight single-key motion) and clips norms above 1, which equals upstream whenever the fastest latent is straight single-key motion.
 - Weights live in the `pwa-weights` Volume under `/weights/lingbot` (`modal run prefetch_lingbot.py --variant 14b|1.3b`; the workflow does this). Outside the workflow set `PWA_RUNNER=<runner>` when calling `modal run modal_app.py` so the LingBot image is selected.
 - License: CC BY-NC-SA 4.0 (non-commercial, share-alike). Code is cloned into the image at a pinned commit, not vendored.
+- `--lingbot-lora=PATH` (Actions `extra`) or `LINGBOT_LORA=PATH` loads a cycle-RL LoRA (below) on top of the released weights.
+
+### Cycle RL (`rl/`, `modal_rl.py`)
+
+Post-trains LingBot-World v2 1.3B with self-verifiable rewards: no ground-truth video, only still images. Question: can RL on closed camera cycles make LingBot keep the world consistent when the camera turns away and back?
+
+- Reward (`rl/rewards.py`): rollouts follow pure-rotation cycles (`rl/cycles.py`), so any two overlapping frames are related by the exact homography `K R_j^T R_i K^-1`. Warped pairs are scored with 0.7 SSIM + 0.3 colour L1: `local` = gaps of 4-8 frames (did it turn as commanded, any cut; mean + 10th percentile), `memory` = gaps >= 49 frames (beyond the 48-frame rolling KV window), `sharp` = Laplacian variance vs the input (blocks blur hacks). Unit-tested on exactly rendered sphere views with each corruption (`tests/test_rl_cycles_rewards.py`).
+- Optimiser (`rl/policy.py`): DiffusionNFT-style regression on the policy's own clean latents, weighted by group-normalised reward (as in WorldCycle, arXiv 2608.04964), LoRA (rank 16) on self-attention q/k/v/o and the per-block camera scale/shift layers. Rollouts replay the `session.py` loop; a training replay rebuilds the KV cache from the rollout's clean latents and backpropagates through a few chunks. LoRA B starts at zero, so step 0 is the released model.
+- Loop (`rl/train.py`, torchrun): each GPU rolls out its own groups (one image + one cycle, G seeds); grads are all-reduced. The cycle mix adapts to the policy's own results (kinds with lower memory reward are sampled more). Held-out eval at step 0 and every `--eval-every` steps on fixed COCO images, cycles and seeds, plus the 6 PlayWorld GC dev images (eval only, never trained on).
+- Data (`modal run modal_rl.py::prep`): COCO val2017 photos with captions, center-cropped to 832x480 (2925 train, 64 eval).
+- Run: `modal run --detach modal_rl.py --run NAME --gpus 8 --steps 40`. Outputs land in the `pwa-rl` Volume under `runs/NAME` (config, metrics.jsonl, eval.jsonl, eval_rows.jsonl, LoRA checkpoints, videos); `python -m rl.report <local copy>` writes report.md with tables and plots.
 
 ### Upstream quirks (verified)
 
