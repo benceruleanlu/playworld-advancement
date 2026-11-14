@@ -13,12 +13,17 @@ resets it. Dataset mode is reset plus one long step.
 Stateless A/B baseline: `--lingbot-stateless` (stripped before run_agent parses
 argv) or LINGBOT_SESSION=0: every call is a fresh upstream rollout from image_path.
 
+Turn calibration (off by default): `--lingbot-turn-cal` or LINGBOT_TURN_CAL=1 sets the
+arrow-key rates so one dataset token turns 22.5 deg (yaw) / 20 deg (pitch); see poses.calibrate.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
   LINGBOT_VARIANT   14b (default) | 1.3b
   LINGBOT_T5_CPU    1 keeps the 11 GB text encoder off the GPU (default: 1 for 14b, 0 for 1.3b)
   LINGBOT_YAW_RAD / LINGBOT_PITCH_RAD   per-frame camera rotation for arrow keys (poses.py)
+  LINGBOT_TURN_CAL  1 = same as --lingbot-turn-cal (overrides the two rates above)
+  LINGBOT_UNIT_YAW_DEG / LINGBOT_UNIT_PITCH_DEG / LINGBOT_CHUNK_UNITS   turn-cal angles (22.5 / 20 / 2)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 """
@@ -36,7 +41,8 @@ from adapters.lingbot_world2 import session as S  # noqa: E402
 run_agent = import_run_agent()
 
 STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
-sys.argv = [a for a in sys.argv if a != "--lingbot-stateless"]
+TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL", "0") == "1"
+sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal")]
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -78,7 +84,14 @@ class LingBotWorld2Engine:
                                             horizon_frames=int(getattr(args, "max_total_frames", 961) or 961))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
-              + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})"), flush=True)
+              + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
+              + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else ""), flush=True)
+
+    def _calibrate(self, name, n_keys):
+        """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
+        if TURN_CAL:
+            P.calibrate(S.parse_chunk_name(name) is None, n_keys,
+                        int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
         if self.session is None:
@@ -97,6 +110,7 @@ class LingBotWorld2Engine:
         self._last_chunk = None  # stays None if this call fails, so the next one resets
         n = S.chunks_for(num_frames)
         keys = S.fit_keys(P.parse_action(action), S.keys_needed(n, first=not cont))
+        self._calibrate(name, len(keys))
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
         if not cont:
@@ -132,6 +146,7 @@ class LingBotWorld2Engine:
         output_dir = Path(output_dir)
         action_dir = output_dir / f"{name}_action"
         action_dir.mkdir(parents=True, exist_ok=True)
+        self._calibrate(name, P.frame_count(int(num_frames)) - 1)
         c2ws = P.build_poses(action, int(num_frames))
         np.save(action_dir / "poses.npy", c2ws)
         np.save(action_dir / "intrinsics.npy", P.intrinsics(len(c2ws)))

@@ -19,6 +19,11 @@ import numpy as np
 
 YAW = float(os.environ.get("LINGBOT_YAW_RAD", "0.03"))
 PITCH = float(os.environ.get("LINGBOT_PITCH_RAD", "0.01"))
+# Turn calibration (off by default; run.py --lingbot-turn-cal). PlayWorld dataset tokens are
+# fixed angles: "→*4" is "turn right 90 degrees", "→*16" a full turn, "u*2" "look up 40 degrees".
+UNIT_YAW_DEG = float(os.environ.get("LINGBOT_UNIT_YAW_DEG", "22.5"))
+UNIT_PITCH_DEG = float(os.environ.get("LINGBOT_UNIT_PITCH_DEG", "20"))
+CHUNK_UNITS = float(os.environ.get("LINGBOT_CHUNK_UNITS", "2"))  # tokens one closed-loop chunk stands for
 LATENT_CHUNK = 4  # generate.py --chunk_size default; latent frames per causal chunk
 # examples/*/intrinsics.npy row 0 (fx, fy, cx, cy) at 480x832; the pipeline rescales it.
 INTRINSICS_480P = (502.9116, 503.10812, 415.77786, 239.77779)
@@ -32,6 +37,20 @@ def _rot_y(t: float) -> np.ndarray:
 def _rot_x(t: float) -> np.ndarray:
     c, s = math.cos(t), math.sin(t)
     return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+
+def calibrate(dataset: bool, n_keys: int, action_frame_unit: int = 20) -> tuple[float, float]:
+    """Set YAW/PITCH (rad per pixel frame) so one dataset token turns UNIT_*_DEG.
+
+    Dataset mode: the harness holds each token for action_frame_unit frames.
+    Closed loop: the call's n_keys frames of one key stand for CHUNK_UNITS tokens
+    (default 45 degrees of yaw per chunk, so 90/180/360 are whole chunks)."""
+    global YAW, PITCH
+    frames = float(action_frame_unit) if dataset else n_keys / CHUNK_UNITS
+    if frames <= 0:
+        raise ValueError(f"cannot calibrate turns over {frames} frames per token")
+    YAW, PITCH = math.radians(UNIT_YAW_DEG) / frames, math.radians(UNIT_PITCH_DEG) / frames
+    return YAW, PITCH
 
 
 def key_delta(key: str) -> np.ndarray:
