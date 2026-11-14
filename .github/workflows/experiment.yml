@@ -214,6 +214,8 @@ jobs:
             gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "Scenes: $EXP" \
               --notes-file "$out/RELEASE_NOTES.md" --latest=false
           fi
+          # reached only if every upload above succeeded (bash -e); the commit step publishes the manifest only then
+          touch "$out/.published"
 
       - name: Commit experiment log
         if: inputs.stage != 'gen-only'
@@ -224,7 +226,7 @@ jobs:
             pwa upsert-row "$EXP" --into "$MAIN_DIR/results/experiments.csv"
             mkdir -p "$MAIN_DIR/results/reports"
             cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"
-            if [[ -f "$RUNNER_TEMP/media/$EXP.json" ]]; then
+            if [[ -f "$RUNNER_TEMP/media/.published" && -f "$RUNNER_TEMP/media/$EXP.json" ]]; then
               mkdir -p "$MAIN_DIR/results/media"
               cp "$RUNNER_TEMP/media/$EXP.json" "$MAIN_DIR/results/media/$EXP.json"
               python -c "import json, pathlib, sys; from pwa import media; media.update_index(pathlib.Path(sys.argv[1]), json.load(open(sys.argv[2])))" \
