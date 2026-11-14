@@ -211,3 +211,25 @@ footer p { margin: 4px 0; }
   .chart .bar { stroke: CanvasText; stroke-width: 1; }
   .badge, .ck { border-color: CanvasText; }
 }
+/* loading skeletons: static placeholders inside the data containers; app.js clear() removes them on first render */
+.sk { background: var(--wash); border-radius: 8px; min-height: 16px; }
+.card.sk { border: 1px solid var(--grid); background: var(--surface); }
+table .sk { height: 18px; width: 100%; }
+tr.skrow td { padding: 9px; border-bottom: 1px solid var(--grid); }
+.fams > .sk, .methods > .sk { min-width: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .sk { background: linear-gradient(90deg, var(--wash) 0%, var(--grid) 50%, var(--wash) 100%); background-size: 200% 100%; animation: skshim 1.4s ease-in-out infinite; }
+  .card.sk { background: linear-gradient(90deg, var(--surface) 0%, var(--wash) 50%, var(--surface) 100%); background-size: 200% 100%; }
+}
+@keyframes skshim { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+/* print */
+@media print {
+  :root, :root:not([data-theme="light"]) { --page: #fff; --surface: #fff; --ink: #000; --ink2: #000; --muted: #000; --wash: #eee; --grid: #ccc; --border: #999; }
+  html, body { background: #fff !important; color: #000 !important; }
+  nav.top, .filters, .chips, .chips input, .sechead a.anchor, .sechead .copied, .tip { display: none !important; }
+  .card, tr { break-inside: avoid; page-break-inside: avoid; }
+  .scroll { overflow: visible; }
+  thead { display: table-header-group; }
+  th { position: static; }
+  .sk { display: none; }
+}

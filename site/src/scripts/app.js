@@ -844,6 +844,7 @@
     renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords();
     renderTiles(); renderBoard(); renderBarChips(vis); renderBars(vis); renderLine(vis); renderCompare(vis);
     syncUrl();
+    var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
   }
   /* ---------- shareable URL state ---------- */
   var URLKEYS = [["runner", "runner"], ["split", "split"], ["action", "action"], ["branch", "branch"]];
