@@ -191,6 +191,32 @@ jobs:
           # Per-task verifier reasons for every task, committed to main as results/reports/EXP.md below.
           { echo; echo '### Tasks'; echo; pwa failures "$EXP" --all --md; } >> "$RUNNER_TEMP/report.md" || true
 
+      - name: Publish scenes (GitHub Release run-EXP)
+        # Small web copies of every rollout go to a release; the manifest the site reads is committed below.
+        # A failure here must not lose the scored row, so it never fails the job.
+        if: inputs.stage != 'gen-only'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="run-$EXP"
+          repo="https://github.com/$GITHUB_REPOSITORY"
+          out="$RUNNER_TEMP/media"
+          pwa media "$EXP" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag"
+          shopt -s nullglob
+          files=("$out"/*.mp4 "$out"/*.jpg)
+          # pipeline tests and runs without rollouts publish nothing (pwa media writes no clips for them)
+          if (( ${#files[@]} == 0 )); then echo "no rollouts to publish"; rm -f "$out/$EXP.json"; exit 0; fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+            gh release edit "$tag" --notes-file "$out/RELEASE_NOTES.md"
+          else
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "Scenes: $EXP" \
+              --notes-file "$out/RELEASE_NOTES.md" --latest=false
+          fi
+          # reached only if every upload above succeeded (bash -e); the commit step publishes the manifest only then
+          touch "$out/.published"
+
       - name: Commit experiment log
         if: inputs.stage != 'gen-only'
         run: |
@@ -199,7 +225,13 @@ jobs:
           .github/scripts/push_results.sh "results: $EXP" '
             pwa upsert-row "$EXP" --into "$MAIN_DIR/results/experiments.csv"
             mkdir -p "$MAIN_DIR/results/reports"
-            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"'
+            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"
+            if [[ -f "$RUNNER_TEMP/media/.published" && -f "$RUNNER_TEMP/media/$EXP.json" ]]; then
+              mkdir -p "$MAIN_DIR/results/media"
+              cp "$RUNNER_TEMP/media/$EXP.json" "$MAIN_DIR/results/media/$EXP.json"
+              python -c "import json, pathlib, sys; from pwa import media; media.update_index(pathlib.Path(sys.argv[1]), json.load(open(sys.argv[2])))" \
+                "$MAIN_DIR/results/media/index.json" "$RUNNER_TEMP/media/$EXP.json"
+            fi'
 
       - name: Mark final status on main
         # gen-only success -> generated; a failed or cancelled job (any stage) -> failed / cancelled. Only touches

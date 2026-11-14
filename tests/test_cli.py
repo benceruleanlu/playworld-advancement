@@ -141,6 +141,17 @@ def test_report_compare_failures_ls(env):
     assert ls["a"]["gen"] == "done" and ls["a"]["passes"] == [1, 2] and ls["a"]["overall"] is not None
 
 
+def test_media_skips_pipeline_tests(env, tmp_path):
+    # the fake runner makes test-pattern clips: never published, so no release or manifest
+    runs = Path(env["PWA_RUNS"])
+    pwa(env, "gen", "m", "--runner", FAKE, "--tasks", "GC005", "IF002", check=0)
+    _fake_eval(runs, "m", 1, {"GC005": (3.0, True), "IF002": (2.0, False)})
+    out = tmp_path / "media"
+    s = json.loads(pwa(env, "media", "m", "--out", str(out), "--base-url", "https://x.test/dl/", check=0).stdout)
+    assert s == {"exp": "m", "skipped": "pipeline test"}
+    assert not list(out.glob("*")) if out.exists() else True
+
+
 def test_doctor_json(env):
     r = pwa(env, "doctor", "--json", "--for", "score")
     out = json.loads(r.stdout)
