@@ -6,7 +6,7 @@ import io
 import math
 
 from .aggregate import aggregate_pass, mean_std, upstream_cross_check
-from .core import FAMILIES, RESULTS_CSV, RUNS, exp_dir, log, now, read_json, read_meta, video_path, write_json
+from .core import FAMILIES, current_branch, RESULTS_CSV, RUNS, exp_dir, log, now, read_json, read_meta, video_path, write_json
 from .score import eval_dir, passes_present
 
 # Paper numbers, full 171-task benchmark: gc, if, insight, outsight, overall.
@@ -18,7 +18,7 @@ REFERENCE = {
 # Paper: verifier pass-to-pass variance ~0.011 -> std ~0.105. Used when an exp has 1 pass.
 FALLBACK_STD = math.sqrt(0.011)
 CSV_FIELDS = ["exp", "split", "timestamp", "git_sha", "runner", "action_source", "gc", "if", "insight",
-              "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes"]
+              "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes", "branch"]
 
 
 def load_pass(exp: str, k: int, sel: list[dict]) -> tuple[dict, dict]:
@@ -170,7 +170,8 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            "runner": meta.get("runner", ""), "action_source": meta.get("action_source", ""),
            **{f: r4(fam.get(f, {}).get("mean")) for f in FAMILIES},
            "overall": r4(rep["overall"]), "overall_std": r4(rep["overall_std"]), "passes": len(rep["passes"]),
-           "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": meta.get("notes", "")}
+           "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": meta.get("notes", ""),
+           "branch": meta.get("branch") or current_branch()}
     rows = [r for r in rows if not (r.get("exp") == rep["exp"] and r.get("split") == split)] + [new]
     tmp = RESULTS_CSV.with_suffix(".csv.tmp")
     with tmp.open("w", newline="") as fh:
@@ -178,6 +179,57 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
         w.writeheader()
         w.writerows(rows)
     tmp.replace(RESULTS_CSV)
+
+
+def _read_csv_strict(path) -> tuple[list[str], list[dict]]:
+    """Header + rows of a results CSV. Raises ValueError on a malformed file (never guesses)."""
+    with open(path, newline="") as fh:
+        try:
+            table = list(csv.reader(fh, strict=True))
+        except csv.Error as e:
+            raise ValueError(f"{path}: malformed csv: {e}") from e
+    if not table or "exp" not in table[0]:
+        raise ValueError(f"{path}: missing header with an 'exp' column")
+    head = table[0]
+    if len(set(head)) != len(head):
+        raise ValueError(f"{path}: duplicate column names in header")
+    rows = []
+    for n, cells in enumerate(table[1:], 2):
+        if not cells:
+            continue
+        if len(cells) > len(head):
+            raise ValueError(f"{path}: line {n} has {len(cells)} fields, header has {len(head)}")
+        rows.append(dict(zip(head, cells + [""] * (len(head) - len(cells)))))
+    return head, rows
+
+
+def upsert_row_into(exp: str, src, dest) -> int:
+    """Copy exp's row(s) from csv `src` into csv `dest` (replace same exp+split, else append), matching columns
+    by name. Columns the destination lacks are added to its header; nothing is dropped. Returns rows written."""
+    from pathlib import Path
+    src, dest = Path(src), Path(dest)
+    _, srows = _read_csv_strict(src)
+    mine = [r for r in srows if r.get("exp") == exp]
+    if not mine:
+        raise ValueError(f"{src}: no row for exp {exp!r}")
+    if dest.is_file() and dest.stat().st_size:
+        head, rows = _read_csv_strict(dest)
+    else:
+        head, rows = list(CSV_FIELDS), []
+    for r in mine:
+        for col in r:
+            if col not in head:
+                head.append(col)
+    keys = {(r["exp"], r.get("split", "")) for r in mine}
+    rows = [r for r in rows if (r.get("exp"), r.get("split", "")) not in keys] + mine
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".csv.tmp")
+    with tmp.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=head, restval="", extrasaction="raise")
+        w.writeheader()
+        w.writerows(rows)
+    tmp.replace(dest)
+    return len(mine)
 
 
 def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: bool = True) -> dict:

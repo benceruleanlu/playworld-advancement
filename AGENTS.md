@@ -31,6 +31,7 @@ Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doc
 - `pwa report EXP [--split ..] [--strict] [--json] [--md [--site-url U]]` per-family means, std, gate passes, missing; upserts `results/experiments.csv`.
 - `pwa compare A B [--json]` deltas B minus A, flags noise (< 2x pass std).
 - `pwa failures EXP [--json] [--md]` missing, gate-failed, or 1.0 tasks with the verifier's reason.
+- `pwa upsert-row EXP --into PATH` copy EXP's row from this checkout's `results/experiments.csv` into another CSV by column name (adds missing columns, fails on malformed files); used by the workflow.
 - `pwa ls [--json]` experiments and status.
 - `pwa preview EXP TASK` export the contact sheets the judge sees.
 - `pwa run EXP ...` gen + score + report.
@@ -60,7 +61,7 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 
 Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes.
 
-- `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, commits the `results/experiments.csv` row to main, and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
+- `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, records the `results/experiments.csv` row on main (from any branch; see below), and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
 - `backend=local` with `runner=tests/fake_runner.py`: full pipeline test with no GPU.
 - Full 171-task runs: `stage=gen-only` first, then `stage=score-only` (jobs cap at ~6 h).
 - Repo secrets: `GEMINI_API_KEY`, `PLAYER_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, optional `HF_TOKEN`. Optional repo variables: `PLAYER_API_PROVIDER`, `PLAYER_API_URL`, `PLAYER_MODEL`.
@@ -69,7 +70,7 @@ Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner
 
 ### Results site
 
-Live at https://benceruleanlu.github.io/playworld-advancement/ (static page in `site/index.html`, no build step). It fetches `results/experiments.csv` from `main` at view time, so new rows appear without a redeploy; the `experiments.csv` bundled by the workflow is only a fallback. Rows are committed only by runs on `main`; a branch run's row does not reach the site. `.github/workflows/pages.yml` deploys `site/` with the official Pages actions on pushes to `main` touching `site/**` or `results/experiments.csv`, and on manual `workflow_dispatch`. One-time admin setting: Settings -> Pages -> Source: "GitHub Actions"; the site goes live on the first run of the workflow. Honesty badges follow the rules above: `dataset` is "open loop, A/B only", non-`all` splits are "partial", `fake_runner` rows are "pipeline test" (hidden by default). Preview locally with `?csv=name.csv` (same-origin file). The Actions step summary uses `pwa report EXP --md` and `pwa failures EXP --md`.
+Live at https://benceruleanlu.github.io/playworld-advancement/ (static page in `site/index.html`, no build step). It fetches `results/experiments.csv` from `main` at view time, so new rows appear without a redeploy; the `experiments.csv` bundled by the workflow is only a fallback. Rows from runs on any branch land on main's CSV: the Commit step upserts just that row (`pwa upsert-row EXP --into <main checkout>`) into a separate checkout of main and pushes one commit touching only `results/experiments.csv`, so branch code never reaches main. The `branch` column records the launch ref (`GITHUB_REF_NAME`, else `git rev-parse --abbrev-ref HEAD`); the site shows it, filters on it, and badges any non-`main` branch as "unmerged code". Rows without the column show a dash. `.github/workflows/pages.yml` deploys `site/` with the official Pages actions on pushes to `main` touching `site/**` or `results/experiments.csv`, and on manual `workflow_dispatch`. One-time admin setting: Settings -> Pages -> Source: "GitHub Actions"; the site goes live on the first run of the workflow. Honesty badges follow the rules above: `dataset` is "open loop, A/B only", non-`all` splits are "partial", `fake_runner` rows are "pipeline test" (hidden by default). Preview locally with `?csv=name.csv` (same-origin file). The Actions step summary uses `pwa report EXP --md` and `pwa failures EXP --md`.
 
 ## Plan (30 hours)
 

@@ -130,6 +130,7 @@ footer p { margin: 4px 0; }
     <label>Runner <select id="f-runner"></select></label>
     <label>Split <select id="f-split"></select></label>
     <label>Action source <select id="f-action"></select></label>
+    <label>Branch <select id="f-branch"></select></label>
     <label class="check"><input type="checkbox" id="f-tests"> Show pipeline tests <span id="hidden-count" class="std"></span></label>
   </div>
   <div class="scroll" id="board-scroll"><table id="board"></table></div>
@@ -273,7 +274,7 @@ footer p { margin: 4px 0; }
         sha: (o.git_sha || "").trim(), runner: (o.runner || "").trim(), action_source: (o.action_source || "").trim(),
         gc: num(o.gc), if: num(o.if), insight: num(o.insight), outsight: num(o.outsight),
         overall: num(o.overall), overall_std: num(o.overall_std), passes: num(o.passes),
-        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), notes: (o.notes || "").trim(), order: idx
+        n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(), order: idx
       });
     });
     return out;
@@ -282,7 +283,7 @@ footer p { margin: 4px 0; }
   /* ---------- state ---------- */
   var ALL = [];
   var source = "";
-  var filt = { runner: "", split: "", action: "", tests: false };
+  var filt = { runner: "", split: "", action: "", branch: "", tests: false };
   var sort = { key: "t", dir: -1 };
   var sel = []; // chosen experiment keys for the bar chart, in slot order
   var slotOf = {}; // exp key -> slot 1..4, stable while selected
@@ -296,6 +297,7 @@ footer p { margin: 4px 0; }
       if (filt.runner && r.runner !== filt.runner) return false;
       if (filt.split && r.split !== filt.split) return false;
       if (filt.action && r.action_source !== filt.action) return false;
+      if (filt.branch && r.branch !== filt.branch) return false;
       return true;
     });
   }
@@ -348,6 +350,8 @@ footer p { margin: 4px 0; }
     fillSelect("f-runner", uniq(function (r) { return r.runner; }), "All runners", filt.runner);
     fillSelect("f-split", uniq(function (r) { return r.split; }), "All splits", filt.split);
     fillSelect("f-action", uniq(function (r) { return r.action_source; }), "All action sources", filt.action);
+    fillSelect("f-branch", uniq(function (r) { return r.branch; }), "All branches", filt.branch);
+    filt.branch = $("f-branch").value;
     filt.runner = $("f-runner").value; filt.split = $("f-split").value; filt.action = $("f-action").value;
     var nt = ALL.filter(isTest).length;
     $("hidden-count").textContent = nt ? "(" + nt + " hidden)" : "";
@@ -357,7 +361,7 @@ footer p { margin: 4px 0; }
   /* ---------- leaderboard ---------- */
   var COLS = [
     ["exp", "Experiment", "exp", false], ["runner", "Runner", "", false], ["action_source", "Action source", "", false],
-    ["split", "Split", "", false], ["n_tasks", "Tasks", "num", true], ["n_missing", "Missing", "num", true],
+    ["split", "Split", "", false], ["branch", "Branch", "", false], ["n_tasks", "Tasks", "num", true], ["n_missing", "Missing", "num", true],
     ["gc", "GC", "num", true], ["if", "IF", "num", true], ["insight", "Insight", "num", true],
     ["outsight", "Out-of-sight", "num", true], ["overall", "Overall (std)", "num", true], ["passes", "Passes", "num", true],
     ["t", "Time (UTC)", "", false], ["sha", "Commit", "", false], ["notes", "Notes", "", false]
@@ -368,6 +372,7 @@ footer p { margin: 4px 0; }
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
     if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "action_source=dataset replays dataset actions. Valid for fast A/B only, never for final numbers.", text: "! open loop, A/B only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", text: "closed loop" }));
+    if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run launched from branch " + r.branch + ", not main. The code behind this score is not merged.", text: "! unmerged code" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
     return b;
   }
@@ -379,7 +384,7 @@ footer p { margin: 4px 0; }
     var tr = el("tr", { class: r.ref ? "ref" : "" });
     var td = el("td", { class: "exp" }, [el("div", { text: r.exp }), badgesFor(r)]);
     tr.appendChild(td);
-    ["runner", "action_source", "split"].forEach(function (k) {
+    ["runner", "action_source", "split", "branch"].forEach(function (k) {
       var t = el("td"); if (r.ref || !r[k]) dashCell(t); else t.textContent = r[k]; tr.appendChild(t);
     });
     ["n_tasks", "n_missing"].forEach(function (k) {
@@ -746,6 +751,7 @@ footer p { margin: 4px 0; }
     $("f-runner").addEventListener("change", function (e) { filt.runner = e.target.value; renderAll(); });
     $("f-split").addEventListener("change", function (e) { filt.split = e.target.value; renderAll(); });
     $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
+    $("f-branch").addEventListener("change", function (e) { filt.branch = e.target.value; renderAll(); });
     $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderAll(); });
     $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); });
     var rz = null, lastW = window.innerWidth;

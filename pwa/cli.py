@@ -103,6 +103,10 @@ def parser() -> argparse.ArgumentParser:
     _score_args(p)
     p.add_argument("--json", action="store_true", help="print report JSON on stdout")
 
+    p = mk("upsert-row", "copy EXP's row from this checkout's results csv into another csv (used by the workflow)")
+    p.add_argument("exp")
+    p.add_argument("--into", required=True, help="destination experiments.csv (e.g. a checkout of main)")
+
     p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason")
     p.add_argument("exp")
     _sel_args(p)
@@ -227,6 +231,14 @@ def dispatch(a) -> int:  # noqa: C901
             raise PwaError("both experiments need at least one scored pass")
         c = report.compare(ra, rb)
         emit(c, a.json, report.render_compare(c))
+        return 0
+
+    if a.cmd == "upsert-row":
+        try:
+            n = report.upsert_row_into(a.exp, core.RESULTS_CSV, a.into)
+        except (ValueError, OSError) as e:
+            raise PwaError(str(e)) from e
+        log(f"[pwa] upserted {n} row(s) for {a.exp} into {a.into}")
         return 0
 
     if a.cmd == "failures":
