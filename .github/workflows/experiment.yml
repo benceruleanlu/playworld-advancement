@@ -106,14 +106,14 @@ jobs:
           [[ -d data/gc/images ]] || python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data')"
 
       - name: Sync Modal secret
-        if: inputs.backend == 'modal' && inputs.stage != 'score-only'
+        if: ${{ false }}
         run: |
           modal secret create pwa --force \
             PLAYER_API_PROVIDER="$PLAYER_API_PROVIDER" PLAYER_API_URL="$PLAYER_API_URL" \
             PLAYER_MODEL="$PLAYER_MODEL" PLAYER_API_KEY="$PLAYER_API_KEY" HF_TOKEN="$HF_TOKEN" >/dev/null
 
       - name: Generate (Modal)
-        if: inputs.backend == 'modal' && inputs.stage != 'score-only'
+        if: ${{ false }}
         env:
           SPLIT: ${{ inputs.split }}
           TASKS: ${{ inputs.tasks }}
