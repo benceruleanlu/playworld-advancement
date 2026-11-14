@@ -42,6 +42,15 @@ image = (
     .add_local_dir(ROOT, "/repo", ignore=[".git", ".venv", "runs", "results", "**/__pycache__", "*.egg-info"])
 )
 
+# Runner-specific image. PWA_RUNNER must be set when launching a lingbot runner
+# (the workflow sets it); the image bakes it in so containers pick the same branch.
+RUNNER_ENV = os.environ.get("PWA_RUNNER", "")
+if RUNNER_ENV.startswith("lingbot"):
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from adapters.lingbot_world2.modal_image import build as _lingbot_image
+    image = _lingbot_image(ROOT, RUNNER_ENV)
+
 
 @app.function(image=image, gpu=GPU, timeout=6 * 3600,
               volumes={"/runs": runs_vol, "/weights": weights_vol},
@@ -69,6 +78,8 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
     import re
     if not re.fullmatch(r"[A-Za-z0-9._-]+", exp):
         raise SystemExit(f"bad experiment name {exp!r}")
+    if runner.startswith("lingbot") != RUNNER_ENV.startswith("lingbot"):
+        raise SystemExit(f"runner {runner!r} needs a matching image: rerun with PWA_RUNNER={runner} in the environment")
     existing = {e.path.strip("/") for e in runs_vol.listdir("/")}
     if exp in existing and not resume:
         # Shards always pass --resume to pwa, so this is the overwrite guard.
