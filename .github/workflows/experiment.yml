@@ -88,6 +88,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Check player API before generation
+        if: inputs.action_source != 'dataset' && inputs.stage != 'score-only'
+        run: timeout 20s python -m adapters.common.agent_api
       - name: Install FFmpeg
         if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
         run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
