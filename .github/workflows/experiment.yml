@@ -118,6 +118,10 @@ jobs:
         if: inputs.backend == 'modal' && inputs.stage != 'score-only' && startsWith(inputs.runner, 'lingbot')
         run: modal run prefetch_lingbot.py --variant "${{ inputs.runner == 'lingbot_world2_1p3b' && '1.3b' || '14b' }}"
 
+      - name: Prefetch SANA weights on CPU
+        if: inputs.backend == 'modal' && inputs.stage != 'score-only' && inputs.runner == 'sana'
+        run: modal run prefetch_sana.py
+
       - name: Generate (Modal)
         if: inputs.backend == 'modal' && inputs.stage != 'score-only'
         env:
