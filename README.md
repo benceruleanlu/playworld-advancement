@@ -2,13 +2,13 @@
 
 How long can a generated world hold together while an agent plays in it?
 
-We take an open world model and add inference-time memory, state tracking, and re-anchoring to raise its [PlayWorld](https://kxding.github.io/project/PlayWorld/) score past Genie 3 (2.12), without training from scratch. Iterate hackathon, Track 4: World Models.
+We take an open world model, LingBot-World v2, and change how it is run at inference time to raise its [PlayWorld](https://kxding.github.io/project/PlayWorld/) score past Genie 3 (2.12). No training. On `main` so far: a persistent session that keeps the model's memory across agent steps, and opt-in turn calibration. Re-anchoring and out-of-sight state tracking are in open PRs and issues. Iterate hackathon, Track 4: World Models.
 
 ## Results
 
 Live leaderboard, charts and baseline comparison: https://benceruleanlu.github.io/playworld-advancement/
 
-Scores on the PlayWorld rubric (1-5, higher is better). Reference rows are from the PlayWorld paper. Ours are filled in from `results/experiments.csv`.
+Scores on the PlayWorld rubric (1-5, higher is better). Reference rows are from the PlayWorld paper. We have no full-benchmark run yet: the runs logged in `results/experiments.csv` so far are one-task smoke tests, listed on the site.
 
 | Model | Geometry | Interaction | Insight | Out-of-sight | Overall |
 |---|---|---|---|---|---|
@@ -16,7 +16,7 @@ Scores on the PlayWorld rubric (1-5, higher is better). Reference rows are from 
 | LingBot-World v2 (web demo) | 2.04 | 2.13 | 1.95 | 1.16 | 1.82 |
 | SANA-WM | 1.72 | 1.89 | 1.13 | 1.16 | 1.48 |
 | Matrix-Game-3.0 | 1.30 | 1.25 | 1.00 | 1.00 | 1.14 |
-| **Ours** | TBD | TBD | TBD | TBD | TBD |
+| **Ours** | no full run yet | | | | |
 
 ## Quickstart
 
