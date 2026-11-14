@@ -1,4 +1,5 @@
-exp,split,timestamp,git_sha,runner,action_source,gc,if,insight,outsight,overall,overall_std,passes,n_tasks,n_missing,notes,branch
-main-gemini-smoke-20261114-195653,custom,2026-11-14T19:58:37Z,6a50f4ced4aea35ef6ccce7fe15c3cf388c3ea18,tests/fake_runner.py,dataset,1.0000,1.0000,,,1.0000,,1,2,0,,
-lb13-stateless-gc005-v1,custom,2026-11-14T20:44:57Z,c145d4907646baea403d62ba964bf7eda9be0a21,lingbot_world2_1p3b,agent,2.0000,,,,2.0000,,1,1,0,"1.3B stateless baseline for session A/B, closed loop",
-branch-upsert-test-204346,custom,2026-11-14T20:45:24Z,da4d3e20bebbaae414dc90cacb0be6a1173080d2,tests/fake_runner.py,dataset,1.0000,1.0000,,,1.0000,,1,2,0,pipeline test: branch row upsert,feat/results-site
+exp,split,timestamp,git_sha,runner,action_source,gc,if,insight,outsight,overall,overall_std,passes,n_tasks,n_missing,notes,branch,n_dropped
+main-gemini-smoke-20261114-195653,custom,2026-11-14T19:58:37Z,6a50f4ced4aea35ef6ccce7fe15c3cf388c3ea18,tests/fake_runner.py,dataset,1.0000,1.0000,,,1.0000,,1,2,0,,,
+lb13-stateless-gc005-v1,custom,2026-11-14T20:44:57Z,c145d4907646baea403d62ba964bf7eda9be0a21,lingbot_world2_1p3b,agent,2.0000,,,,2.0000,,1,1,0,"1.3B stateless baseline for session A/B, closed loop",,
+branch-upsert-test-204346,custom,2026-11-14T20:45:24Z,da4d3e20bebbaae414dc90cacb0be6a1173080d2,tests/fake_runner.py,dataset,1.0000,1.0000,,,1.0000,,1,2,0,pipeline test: branch row upsert,feat/results-site,
+lb14-session-agent-gc005-v1,custom,2026-11-14T21:33:53Z,fc6d9bf702c1d0e3d38f3a058b4a339bca0b110d,lingbot_world2,agent,2.2000,,,,2.2000,,1,1,0,"key check: 14B session closed loop, 1 task",main,0
