@@ -164,3 +164,13 @@ Cut: fine-tuning, full pose-indexed spatial memory. Re-injecting the first frame
 - Generation (SANA-WM, Matrix-Game 3.0) needs CUDA GPUs: run it on Modal, sharded.
 - Mac Studio (96 GB): `pwa`, scoring (Gemini), agent player and planner calls (OpenAI), proxy metrics on short clips, reviewing rollouts. The upstream SANA runner falls back to CPU off CUDA, so do not generate there.
 - Agent player: OpenAI `gpt-4.1-mini` by default (`PLAYER_API_PROVIDER=openai`). Scorer stays Gemini 3.1 Pro so numbers compare to the leaderboard.
+
+## Judging
+
+This is a hackathon challenge, you will be scored on 5 criteria, equal weight (20% each):
+
+Research rigour: clear question, sound experiment design, baselines or ablations, claims backed by results
+Novelty: a new idea, method or use case, beyond existing papers and open-source baselines
+Results: a measurable result on a real problem or benchmark, ideally against a baseline; a working live demo
+Autonomy & self-improvement: how much of the research loop runs without a human; extra credit if it gets better from its own results
+Interpretability & reproducibility: decisions can be followed (logs, traces, sources), code runs, failures reported honestly
