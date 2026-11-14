@@ -2,6 +2,8 @@
 
 Date: 2026-11-14. Question: how can memory raise an open world model's PlayWorld score?
 
+Follow-up: [out-of-sight-evolution.md](out-of-sight-evolution.md) covers the out-of-sight family on LingBot-World v2 (open weights, the model we now run) and finds that family is graded on scene progress, not recall.
+
 Provenance: compiled from three web-research passes over arXiv and project pages. Most GitHub repos could not be opened, so "code public" claims are as stated on paper or project pages. Confirm before committing time. Items marked (unverified) were not confirmed.
 
 ## Bottom line
