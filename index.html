@@ -392,7 +392,7 @@ footer p { margin: 4px 0; }
     if (r.overall === null) dashCell(o);
     else {
       o.appendChild(document.createTextNode(fmt(r.overall)));
-      if (r.overall_std !== null) o.appendChild(el("span", { class: "std", text: " ±" + fmt(r.overall_std) }));
+      if (typeof r.overall_std === "number") o.appendChild(el("span", { class: "std", text: " ±" + fmt(r.overall_std) }));
     }
     tr.appendChild(o);
     var p = el("td", { class: "num" }); if (r.passes === null || r.ref) dashCell(p); else p.textContent = String(r.passes); tr.appendChild(p);
@@ -606,7 +606,7 @@ footer p { margin: 4px 0; }
     }
     // target line
     svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: y(TARGET), y2: y(TARGET), stroke: "var(--ink2)", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
-    svg.appendChild(sv("text", { x: W - m.r, y: y(TARGET) - 5, "text-anchor": "end", text: "Genie 3 " + TARGET.toFixed(2) + " (paper)" }));
+    svg.appendChild(sv("text", { x: m.l + 6, y: y(TARGET) - 5, "text-anchor": "start", text: "Genie 3 " + TARGET.toFixed(2) + " (paper)" }));
     // best closed-loop so far (step)
     var sorted = pts.slice().sort(function (a, b) { return a.t - b.t || a.order - b.order; });
     var best = null, path = "";

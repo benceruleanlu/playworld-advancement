@@ -1,7 +1,0 @@
-exp,split,timestamp,git_sha,runner,action_source,gc,if,insight,outsight,overall,overall_std,passes,n_tasks,n_missing,notes
-main-smoke,custom,2026-11-14T19:58:37Z,6a50f4ced4aea35ef6ccce7fe15c3cf388c3ea18,tests/fake_runner.py,dataset,1.0000,1.0000,,,1.0000,,1,2,0,
-sana-base-dev,dev,2026-11-14T22:10:00Z,aaaaaaa1111,sana,dataset,1.7000,1.8000,1.1000,1.2000,1.4500,0.0900,2,24,0,"baseline, open loop"
-sana-agent-dev,dev,2026-11-15T03:30:00Z,bbbbbbb2222,sana,agent,1.8000,1.9500,1.2000,1.2500,1.5500,0.1000,2,24,1,"agent player, ""quoted"" note | pipe"
-lingbot-dev,dev,2026-11-15T08:00:00Z,ccccccc3333,lingbot_world2,agent,2.0000,2.1000,1.6000,1.1000,1.7000,,1,24,0,
-anchor-v1,dev,2026-11-15T12:00:00Z,ddddddd4444,sana,refined,1.9000,2.0000,1.8000,1.9000,1.9000,0.0800,2,24,0,anchor memory
-anchor-all,all,2026-11-16T01:00:00Z,eeeeeee5555,sana,refined,2.3000,2.2000,2.0000,2.1000,2.2000,0.0800,3,171,2,full run
