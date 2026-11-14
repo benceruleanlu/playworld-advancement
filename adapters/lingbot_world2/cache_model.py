@@ -60,7 +60,10 @@ def chunk_report(latent_c2ws: np.ndarray, local_attn: int = LOCAL_ATTN, sink: in
     nearest matching past latent (all history vs what the cache still holds);
     None when nothing within `dist` exists. revisit: some latent of the chunk
     matches history older than the previous chunk. evicted: a revisit whose
-    matching latents are all gone from the cache."""
+    matching latents from that earlier visit are all gone from the cache. A match
+    in the previous chunk does not count as retained: when a return spans several
+    chunks, the first return chunk was generated without the original view, so
+    the next chunk sees a regenerated copy of it, not the original."""
     lat = np.asarray(latent_c2ws, dtype=np.float64)
     n_chunks = len(lat) // chunk_len
     rows = []
