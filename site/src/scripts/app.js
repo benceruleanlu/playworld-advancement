@@ -599,18 +599,21 @@
       body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples.",
       links: [["#14", PR + "14"]], evidence: ["lb13-stateless-gc005-v1"] },
     { title: "Persistent session memory", status: "testing", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world forgets itself every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser.",
+      body: "Upstream restarts the model for every agent step, so the world forgets itself every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, 2.20 on one task) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
-      match: function (r) { return /^lingbot/.test(r.runner) && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
+      // like-for-like only: same 1.3B runner as the stateless baseline
+      match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
     { title: "A. Insight progress scheduler", status: "planned", fams: ["insight"],
       body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls.", links: [], evidence: [] },
-    { title: "B. Control and gate fixes", status: "planned", fams: ["gc", "if", "outsight"],
-      body: "Calibrate action magnitudes and check the resulting pose, because a failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality. Re-inject the first frame when the pose returns near start.", links: [], evidence: [] },
+    { title: "B. Control and gate fixes", status: "testing", fams: ["gc", "if", "outsight"],
+      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. Built: opt-in LingBot turn calibration, so one dataset token turns 22.5 degrees of yaw or 20 of pitch as the task prompts assume, instead of the default 34 and 11 degrees. Planned: pose-checked correction, and re-injecting the first frame when the pose returns near start.",
+      links: [["#23", PR + "23"]], evidence: [],
+      match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
     { title: "C. Out-of-sight state tracker", status: "planned", fams: ["outsight"],
       body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor.", links: [], evidence: [] },
     { title: "D. Evaluation harness", status: "shipped", fams: [],
       body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
-      links: [["#16", PR + "16"]], evidence: [] }
+      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
   ];
   var STATUS_LABEL = { shipped: "shipped", testing: "built, A/B pending", planned: "planned" };
 
@@ -774,7 +777,7 @@
         });
         if (mth.baseline && !ev.length) {
           var br = rowByExp(mth.baseline);
-          ul.appendChild(el("li", { text: "A/B baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + ". Session run pending." }));
+          ul.appendChild(el("li", { text: "A/B baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + ". Like-for-like run pending." }));
         }
         card.appendChild(el("div", { class: "ev" }, [el("b", { text: "Evidence" }), ul]));
       }
