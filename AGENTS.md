@@ -1,6 +1,6 @@
 # Agent and contributor notes
 
-Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12) with inference-time methods. All project docs live in this file; do not add a docs/ directory.
+Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12) with inference-time methods. Project docs live in this file (README.md is the public landing page); do not add a docs/ directory.
 
 ## Layout
 
