@@ -110,15 +110,21 @@ def latents_from_frames(c2ws: np.ndarray) -> np.ndarray:
 
 # ------------------------------------------------------------------- CLI
 
-def _task_latents(task: dict, args) -> np.ndarray:
+def _task_latents(task: dict, args):
+    """Latent poses the default persistent runner generates for the task's dataset action: the same chunk
+    count and fitted keys as run.py _generate_session (reset plus one long step), not the stateless rounding."""
     from adapters.common.upstream import import_run_agent  # noqa: PLC0415
     from adapters.lingbot_world2 import poses as P  # noqa: PLC0415
+    from adapters.lingbot_world2 import session as S  # noqa: PLC0415
     ra = import_run_agent()
     action, _ = ra.build_full_sana_action(task, args.action_frame_unit, args.tail_frames, args.max_total_frames)
     n = sum(int(s.rpartition("-")[2]) for s in action.split(",") if s) + 1
+    keys = S.fit_keys(P.parse_action(action), S.keys_needed(S.chunks_for(n), first=True))
     if args.turn_cal:
-        P.calibrate(True, n - 1, args.action_frame_unit)
-    return latents_from_frames(P.build_poses(action, n)), action
+        P.calibrate(True, len(keys), args.action_frame_unit)
+    track = S.PoseTrack()
+    track.advance(keys)
+    return np.stack(track.latents), action
 
 
 def main(argv=None) -> int:
