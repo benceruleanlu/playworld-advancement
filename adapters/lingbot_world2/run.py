@@ -26,7 +26,9 @@ Env:
   LINGBOT_UNIT_YAW_DEG / LINGBOT_UNIT_PITCH_DEG / LINGBOT_CHUNK_UNITS   turn-cal angles (22.5 / 20 / 2)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
+  LINGBOT_CACHE_LOG 1 = write <name>_cache.json per step (cache_model: revisits of evicted views)
 """
+import json
 import os
 import sys
 import time
@@ -35,17 +37,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import loader as L  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
 run_agent = import_run_agent()
 
 STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
+CACHE_LOG = os.environ.get("LINGBOT_CACHE_LOG", "0") == "1"
 TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL", "0") == "1"
 sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal")]
 
-MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
-LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
+MAX_AREA, LOCAL_ATTN, SINK = L.MAX_AREA, L.LOCAL_ATTN, L.SINK
 DEFAULT_PROMPT = "A photo-realistic scene with rich details."
 
 
@@ -54,30 +57,7 @@ class LingBotWorld2Engine:
 
     def __init__(self, args):
         self.args = args
-        root = os.environ.get("LINGBOT_ROOT", "/opt/lingbot")
-        weights = Path(os.environ.get("LINGBOT_WEIGHTS", "/weights/lingbot"))
-        variant = os.environ.get("LINGBOT_VARIANT", "14b").lower()
-        if variant not in ("14b", "1.3b"):
-            raise SystemExit(f"LINGBOT_VARIANT must be 14b or 1.3b, got {variant!r}")
-        ckpt = weights / f"lingbot-world-v2-{variant}-causal-fast"
-        # The 1.3B release ships DiT shards only; T5, VAE and tokenizer come from the 14B dir.
-        assets = weights / "lingbot-world-v2-14b-causal-fast" if variant == "1.3b" else None
-        for p in (Path(root) / "wan", ckpt, *( [assets] if assets else [])):
-            if not p.exists():
-                raise SystemExit(f"[lingbot] missing {p}; set LINGBOT_ROOT / LINGBOT_WEIGHTS or run prefetch_lingbot.py")
-        t5_cpu = os.environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1"
-
-        sys.path.insert(0, root)
-        import wan  # noqa: PLC0415
-        from wan.configs import WAN_CONFIGS  # noqa: PLC0415
-
-        self.cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
-        t0 = time.time()
-        self.pipe = wan.WanI2VCausal(
-            config=self.cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-            local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
-            assets_dir=str(assets) if assets else None)
-        print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        self.pipe, self.cfg, _ = L.load_pipe(LOCAL_ATTN, SINK)
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
@@ -124,6 +104,12 @@ class LingBotWorld2Engine:
         out = output_dir / f"{name}.mp4"
         imageio.mimsave(str(out), list(frames), fps=int(self.args.fps))
         self._last_chunk = parsed
+        if CACHE_LOG:
+            rep = self.session.cache_report(since_chunk=start)
+            (output_dir / f"{name}_cache.json").write_text(json.dumps(rep))
+            ev = sum(r["evicted"] for r in rep["rows"])
+            if ev:
+                print(f"[lingbot] {name}: {ev} chunk(s) revisit views already evicted from the KV cache", flush=True)
         dt = time.time() - t0
         print(f"[lingbot] {name}: {'continue' if cont else 'reset'} latent chunks {start}->{self.session.chunk_id} "
               f"{len(frames)} frames {frames.shape[2]}x{frames.shape[1]} in {dt:.1f}s ({len(frames) / dt:.1f} fps), "
