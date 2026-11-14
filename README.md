@@ -50,4 +50,4 @@ Contributor rules, CLI reference, plan, and known upstream quirks: [AGENTS.md](A
 
 ### Scene videos
 
-Each scored run publishes its rollouts to a GitHub Release named `run-<experiment>`, shown in the site's Scenes section. They are generated with LingBot-World v2 from PlayWorld task images, released under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) for non-commercial use, and re-encoded to 480p. To request removal of a scene, [open an issue](https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request).
+Each scored run publishes its rollouts to a GitHub Release named `run-<experiment>`, shown in the site's Scenes section. Each release credits the world model that generated it (from the run's recorded runner) and the PlayWorld task images the rollouts start from. They are released under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) for non-commercial use, and re-encoded to 480p. Pipeline-test runs are never published. To request removal of a scene, [open an issue](https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request).

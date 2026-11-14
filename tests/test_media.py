@@ -54,6 +54,7 @@ def test_build_manifest(tmp_path, monkeypatch):
     sel = [{"task_id": "GC005", "family": "gc"}, {"task_id": "IF010", "family": "if"}]
     man = media.build("e1", sel, tmp_path / "out", "https://example.test/dl", "https://example.test/rel")
     assert man["license"] == "CC BY-NC-SA 4.0" and man["git_sha"] == "abc123" and man["release_tag"] == "run-e1"
+    assert man["model"]["name"] == "LingBot-World v2" and "LingBot-World v2" in (tmp_path / "out" / "RELEASE_NOTES.md").read_text()
     gc, if_ = man["tasks"]
     assert gc["video"] == "https://example.test/dl/GC005.mp4" and gc["poster"] == "https://example.test/dl/GC005.jpg"
     assert gc["mean"] == 2.2 and gc["reason"] == "scene kept its layout"
@@ -68,3 +69,28 @@ def test_index_replaces_and_sorts_newest_first(tmp_path):
     media.update_index(idx, {"exp": "a", "generated": "2026-11-14T13:00:00Z", "tasks": [1, 2, 3], "release_url": "w"})
     runs = json.loads(idx.read_text())["runs"]
     assert [r["exp"] for r in runs] == ["a", "b"] and runs[0]["n_tasks"] == 3 and runs[0]["release_url"] == "w"
+
+
+@pytest.mark.parametrize("runner,name", [
+    ("lingbot_world2", "LingBot-World v2"), ("lingbot_world2_1p3b", "LingBot-World v2"),
+    ("adapters/lingbot_world2_1p3b/run.py", "LingBot-World v2"), ("sana", "SANA-WM"), ("matrix_game3", "Matrix-Game 3.0"),
+    ("my_new_runner", "my_new_runner"),
+])
+def test_model_attribution_follows_the_runner(runner, name):
+    assert media.model_for(runner)["name"] == name
+
+
+def test_release_notes_credit_the_runs_own_model():
+    base = {"exp": "e", "git_sha": "abc", "tasks": []}
+    lb = media.release_notes(dict(base, model=media.model_for("lingbot_world2")))
+    sana = media.release_notes(dict(base, model=media.model_for("sana")))
+    assert "LingBot-World v2" in lb and "CC BY-NC-SA 4.0" in lb and "re-implements its causal sampling loop" in lb
+    assert "SANA-WM" in sana and "LingBot" not in sana
+    for notes in (lb, sana):
+        assert "Pexels and web image search" in notes and "Scene+removal+request" in notes
+
+
+def test_pipeline_tests_are_not_published(tmp_path, monkeypatch):
+    monkeypatch.setattr(media, "read_meta", lambda exp: {"runner": "tests/fake_runner.py"})
+    assert media.build("t", [{"task_id": "GC005", "family": "gc"}], tmp_path / "out", "u", "r") is None
+    assert not list((tmp_path / "out").glob("*"))

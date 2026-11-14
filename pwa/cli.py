@@ -274,6 +274,9 @@ def dispatch(a) -> int:  # noqa: C901
         from . import media
         man = media.build(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), Path(a.out), a.base_url,
                           a.release_url, a.height)
+        if man is None:
+            emit({"exp": a.exp, "skipped": "pipeline test"}, True)
+            return 0
         if a.index:
             media.update_index(Path(a.index), man)
         emit({k: v for k, v in man.items() if k != "tasks"} | {"n_tasks": len(man["tasks"]),

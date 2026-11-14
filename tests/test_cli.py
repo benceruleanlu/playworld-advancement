@@ -141,19 +141,15 @@ def test_report_compare_failures_ls(env):
     assert ls["a"]["gen"] == "done" and ls["a"]["passes"] == [1, 2] and ls["a"]["overall"] is not None
 
 
-def test_media_manifest_and_index(env, tmp_path):
+def test_media_skips_pipeline_tests(env, tmp_path):
+    # the fake runner makes test-pattern clips: never published, so no release or manifest
     runs = Path(env["PWA_RUNS"])
     pwa(env, "gen", "m", "--runner", FAKE, "--tasks", "GC005", "IF002", check=0)
     _fake_eval(runs, "m", 1, {"GC005": (3.0, True), "IF002": (2.0, False)})
-    out, idx = tmp_path / "media", tmp_path / "main" / "results" / "media" / "index.json"
-    s = json.loads(pwa(env, "media", "m", "--out", str(out), "--base-url", "https://x.test/dl/",
-                       "--release-url", "https://x.test/rel", "--index", str(idx), check=0).stdout)
-    assert s["n_videos"] == 2 and s["release_tag"] == "run-m"
-    man = json.loads((out / "m.json").read_text())
-    t = {x["task_id"]: x for x in man["tasks"]}
-    assert t["GC005"]["video"] == "https://x.test/dl/GC005.mp4" and (out / "GC005.mp4").is_file() and (out / "GC005.jpg").is_file()
-    assert t["IF002"]["status"] == ["gate_fail"] and t["IF002"]["reason"] == "subject static"
-    assert json.loads(idx.read_text())["runs"][0]["exp"] == "m"
+    out = tmp_path / "media"
+    s = json.loads(pwa(env, "media", "m", "--out", str(out), "--base-url", "https://x.test/dl/", check=0).stdout)
+    assert s == {"exp": "m", "skipped": "pipeline test"}
+    assert not list(out.glob("*")) if out.exists() else True
 
 
 def test_doctor_json(env):

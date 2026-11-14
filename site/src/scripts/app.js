@@ -928,6 +928,7 @@
     });
     var run = runs.filter(function (r) { return r.exp === scenesExp; })[0];
     if (run && run.release_url && /^https:/.test(run.release_url)) { $("sc-files").href = run.release_url; $("sc-files").hidden = false; } else $("sc-files").hidden = true;
+    renderSceneModel();
     if (!scenesMan) { empty.hidden = false; empty.textContent = "Could not load the manifest for " + scenesExp + "."; return; }
     var tasks = scenesMan.tasks || [];
     clear(fs); fs.appendChild(el("option", { value: "", text: "All families" }));
@@ -943,9 +944,23 @@
       grid.appendChild(el("div", { style: "grid-column:1/-1" }, [b]));
     }
   }
+  var scenesReq = 0;
   function loadManifest() {
+    // a response for a run the visitor has since switched away from is dropped, so cards always match the picker
+    var req = ++scenesReq, exp = scenesExp;
     scenesMan = null; scenesAll = false;
-    return getJson(scenesExp + ".json").then(function (m) { scenesMan = m; }).catch(function () { scenesMan = null; });
+    return getJson(exp + ".json").then(function (m) { if (req === scenesReq && m && m.exp === exp) scenesMan = m; })
+      .catch(function () { if (req === scenesReq) scenesMan = null; });
+  }
+  // credit the model that generated this run's rollouts, from its manifest
+  function renderSceneModel() {
+    var box = $("sc-model"); if (!box) return; clear(box);
+    var m = scenesMan && scenesMan.model; if (!m || !m.name) return;
+    box.appendChild(document.createTextNode("Generated with "));
+    if (m.url && /^https:/.test(m.url)) box.appendChild(el("a", { href: m.url, target: "_blank", rel: "noopener", text: m.name }));
+    else box.appendChild(document.createTextNode(m.name));
+    var who = [m.org, m.license].filter(Boolean).join(", ");
+    box.appendChild(document.createTextNode((who ? " (" + who + ")" : "") + ". "));
   }
   function loadScenes() {
     return getJson("index.json").then(function (ix) {
@@ -958,7 +973,11 @@
     }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); syncUrl(); });
   }
   function wireScenes() {
-    $("sc-run").addEventListener("change", function (e) { scenesExp = e.target.value; loadManifest().then(function () { renderScenes(); syncUrl(); }); });
+    $("sc-run").addEventListener("change", function (e) {
+      scenesExp = e.target.value;
+      var req = scenesReq + 1;
+      loadManifest().then(function () { if (req === scenesReq) { renderScenes(); syncUrl(); } });
+    });
     $("sc-fam").addEventListener("change", function (e) { scenesFam = e.target.value; scenesAll = false; renderScenes(); });
   }
 
