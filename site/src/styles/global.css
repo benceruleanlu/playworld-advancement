@@ -56,15 +56,11 @@ h2.sec { font-size: 22px; letter-spacing: -.005em; margin-bottom: 6px; }
 @media (prefers-reduced-motion: reduce) { .sechead a.anchor { transition: none; } }
 h3 { font-size: 15px; margin: 0 0 4px; font-weight: 650; }
 .sub { color: var(--ink2); font-size: 14px; margin: 0 0 14px; max-width: 75ch; }
-section { margin-top: 64px; }
-/* one main idea per screen on desktop-sized windows: each view fills the viewport below the sticky nav and centers its content */
-@media (min-width: 800px) and (min-height: 640px) {
-  .view, main > section:not(.tight):not(#team) { min-height: calc(100svh - 57px); display: flex; flex-direction: column; justify-content: center; margin-top: 0; padding: 40px 0; box-sizing: border-box; }
-  .view.lead { padding-top: 24px; }
-  .view.lead .hero { padding-top: 0; }
-  main > section + section:not(#team), .view + section { border-top: 1px solid var(--grid); }
-  #team { margin-top: 0; padding: 48px 0 24px; border-top: 1px solid var(--grid); }
-}
+/* even rhythm between sections: a hairline divider and moderate padding, no forced full-screen views */
+main > section:not(.tight), .view + section { margin-top: 0; padding: 44px 0 8px; }
+main > section:not(.tight) + section:not(.tight), .view + section { border-top: 1px solid var(--grid); }
+.view.lead { padding-bottom: 32px; }
+@media (max-width: 560px) { main > section:not(.tight), .view + section { padding-top: 32px; } }
 section.tight { margin-top: 28px; }
 .callout { max-width: 75ch; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
