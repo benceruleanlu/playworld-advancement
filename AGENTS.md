@@ -80,6 +80,28 @@ Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner
 - From a laptop: `modal run modal_app.py --exp NAME --split dev --num-shards 4`, then `modal volume get pwa-runs /NAME runs/`, then `pwa score NAME`.
 - The SANA image install in `modal_app.py` is unverified until the first real run.
 
+### Run speed
+
+Update this as runs land: add measured rows, and move a claim from unverified to verified with the run that showed it.
+
+Generation wall clock is roughly `ceil(n_tasks / num_shards) * min_per_task + load_per_shard`. `modal_app.py` maps each shard to its own GPU container (`gen_shard.starmap`) with no cap in code, so more shards is near-linear until the Modal GPU quota binds. GPU-hours stay about the same, plus one model load per shard.
+
+Verified:
+- Launching several `experiment` runs at once can fail with Modal `App create rate limit exceeded` (`RESOURCE_EXHAUSTED`) in the prefetch step, before any GPU starts. Stagger dispatches by 1-2 min; rerun under the same name is fine if nothing was generated.
+- Scoring runs on the Actions runner with `pwa score --workers 6`; it is serial after generation.
+
+Unverified (check and update):
+- Whether 24 concurrent H100 containers start or queue on our quota (`lb14-turncal-dev-v1`).
+- Split of per-task time between model load, denoising and agent API calls (read from `gen.log`).
+
+Levers, biggest first: raise `num_shards` (dev: 24 = one task per GPU); 1.3B for A/B, 14B to confirm; `--action-source dataset` for A/B only (no agent calls, not for final numbers); `tasks` input to run only the family a method targets; start the next A/B while the last one runs.
+
+| Exp | Runner | Tasks | Shards | GPU | Gen wall clock | Min/task | Notes |
+|---|---|---|---|---|---|---|---|
+| lb14-session-agent-gc005-v1 | lingbot_world2 | 1 | 1 | H100 | <=16 min | <=16 (incl. load) | closed loop; upper bound, gen start to job end incl. scoring |
+
+Full 171-task budget at ~15 min/task: 4 shards ~11 h (over the 6 h job cap), 8 shards ~5.5 h, 24 shards ~2 h.
+
 ### Results site
 
 Live at https://benceruleanlu.github.io/playworld-advancement/. `site/` is an Astro project (static output, base `/playworld-advancement`): `src/pages/index.astro` composes section components from `src/components/`, styles live in `src/styles/global.css`, and all data rendering is client-side in `src/scripts/app.js`. Local: `cd site && npm ci && mkdir -p public && cp ../results/experiments.csv public/ && npm run dev` (or `npm run build` to `site/dist/`). Astro is pinned to an exact version at least two weeks old; CI's `site` job builds it on every PR. It fetches `results/experiments.csv` from `main` at view time, so new rows appear without a redeploy; the `experiments.csv` bundled by the workflow is only a fallback. Rows from runs on any branch land on main's CSV: the Commit step upserts just that row (`pwa upsert-row EXP --into <main checkout>`) into a separate checkout of main and pushes one commit touching only `results/experiments.csv`, so branch code never reaches main. The `branch` column records the launch ref (`GITHUB_REF_NAME`, else `git rev-parse --abbrev-ref HEAD`); the site shows it, filters on it, and badges any non-`main` branch as "unmerged code". Rows without the column show a dash. `.github/workflows/pages.yml` builds `site/` and deploys `site/dist` with the official Pages actions on pushes to `main` touching `site/**`, `results/experiments.csv` or the workflow, and on manual `workflow_dispatch`. One-time admin setting: Settings -> Pages -> Source: "GitHub Actions". If it is ever set to "Deploy from a branch", GitHub's own "pages build and deployment" runs on every push to main and overwrites the site with the raw repo. Honesty badges follow the rules above: `dataset` is "open loop, A/B only", non-`all` splits are "partial", `fake_runner` rows are "pipeline test" (hidden by default). Preview locally with `?csv=name.csv` (same-origin file). Page story content (task-family blurbs, the "What we changed" method cards with status shipped|testing|planned, evidence experiment names and PR links) lives in the `FAMINFO` and `METHODS` arrays in `src/scripts/app.js`; update a card when its work lands. The headline, ruler, family bars, protocol checks (closed loop, full 171, 2+ passes, every task scored: `n_missing` and `n_dropped` both 0, unknown for rows without `n_dropped`, code on main) and the Progress table are derived from the CSV. Tables must not scroll horizontally at 360-1280 px: secondary columns use `hide-sm`, headers can carry a short phone label. The Actions step summary uses `pwa report EXP --md` and `pwa failures EXP --md`.
