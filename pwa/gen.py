@@ -54,7 +54,12 @@ def gen(a, sel: list[dict]) -> dict:
         if clash:
             raise PwaError(f"{d} already exists. Pick a new experiment name, or pass --resume to reuse its "
                            f"videos (upstream skip-done keeps any existing mp4).")
+    if a.action_source in ("agent", "refined") and not os.environ.get("PLAYER_API_KEY"):
+        raise PwaError(f"--action-source {a.action_source} needs PLAYER_API_KEY. Without it upstream silently "
+                       f"falls back to dataset/WAIT actions and the rollout is open loop.")
     runner = resolve_runner(a.runner)
+    # Upstream run_agent labels its lines [SANA_WM] whatever engine runs; relabel for non-SANA runners.
+    label = None if a.runner == "sana" else f"[{Path(a.runner).stem if a.runner.endswith('.py') else a.runner}]"
     out = d / "videos"
     out.mkdir(parents=True, exist_ok=True)
 
@@ -93,6 +98,8 @@ def gen(a, sel: list[dict]) -> dict:
                     agent_errors += 1
                 elif "[agent] fallback=" in line:
                     agent_fallbacks += 1
+                if label:
+                    line = line.replace("[SANA_WM]", label)
                 sys.stderr.write(line)
                 lf.write(line)
             p.wait()
