@@ -1,0 +1,40 @@
+name: pages
+
+# Republishes site/ (plus a snapshot of results/experiments.csv) to the gh-pages branch.
+# The page fetches the live CSV from main at view time; the snapshot is only a fallback.
+# Pages must be set to: Settings -> Pages -> Deploy from a branch -> gh-pages, / (root).
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish to gh-pages
+        run: |
+          out="$(mktemp -d)"
+          cp site/* "$out"/
+          cp results/experiments.csv "$out"/experiments.csv
+          touch "$out"/.nojekyll
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan gh-pages-new
+          git rm -rq --cached .
+          git clean -fdxq
+          cp -r "$out"/. .
+          git add -A
+          git commit -q -m "site: publish $GITHUB_SHA"
+          git push -q -f origin HEAD:gh-pages

@@ -6,6 +6,8 @@ We take an open world model and add inference-time memory, state tracking, and r
 
 ## Results
 
+Live leaderboard, charts and baseline comparison: https://benceruleanlu.github.io/playworld-advancement/
+
 Scores on the PlayWorld rubric (1-5, higher is better). Reference rows are from the PlayWorld paper. Ours are filled in from `results/experiments.csv`.
 
 | Model | Geometry | Interaction | Insight | Out-of-sight | Overall |

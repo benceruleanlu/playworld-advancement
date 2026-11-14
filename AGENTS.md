@@ -28,9 +28,9 @@ Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doc
 - `pwa tasks [--split dev|heldout|all|PATH] [--family ..] [--json]` list tasks.
 - `pwa gen EXP --split dev --runner sana|NAME|PATH --action-source dataset|agent|refined [--shard i --num-shards n] [--resume] [--notes ..] [-- runner args]` rollouts to `runs/EXP/videos/`, plus `meta.json`, `gen.log`.
 - `pwa score EXP [--passes 2] [--workers 4] [--dry-run] [--force]` verifier into `runs/EXP/eval/pass<k>/`; idempotent.
-- `pwa report EXP [--split ..] [--strict] [--json]` per-family means, std, gate passes, missing; upserts `results/experiments.csv`.
+- `pwa report EXP [--split ..] [--strict] [--json] [--md [--site-url U]]` per-family means, std, gate passes, missing; upserts `results/experiments.csv`.
 - `pwa compare A B [--json]` deltas B minus A, flags noise (< 2x pass std).
-- `pwa failures EXP [--json]` missing, gate-failed, or 1.0 tasks with the verifier's reason.
+- `pwa failures EXP [--json] [--md]` missing, gate-failed, or 1.0 tasks with the verifier's reason.
 - `pwa ls [--json]` experiments and status.
 - `pwa preview EXP TASK` export the contact sheets the judge sees.
 - `pwa run EXP ...` gen + score + report.
@@ -58,6 +58,10 @@ Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner
 - Repo secrets: `GEMINI_API_KEY`, `PLAYER_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, optional `HF_TOKEN`. Optional repo variables: `PLAYER_API_PROVIDER`, `PLAYER_API_URL`, `PLAYER_MODEL`.
 - From a laptop: `modal run modal_app.py --exp NAME --split dev --num-shards 4`, then `modal volume get pwa-runs /NAME runs/`, then `pwa score NAME`.
 - The SANA image install in `modal_app.py` is unverified until the first real run.
+
+### Results site
+
+Live at https://benceruleanlu.github.io/playworld-advancement/ (static page in `site/index.html`, no build step). It fetches `results/experiments.csv` from `main` at view time, so new rows appear without a redeploy; the `experiments.csv` copied next to it on `gh-pages` is only a fallback snapshot. Rows are committed only by runs on `main`; a branch run's row does not reach the site. `.github/workflows/pages.yml` republishes `site/` to the `gh-pages` branch on pushes to `main` touching `site/**` (Settings -> Pages must deploy from `gh-pages`, `/`). Honesty badges follow the rules above: `dataset` is "open loop, A/B only", non-`all` splits are "partial", `fake_runner` rows are "pipeline test" (hidden by default). Preview locally with `?csv=name.csv` (same-origin file). The Actions step summary uses `pwa report EXP --md` and `pwa failures EXP --md`.
 
 ## Plan (30 hours)
 

@@ -105,6 +105,59 @@ def render(rep: dict, meta: dict) -> str:
     return out.getvalue()
 
 
+def _md_cell(x) -> str:
+    return str(x).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def _md2(x) -> str:
+    return f"{x:.2f}" if isinstance(x, (int, float)) else "-"
+
+
+def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
+    """GitHub-flavoured markdown for $GITHUB_STEP_SUMMARY. The plain-text render() stays the default."""
+    out = io.StringIO()
+    p = lambda s="": print(s, file=out)  # noqa: E731
+    p(f"## {_md_cell(rep['exp'])}" + (" (strict)" if rep["strict"] else ""))
+    p()
+    p(f"runner `{meta.get('runner')}` | action source `{meta.get('action_source')}` | passes {len(rep['passes'])} "
+      f"| tasks {rep['n_tasks']} | missing {rep['n_missing']}")
+    p()
+    p("| family | mean | std | n | gate pass | missing | dropped | per pass |")
+    p("|---|---:|---:|---:|---:|---:|---:|---|")
+    for fam, f in rep["families"].items():
+        gate = f"{f['gate_pass']:.0f}/{f['gated']}" if f["gated"] and f["gate_pass"] is not None else "-"
+        per = ", ".join(_md2(v) for v in f["per_pass"]) or "-"
+        p(f"| {fam} | {_md2(f['mean'])} | {_md2(f['std'])} | {f['n'] or 0} | {gate} | {f['missing'] or 0} "
+          f"| {f['dropped']} | {per} |")
+    per = ", ".join(_md2(v) for v in rep["overall_per_pass"]) or "-"
+    p(f"| **overall** | **{_md2(rep['overall'])}** | {_md2(rep['overall_std'])} | | | | | {per} |")
+    p()
+    p("**Reference (paper, full benchmark)**")
+    p()
+    p("| model | gc | if | insight | outsight | overall |")
+    p("|---|---:|---:|---:|---:|---:|")
+    for name, r in REFERENCE.items():
+        p(f"| {name} | " + " | ".join(_md2(v) for v in r) + " |")
+    if any(f["dropped"] for f in rep["families"].values()):
+        p()
+        p("> `dropped` = unscored or gated-without-review rollouts, excluded from the mean as upstream does. "
+          "Rerun `pwa score` or use `--strict` to count them as 1.0.")
+    if site_url:
+        p()
+        p(f"[All experiments on the results site]({site_url})")
+    return out.getvalue()
+
+
+def render_failures_md(rows: list[dict]) -> str:
+    if not rows:
+        return "No failures.\n"
+    out = ["| task | family | mean | status | reason |", "|---|---|---:|---|---|"]
+    for r in rows:
+        out.append(f"| {r['task_id']} | {r['family']} | {_md2(r['mean'])} | {_md_cell(', '.join(r['status']))} "
+                   f"| {_md_cell(r['reason'])} |")
+    return "\n".join(out) + "\n"
+
+
 def upsert_csv(rep: dict, meta: dict, split: str) -> None:
     RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
     rows = []

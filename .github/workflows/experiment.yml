@@ -151,8 +151,9 @@ jobs:
       - name: Report
         if: inputs.stage != 'gen-only'
         run: |
-          pwa report "$EXP" | tee -a "$GITHUB_STEP_SUMMARY"
-          { echo; echo '### Failures'; echo '```'; pwa failures "$EXP"; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          pwa report "$EXP" --md --site-url "$site" | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo; echo '### Failures'; echo; pwa failures "$EXP" --md; } >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Commit experiment log
         if: github.ref == 'refs/heads/main' && inputs.stage != 'gen-only'
