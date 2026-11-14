@@ -45,8 +45,9 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 `lingbot_world2` (14B) and `lingbot_world2_1p3b` (1.3B) run LingBot-World v2 causal-fast (PlayWorld paper: 1.82 overall via its web demo). Notes:
 
 - The released code is conditioned on camera poses only; its WASD/IJKL files are never read. `adapters/lingbot_world2/poses.py` turns each key into per-frame camera deltas (signs checked against upstream examples; rotation rates via `LINGBOT_YAW_RAD` / `LINGBOT_PITCH_RAD`).
-- v0 is stateless per `generate()` call: in closed loop the KV cache (LingBot's only memory) resets every chunk. `--action-source dataset` is one call, so the cache spans the rollout. A persistent `reset/step` session is the next step.
-- Clips are 4n+1 frames with latent length a multiple of 4, so a 33-frame chunk comes back as 45 frames. Pass `-- --chunk-frames 29` for exact chunks.
+- Default is a persistent session (`adapters/lingbot_world2/session.py`, `reset/step`): the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache survive across agent steps. `<task>_chunk_<NN>` following chunk NN-1 of the same task continues; chunk 01, another task or `<task>_full` (dataset mode: reset plus one long step) resets. A/B baseline: `-- --lingbot-stateless` (Actions input `extra`) or `LINGBOT_SESSION=0`, a fresh upstream rollout per call. `LINGBOT_STREAM_DECODE=0` re-decodes all latents per step instead of streaming.
+- Session frame accounting: a request of F frames runs n = round((F-1)/16) latent chunks; the first step returns 16n-3 frames (input frame first), later steps the previous last frame plus 16n new ones, so the harness stitch is seamless (default 33 -> 29, then 33). The stateless path rounds up to 4n+1 frames with latent length a multiple of 4 (33 -> 45; `-- --chunk-frames 29` for exact chunks).
+- Translation normalisation: upstream divides by the max per-latent translation of the whole sequence, unknown in closed loop. The session divides by a fixed 4 (one latent of straight single-key motion) and clips norms above 1, which equals upstream whenever the fastest latent is straight single-key motion.
 - Weights live in the `pwa-weights` Volume under `/weights/lingbot` (`modal run prefetch_lingbot.py --variant 14b|1.3b`; the workflow does this). Outside the workflow set `PWA_RUNNER=<runner>` when calling `modal run modal_app.py` so the LingBot image is selected.
 - License: CC BY-NC-SA 4.0 (non-commercial, share-alike). Code is cloned into the image at a pinned commit, not vendored.
 
@@ -59,7 +60,7 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 
 ### Remote runs (GitHub Actions + Modal)
 
-Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes.
+Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes, extra (runner args, e.g. `--lingbot-stateless`).
 
 - `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, records the `results/experiments.csv` row on main (from any branch; see below), and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
 - `backend=local` with `runner=tests/fake_runner.py`: full pipeline test with no GPU.
