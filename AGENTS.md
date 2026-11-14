@@ -22,13 +22,13 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 
 ## Skills
 
-`.claude/skills/` holds skills from [jpoehnelt/skills](https://github.com/jpoehnelt/skills) (MIT, `.claude/skills/LICENSE`) at commit `0eefeee`: `eng-*` (change checklist, blast radius, benchmark checklist, testing, TDD, agent CLI scale), `gh-*` (CI triage, PR feedback loop, PR commit review), `comms-*` (technical writing, unslop, impact, how, why, interrogate, slides), `agents-*` (correct, reflect, swarm). Update by re-copying the folders, not by editing in place. Repo facts they read:
+`.claude/skills/` holds skills copied from [jpoehnelt/skills](https://github.com/jpoehnelt/skills) at commit `0eefeee` (MIT, see `.claude/skills/LICENSE`). The set is `eng-*` (change checklist, blast radius, benchmark checklist, testing, TDD, agent CLI scale), `gh-*` (CI triage, PR feedback loop, PR commit review), `comms-*` (technical writing, unslop, impact, how, why, interrogate, slides) and `agents-*` (correct, reflect, swarm). To update a skill, copy its folder again from upstream. The skills read these repo facts:
 
-- Checks: `python -m pytest -q` (tests in `tests/`, pytest); one file: `python -m pytest -q tests/test_cli.py`. Site: `cd site && npm ci && mkdir -p public && cp ../results/experiments.csv public/ && npm run build`.
-- CI: `.github/workflows/ci.yml` jobs `test` (pytest, needs PlayWorld submodule and dataset JSON from HF) and `site` (Astro build). `experiment.yml` is manual, needs repo secrets and Modal; `pages.yml` deploys on main.
-- Tests use `tests/fake_runner.py` as the no-GPU runner fake. GPU generation, Gemini scoring and agent API calls are not tested in CI and need a human with keys.
-- Benchmark harness is `pwa` (below). A score claim needs closed loop, Gemini 3.1 Pro, 2+ passes, and a delta at least 2x pass std (`pwa compare`).
-- No PR template or changeset. PR and commit titles: `Area: what changed` (e.g. `Site: ...`, `lingbot: ...`), PR number appended on merge.
+- Tests run with `python -m pytest -q` from the repo root. Run one file with `python -m pytest -q tests/test_cli.py`. Build the site with `cd site && npm ci && mkdir -p public && cp ../results/experiments.csv public/ && npm run build`.
+- `.github/workflows/ci.yml` has two jobs. `test` runs pytest and needs the PlayWorld submodule and the dataset JSON from Hugging Face. `site` builds the Astro site. `experiment.yml` runs only when started by hand and needs the repo secrets and Modal. `pages.yml` deploys the site on pushes to main.
+- `tests/fake_runner.py` stands in for a GPU runner in tests. CI does not test GPU generation, Gemini scoring or agent API calls. Those need a person with keys.
+- `pwa` is the benchmark harness (see below). A score claim needs a closed-loop run scored by Gemini 3.1 Pro over 2 or more passes, and a delta of at least 2x the pass std (`pwa compare` checks this).
+- The repo has no PR template or changeset. PR and commit titles use `Area: what changed`, for example `Site: ...` or `lingbot: ...`. Squash merges append the PR number.
 
 ## CLI (`pwa`)
 
