@@ -582,10 +582,20 @@
   /* ---------- footer ---------- */
   function renderFoot() {
     var f = $("foot"); clear(f);
+    function A(href, text) { return el("a", { href: href, target: "_blank", rel: "noopener", text: text }); }
+    function T(t) { return document.createTextNode(t); }
     f.appendChild(el("p", { text: "Data source: " + source }));
     f.appendChild(el("p", { text: "Rows: results/experiments.csv in the repo, written by pwa report. Paper rows are from the PlayWorld paper (full benchmark, 171 tasks). Our rows use the split shown, so only split=all closed-loop rows are comparable to them." }));
-    f.appendChild(el("p", null, [el("a", { href: "https://github.com/" + REPO, target: "_blank", rel: "noopener", text: "Repository" }),
-      document.createTextNode(" | "), el("a", { href: "https://github.com/" + REPO + "/blob/main/results/experiments.csv", target: "_blank", rel: "noopener", text: "experiments.csv" })]));
+    f.appendChild(el("p", null, [A("https://github.com/" + REPO, "Repository"), T(" | "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "experiments.csv")]));
+    var ul = el("ul", { class: "credits", "aria-label": "Credits" });
+    function li(kids) { ul.appendChild(el("li", null, kids)); }
+    li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., \u201CPlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives\u201D, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources\u2019 terms.")]);
+    li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, \u201CInfinite Worlds with Versatile Interactions\u201D, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/benceruleanlu/playworld-advancement/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
+    li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-4.1-mini.")]);
+    li([T("Site built with "), A("https://astro.build", "Astro"), T(".")]);
+    f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
+    f.appendChild(ul);
   }
 
   /* ---------- story content (edit here as work lands) ---------- */
@@ -865,6 +875,93 @@
     t.appendChild(tb);
   }
 
+  /* ---------- scenes ---------- */
+  var MEDIA_RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/media/";
+  var scenesExp = "", scenesFam = "", scenesIdx = null, scenesMan = null, scenesAll = false, scenesDefault = "", SCENES_SHOWN = 4;
+  function getJson(name) {
+    return get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
+  }
+  function sceneCard(t) {
+    var famName = FAMINFO[t.family] ? FAMINFO[t.family].name : (t.family || "-");
+    var media = el("div", { class: "media" });
+    if (t.video) {
+      media.appendChild(el("img", { src: t.poster || "", alt: "First frames of " + t.task_id, loading: "lazy" }));
+      var pb = el("button", { class: "play", type: "button", "aria-label": "Play " + t.task_id });
+      pb.addEventListener("click", function () {
+        var v = el("video", { controls: "", playsinline: "", preload: "none", src: t.video, poster: t.poster || null, "aria-label": "Rollout of " + t.task_id });
+        v.muted = true;
+        clear(media); media.appendChild(v);
+        var pr = v.play(); if (pr && pr.catch) pr.catch(function () { /* autoplay refused: controls stay */ });
+        v.focus();
+      });
+      media.appendChild(pb);
+    } else {
+      if (t.poster) media.appendChild(el("img", { src: t.poster, alt: "First frames of " + t.task_id, loading: "lazy" }));
+      media.appendChild(el("div", { class: "novid", text: "No video" }));
+    }
+    var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
+    var row = el("div", { class: "row" }, [
+      el("b", { text: t.task_id }),
+      el("span", { class: "sc", text: typeof t.mean === "number" ? fmt(t.mean) : "unscored" })
+    ]);
+    var row2 = el("div", { class: "row" }, [
+      el("span", { class: "fam", text: famName }),
+      el("span", { class: "badge " + (ok ? "ok" : "warn"), text: st.length ? st.join(", ") : "no status" })
+    ]);
+    var kids = [media, row, row2];
+    if (t.reason) kids.push(el("details", null, [el("summary", { text: "Verifier reason" }), el("p", { text: t.reason })]));
+    return el("article", { class: "scene" }, kids);
+  }
+  function renderScenes() {
+    var grid = $("sc-grid"), empty = $("sc-empty"), filt2 = $("scenes-filters");
+    if (!grid) return;
+    clear(grid);
+    var runs = scenesIdx && scenesIdx.runs ? scenesIdx.runs : [];
+    if (!runs.length) {
+      empty.hidden = false; empty.textContent = "No scenes published yet. Each scored run adds its rollouts to a GitHub Release.";
+      filt2.hidden = true; $("sc-note").hidden = true; $("sc-files").hidden = true; return;
+    }
+    filt2.hidden = false;
+    var rs = $("sc-run"), fs = $("sc-fam");
+    clear(rs); runs.forEach(function (r) {
+      var o = el("option", { value: r.exp, text: r.exp + " (" + r.n_tasks + " tasks)" }); if (r.exp === scenesExp) o.selected = true; rs.appendChild(o);
+    });
+    var run = runs.filter(function (r) { return r.exp === scenesExp; })[0];
+    if (run && run.release_url && /^https:/.test(run.release_url)) { $("sc-files").href = run.release_url; $("sc-files").hidden = false; } else $("sc-files").hidden = true;
+    if (!scenesMan) { empty.hidden = false; empty.textContent = "Could not load the manifest for " + scenesExp + "."; return; }
+    var tasks = scenesMan.tasks || [];
+    clear(fs); fs.appendChild(el("option", { value: "", text: "All families" }));
+    FAMS.forEach(function (f) { var o = el("option", { value: f[0], text: FAMINFO[f[0]].name }); if (f[0] === scenesFam) o.selected = true; fs.appendChild(o); });
+    var list = tasks.filter(function (t) { return !scenesFam || t.family === scenesFam; });
+    empty.hidden = list.length > 0; if (!list.length) empty.textContent = "No tasks in this family for this run.";
+    $("sc-note").hidden = !list.some(function (t) { return t.reason; });
+    var shown = scenesAll ? list : list.slice(0, SCENES_SHOWN);
+    shown.forEach(function (t) { grid.appendChild(sceneCard(t)); });
+    if (list.length > SCENES_SHOWN) {
+      var b = el("button", { class: "scmore", type: "button", text: scenesAll ? "Show fewer" : "Show all " + list.length + " scenes" });
+      b.addEventListener("click", function () { scenesAll = !scenesAll; renderScenes(); });
+      grid.appendChild(el("div", { style: "grid-column:1/-1" }, [b]));
+    }
+  }
+  function loadManifest() {
+    scenesMan = null; scenesAll = false;
+    return getJson(scenesExp + ".json").then(function (m) { scenesMan = m; }).catch(function () { scenesMan = null; });
+  }
+  function loadScenes() {
+    return getJson("index.json").then(function (ix) {
+      var runs = (ix && ix.runs) || [];
+      runs.sort(function (a, b) { return a.generated < b.generated ? 1 : a.generated > b.generated ? -1 : 0; });
+      scenesIdx = { runs: runs };
+      scenesDefault = runs.length ? runs[0].exp : "";
+      if (!runs.some(function (r) { return r.exp === scenesExp; })) scenesExp = scenesDefault;
+      return scenesExp ? loadManifest() : null;
+    }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); syncUrl(); });
+  }
+  function wireScenes() {
+    $("sc-run").addEventListener("change", function (e) { scenesExp = e.target.value; loadManifest().then(function () { renderScenes(); syncUrl(); }); });
+    $("sc-fam").addEventListener("change", function (e) { scenesFam = e.target.value; scenesAll = false; renderScenes(); });
+  }
+
   /* ---------- render all ---------- */
   function renderAll() {
     var vis = visible();
@@ -882,6 +979,7 @@
     filt.tests = q.get("tests") === "1";
     var sv = q.get("sort") || "", d = sv.charAt(0) === "-" ? -1 : 1, sk = sv.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
+    scenesExp = q.get("scenes") || "";
     cmpBase = q.get("base") || ""; // unknown values fall back to the default in renderCompare
   }
   function syncUrl() {
@@ -891,6 +989,7 @@
       if (filt.tests) q.set("tests", "1"); else q.delete("tests");
       if (sort.key === "overall" && sort.dir < 0) q.delete("sort"); else q.set("sort", (sort.dir < 0 ? "-" : "") + sort.key);
       if (cmpBase && cmpBase !== cmpAuto) q.set("base", cmpBase); else q.delete("base");
+      if (scenesExp && scenesExp !== scenesDefault) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
       var qs = q.toString();
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed or file: origins may refuse */ }
@@ -954,8 +1053,8 @@
       return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
     });
   }
-  wire(); addAnchors();
+  wire(); wireScenes(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); });
+    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); });
 })();

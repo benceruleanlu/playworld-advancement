@@ -40,6 +40,7 @@ jobs:
           npm ci --no-audit --no-fund
           mkdir -p public
           cp ../results/experiments.csv public/experiments.csv
+          if [ -d ../results/media ]; then cp -r ../results/media public/media; fi  # fallback for the Scenes section
           npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

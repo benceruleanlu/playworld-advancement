@@ -43,6 +43,11 @@ Contributor rules, CLI reference, plan, and known upstream quirks: [AGENTS.md](A
 
 ## Credits
 
-- [PlayWorld](https://github.com/kxding/PlayWorld) benchmark, harness, and verifier (Kuaishou Technology, HKU), pinned as a submodule. Dataset: [jocelynd/playworld-bench](https://huggingface.co/datasets/jocelynd/playworld-bench).
-- [SANA-WM](https://github.com/NVlabs/Sana), [LingBot-World v2](https://github.com/Robbyant/lingbot-world-v2) (CC BY-NC-SA 4.0, cloned at a pinned commit, not vendored) and [Matrix-Game 3.0](https://github.com/SkyworkAI/Matrix-Game) world models.
-- Gemini 3.1 Pro (verifier), OpenAI `gpt-4.1-mini` (agent player).
+- **PlayWorld** benchmark, harness, verifier and task data: Ding et al., *PlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives*, [arXiv:2608.13552](https://arxiv.org/abs/2608.13552) (Kuaishou Technology, HKU). Code: [kxding/PlayWorld](https://github.com/kxding/PlayWorld), pinned as a submodule. Data: [jocelynd/playworld-bench](https://huggingface.co/datasets/jocelynd/playworld-bench). Task images come from Pexels and web image search and keep their sources' terms.
+- **LingBot-World v2**: Robbyant Team, *Infinite Worlds with Versatile Interactions*, [arXiv:2607.07534](https://arxiv.org/abs/2607.07534), [Robbyant/lingbot-world-v2](https://github.com/Robbyant/lingbot-world-v2), CC BY-NC-SA 4.0. Cloned at a pinned commit, not vendored; its weights and modules run unchanged, and `adapters/lingbot_world2/session.py` re-implements its causal sampling loop.
+- Reference scores for Genie 3 (Google DeepMind), [SANA-WM](https://github.com/NVlabs/Sana) (NVIDIA), [Matrix-Game 3.0](https://github.com/SkyworkAI/Matrix-Game) (Skywork AI) and LingBot-World v2 are as reported in the PlayWorld paper.
+- Scoring: Gemini 3.1 Pro (Google) through the PlayWorld verifier. Agent player: OpenAI `gpt-4.1-mini`.
+
+### Scene videos
+
+Each scored run publishes its rollouts to a GitHub Release named `run-<experiment>`, shown in the site's Scenes section. They are generated with LingBot-World v2 from PlayWorld task images, released under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) for non-commercial use, and re-encoded to 480p. To request removal of a scene, [open an issue](https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request).

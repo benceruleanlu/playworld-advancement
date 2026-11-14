@@ -191,6 +191,41 @@ jobs:
           # Per-task verifier reasons for every task, committed to main as results/reports/EXP.md below.
           { echo; echo '### Tasks'; echo; pwa failures "$EXP" --all --md; } >> "$RUNNER_TEMP/report.md" || true
 
+      - name: Publish scenes (GitHub Release run-EXP)
+        # Small web copies of every rollout go to a release; the manifest the site reads is committed below.
+        # A failure here must not lose the scored row, so it never fails the job.
+        if: inputs.stage != 'gen-only'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="run-$EXP"
+          repo="https://github.com/$GITHUB_REPOSITORY"
+          out="$RUNNER_TEMP/media"
+          pwa media "$EXP" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag"
+          shopt -s nullglob
+          files=("$out"/*.mp4 "$out"/*.jpg)
+          if (( ${#files[@]} == 0 )); then echo "no rollouts to publish"; rm -f "$out/$EXP.json"; exit 0; fi
+          cat > "$RUNNER_TEMP/scene-notes.md" <<NOTES
+          Rollouts from experiment \`$EXP\` (commit $GITHUB_SHA), scored by the PlayWorld verifier (Gemini 3.1 Pro). Per-task scores and the verifier's reasons: [results/reports/$EXP.md]($repo/blob/main/results/reports/$EXP.md). Browse them on the [results site](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/#scenes).
+
+          **Attribution**
+          - Generated with [LingBot-World v2](https://github.com/Robbyant/lingbot-world-v2) by the Robbyant Team (arXiv:2607.07534), CC BY-NC-SA 4.0. Its released weights and modules run unchanged; our [session wrapper]($repo/blob/main/adapters/lingbot_world2/session.py) re-implements its causal sampling loop to keep memory across agent steps.
+          - Each rollout starts from a [PlayWorld](https://github.com/kxding/PlayWorld) task image (Ding et al., arXiv:2608.13552; data: [jocelynd/playworld-bench](https://huggingface.co/datasets/jocelynd/playworld-bench)). Task images come from Pexels and web image search and remain subject to their sources' terms.
+
+          **License:** these videos are released under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), non-commercial use only. Changes: re-encoded to 480p H.264 without audio; posters are one frame of each rollout.
+
+          **Removal requests:** [open an issue]($repo/issues/new?title=Scene+removal+request).
+          NOTES
+          sed -i 's/^          //' "$RUNNER_TEMP/scene-notes.md"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+            gh release edit "$tag" --notes-file "$RUNNER_TEMP/scene-notes.md"
+          else
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "Scenes: $EXP" \
+              --notes-file "$RUNNER_TEMP/scene-notes.md" --latest=false
+          fi
+
       - name: Commit experiment log
         if: inputs.stage != 'gen-only'
         run: |
@@ -199,7 +234,13 @@ jobs:
           .github/scripts/push_results.sh "results: $EXP" '
             pwa upsert-row "$EXP" --into "$MAIN_DIR/results/experiments.csv"
             mkdir -p "$MAIN_DIR/results/reports"
-            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"'
+            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"
+            if [[ -f "$RUNNER_TEMP/media/$EXP.json" ]]; then
+              mkdir -p "$MAIN_DIR/results/media"
+              cp "$RUNNER_TEMP/media/$EXP.json" "$MAIN_DIR/results/media/$EXP.json"
+              python -c "import json, pathlib, sys; from pwa import media; media.update_index(pathlib.Path(sys.argv[1]), json.load(open(sys.argv[2])))" \
+                "$MAIN_DIR/results/media/index.json" "$RUNNER_TEMP/media/$EXP.json"
+            fi'
 
       - name: Mark final status on main
         # gen-only success -> generated; a failed or cancelled job (any stage) -> failed / cancelled. Only touches
