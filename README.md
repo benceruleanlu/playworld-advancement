@@ -35,7 +35,7 @@ Generation needs a CUDA GPU. Scoring, reports, and agent calls run anywhere.
 ## How it works
 
 - `pwa` drives the loop: generate rollouts, score them with the official Gemini 3.1 Pro rubric verifier, report per-family means with pass-to-pass variance, and compare experiments.
-- `adapters/` plug world models into the upstream closed-loop harness: SANA-WM, LingBot-World v2 (14B and 1.3B, with a persistent session so the KV cache carries across agent steps), and a Matrix-Game 3.0 stub. Our methods wrap the engine's `generate()` call.
+- `adapters/` plug world models into the upstream closed-loop harness: SANA-WM, LingBot-World v2 (14B and 1.3B, with a persistent session so the KV cache carries across agent steps, and opt-in turn calibration so key presses turn the angles the task prompts assume), and a Matrix-Game 3.0 stub. Our methods wrap the engine's `generate()` call.
 - Generation runs on Modal GPUs, launched from the GitHub Actions `experiment` workflow; every run's row lands in `results/experiments.csv` on `main` and on the results site.
 - `splits/` fixes a 24-task dev set for iteration and keeps the other 147 tasks held out until the final run.
 
