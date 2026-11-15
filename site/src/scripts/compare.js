@@ -4,7 +4,7 @@
 // Run names and groups come from runinfo.js. Deep link: ?compare=TASK&b=CONTROL&c=TREATMENT#compare-clips.
 // Older three-slot links (&a=) still open: the last two filled of a, b, c become Control and Treatment.
 import * as RunInfo from "./runinfo.js";
-import { $, el, clear, judgeComment, passesText } from "./ui.js";
+import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
 (function () {
   var QKEYS = ["a", "b", "c"];
   var MAX_RUNS = 80; // manifests fetched, newest first
@@ -480,6 +480,7 @@ import { $, el, clear, judgeComment, passesText } from "./ui.js";
       });
     });
     $("cv-loop").addEventListener("change", function (e) { S.loop = e.target.checked; });
+    $("cv-full").addEventListener("click", function () { toggleFull($("compare-clips")); });
     // story cards and the tour (app.js) ask for one task from two runs: detail { task, b: control, c: treatment, play }
     document.addEventListener("pwa:compare", function (e) {
       var d = e.detail || {};
