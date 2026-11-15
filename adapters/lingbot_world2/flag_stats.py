@@ -67,6 +67,10 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       pose_mem_retimes (an installed memory recomputed at a new RoPE time,
                                       time recent; not a new retrieval), pose_mem_mb (peak host MB held: bank
                                       plus sink snapshot)
+  --lingbot-split-sink                split_sink=on (session reset of a task matching --lingbot-split-sink-tasks,
+                                      sink > 0) | skip, split_sink_chunks (latent chunks whose denoising forwards
+                                      used spatially split sink keys), split_sink_fg_tokens (foreground sink tokens
+                                      classified from the opening sink latents)
   --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it),
                                       or turn_step=inactive for a task run as one dataset call (`<task>_full`)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
@@ -110,7 +114,8 @@ class FlagStats:
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
                  pose_mem: bool = False, yaw_servo: bool = False, warp_reanchor: bool = False,
-                 turntable: str = "", turntable_rescale: bool = False):
+                 turntable: str = "", turntable_rescale: bool = False, split_sink: bool = False):
+        self.split_sink = bool(split_sink)
         self.warp_reanchor = bool(warp_reanchor)
         self.pose_mem = bool(pose_mem)
         self.yaw_servo = bool(yaw_servo)  # --lingbot-yaw-servo
@@ -152,6 +157,7 @@ class FlagStats:
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
                        "scripted_chunks": 0, "scripted_ends": 0,
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
+                       "split_sink_chunks": 0, "split_sink_fg_tokens": 0,
                        "yaw_gain_frames": 0, "yaw_servo_chunks": 0, "yaw_servo_untrusted": 0,
                        "turntable_frames": 0, "turntable_rescaled": 0,
                        **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS},
@@ -175,6 +181,7 @@ class FlagStats:
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
         self.sink_scale_armed, self.sink_scaled_chunks = False, 0
+        self.split_sink_on, self.split_sink_chunks, self.split_sink_fg_tokens = False, 0, 0
         self.pose_mem_on, self.pose_mem_counts, self.pose_mem_bytes = False, dict.fromkeys(POSE_MEM_FIELDS, 0), 0
         self.warp_reanchor_armed, self.warp_events, self.warp_patches = False, 0, 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
@@ -252,6 +259,13 @@ class FlagStats:
 
     def sink_scaled(self, chunks: int = 0):
         self.sink_scaled_chunks += int(chunks)
+
+    def split_sink_armed(self):
+        self.split_sink_on = True
+
+    def split_sink_counted(self, chunks: int = 0, fg_tokens: int = 0):
+        self.split_sink_chunks += int(chunks)
+        self.split_sink_fg_tokens += int(fg_tokens)
 
     def pose_mem_armed(self):
         self.pose_mem_on = True
@@ -380,6 +394,9 @@ class FlagStats:
                      commanded_tilt=round(m.get("commanded_tilt", 0)), measured_tilt=round(m.get("measured_tilt", 0)))
         if self.sink_scale:
             s.update(sink_scale="on" if self.sink_scale_armed else "skip", sink_scaled_chunks=self.sink_scaled_chunks)
+        if self.split_sink:
+            s.update(split_sink="on" if self.split_sink_on else "skip", split_sink_chunks=self.split_sink_chunks,
+                     split_sink_fg_tokens=self.split_sink_fg_tokens)
         if self.pose_mem:
             s.update(pose_mem="on" if self.pose_mem_on else "skip", **self.pose_mem_summary(self.pose_mem_counts),
                      pose_mem_mb=f"{self.pose_mem_bytes / 2 ** 20:.0f}")
@@ -433,6 +450,8 @@ class FlagStats:
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
                    if self.scripted else "")
                 + (f" sink_scaled_chunks={t['sink_scaled_chunks']}" if self.sink_scale else "")
+                + (f" split_sink_chunks={t['split_sink_chunks']} split_sink_fg_tokens={t['split_sink_fg_tokens']}"
+                   if self.split_sink else "")
                 + ("".join(f" {k}={v}" for k, v in self.pose_mem_summary(
                     {k: t[f"pose_mem_{k}"] for k in POSE_MEM_FIELDS}).items()) if self.pose_mem else "")
                 + (f" warp_events={t['warp_events']} warp_patches={t['warp_patches']}" if self.warp_reanchor else ""))
@@ -471,6 +490,8 @@ class FlagStats:
         t["stg_chunks"] += self.stg_chunks
         t["stg_calls"] += self.stg_calls
         t["sink_scaled_chunks"] += self.sink_scaled_chunks
+        t["split_sink_chunks"] += self.split_sink_chunks
+        t["split_sink_fg_tokens"] += self.split_sink_fg_tokens
         t["yaw_gain_frames"] += self.yaw_gain_frames
         t["yaw_servo_chunks"] += self.yaw_servo_chunks
         t["yaw_servo_untrusted"] += self.yaw_servo_untrusted
