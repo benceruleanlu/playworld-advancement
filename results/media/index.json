@@ -1,6 +1,16 @@
 {
  "runs": [
   {
+   "exp": "pm14-fx-v2-a4",
+   "generated": "2026-11-15T05:01:44Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a4",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
    "exp": "pm14-fx-v1-a2",
    "generated": "2026-11-15T04:56:08Z",
    "n_tasks": 6,
@@ -28,18 +38,6 @@
    "scored": true,
    "labels": [
     "replayed dataset moves (open loop), A/B only"
-   ]
-  },
-  {
-   "exp": "pm14-fx-v2-a4",
-   "generated": "2026-11-15T04:55:59Z",
-   "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a4",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 4/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-size 10 --lingbot-local-attn 22"
    ]
   },
   {
