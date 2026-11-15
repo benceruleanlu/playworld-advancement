@@ -40,7 +40,8 @@
    ],
    "reason": "视角执行了向右旋转的动作，但未能完成360度旋转并回到初始的十字路口视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC031.jpg",
+   "reason_en": "The viewpoint executes a rightward rotation, but fails to complete a 360-degree rotation and return to the initial intersection view."
   },
   {
    "task_id": "GC033",
@@ -51,7 +52,8 @@
    ],
    "reason": "镜头执行了向左转动的指令，但未能向右转回以重新看到初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC033.jpg",
+   "reason_en": "The camera executes the instruction to turn left, but fails to turn back right to see the initial view again."
   },
   {
    "task_id": "GC036",
@@ -62,7 +64,8 @@
    ],
    "reason": "视频未能执行向右平移和回中的指令，仅向左平移，且在第69-75帧期间商场背景完全突变为一个暗室，导致严重的纹理和颜色一致性失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/GC036.jpg",
+   "reason_en": "The video fails to execute the instructions to pan right and return to the center, only panning left, and during frames 69-75 the mall background completely mutates into a dark room, causing a severe failure in texture and color consistency."
   },
   {
    "task_id": "OE034",
@@ -73,7 +76,8 @@
    ],
    "reason": "视频在镜头旋转期间发生了灾难性的幻觉和形变，斑马融化成条纹团，场景完全改变，未能保持任何合理的物理演进或主体一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE034.jpg",
+   "reason_en": "During camera rotation, the video suffers catastrophic hallucinations and deformation: the zebra melts into a striped blob, the scene changes completely, and it fails to maintain any reasonable physical evolution or subject consistency."
   },
   {
    "task_id": "OE047",
@@ -84,7 +88,8 @@
    ],
    "reason": "视频初始扶梯静止，镜头转回后发生严重场景重置，扶梯消失，无合理演化。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE047.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE047.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE047.jpg",
+   "reason_en": "At the start of the video the escalator is stationary, and after the camera turns back a severe scene reset occurs where the escalator disappears with no reasonable evolution."
   },
   {
    "task_id": "OE058",
@@ -95,7 +100,8 @@
    ],
    "reason": "镜头未转回初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE058.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE058.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a2/OE058.jpg",
+   "reason_en": "The camera did not return to the initial viewpoint."
   }
  ]
 }

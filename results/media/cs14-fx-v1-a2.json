@@ -44,7 +44,8 @@
    ],
    "reason": "视频完成了向左再向右的镜头转动，但返回初始视角时，橱窗内的物体发生了明显的形状变形和纹理丢失（如标牌文字变成乱码）。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/GC033.jpg",
+   "reason_en": "The video completes a left-then-right camera pan, but upon returning to the initial viewpoint, the objects inside the display window undergo noticeable shape distortion and texture loss (such as text on signs turning into gibberish)."
   },
   {
    "task_id": "IF010",
@@ -55,7 +56,8 @@
    ],
    "reason": "未执行左转动作，且主体完全变形。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/IF010.jpg",
+   "reason_en": "The left turn action is not executed, and the subject completely morphs."
   },
   {
    "task_id": "IF034",
@@ -66,7 +68,8 @@
    ],
    "reason": "场景硬重置导致动作未能完成。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a2/IF034.jpg",
+   "reason_en": "A hard reset of the scene prevents the action from being completed."
   },
   {
    "task_id": "OE001",
