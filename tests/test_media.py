@@ -62,6 +62,7 @@ def test_build_manifest(tmp_path, monkeypatch):
     assert if_["video"] is None and if_["status"] == ["missing"]  # no rollout: listed, no clip
     assert json.loads((tmp_path / "out" / "e1.json").read_text()) == man
     assert man["scored"] is True and man["labels"] == [] and man["max_chunks"] is None
+    assert man["runner_args"] == [] and man["player_model"] == "" and man["notes"] == ""
     notes = (tmp_path / "out" / "RELEASE_NOTES.md").read_text()
     assert "scored by the PlayWorld verifier" in notes and "Labels" not in notes
 
@@ -95,6 +96,25 @@ def test_capped_gen_only_run_publishes_labelled_clips(tmp_path, monkeypatch):
     play = "https://benceruleanlu.github.io/playworld-advancement/?scenes=smoke1&scene=GC005#scenes"
     assert f"[play]({play})" in md and "[mp4](https://example.test/dl/GC005.mp4)" in md
     assert "| IF010 | if | - | missing | no video |" in md and "Capped smoke run" in md
+
+
+@pytest.mark.parametrize("args,model", [
+    (["--lingbot-turn-cal", "--agent-model", "gpt-6-luna"], "gpt-6-luna"),
+    (["--agent-model=gpt-x"], "gpt-x"),
+    (["--agent-model", "a", "--agent-model", "b"], "b"),  # argparse keeps the last
+    (["--agent-model"], ""),  # dangling flag: no model
+    ([], ""),
+])
+def test_player_model_from_runner_args(args, model):
+    assert media.player_model(args) == model
+
+
+def test_manifest_carries_runner_args_player_and_notes(tmp_path, monkeypatch):
+    sel = _unscored(tmp_path, monkeypatch, {"runner": "lingbot_world2", "action_source": "agent", "notes": "player hint",
+                                            "runner_args": ["--lingbot-turn-cal", "--agent-model", "gpt-6-luna"]})
+    man = media.build("hint1", sel, tmp_path / "out", "https://example.test/dl/", "")
+    assert man["runner_args"] == ["--lingbot-turn-cal", "--agent-model", "gpt-6-luna"]
+    assert man["player_model"] == "gpt-6-luna" and man["notes"] == "player hint"
 
 
 def test_screening_run_labels_judge_and_hides_its_scores(tmp_path, monkeypatch):

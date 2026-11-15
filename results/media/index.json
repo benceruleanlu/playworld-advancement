@@ -1,0 +1,15 @@
+{
+ "runs": [
+  {
+   "exp": "smk13-gc-base-c10-v2",
+   "generated": "2026-11-15T01:24:05Z",
+   "n_tasks": 3,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk13-gc-base-c10-v2",
+   "scored": false,
+   "labels": [
+    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+    "not scored"
+   ]
+  }
+ ]
+}

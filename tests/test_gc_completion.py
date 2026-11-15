@@ -78,7 +78,7 @@ def test_runner_flag_defaults_and_installation(monkeypatch, mode):
         calls.append(task)
         return "WAIT"
     ra = SimpleNamespace(decide_action=original, run_task=lambda *a: None, main=lambda: 0)
-    monkeypatch.setattr(upstream, "import_run_agent", lambda: ra)
+    monkeypatch.setattr(upstream, "import_run_agent", lambda **kw: ra)
     monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
     for name in ("LINGBOT_PLAYER_HINT", "LINGBOT_GC_COMPLETION_HINT"):
         monkeypatch.delenv(name, raising=False)
@@ -87,9 +87,29 @@ def test_runner_flag_defaults_and_installation(monkeypatch, mode):
     if mode == "env":
         monkeypatch.setenv("LINGBOT_GC_COMPLETION_HINT", "1")
     with pytest.raises(SystemExit) as exc:
-        runpy.run_path(str(ROOT / "adapters/lingbot_world2/run.py"))
+        runpy.run_path(str(ROOT / "adapters/lingbot_world2/run.py"), run_name="__main__")
     assert exc.value.code == 0 and sys.argv == ["run.py", "--seed", "42"]
     assert (ra.decide_action is original) == (mode == "off")
     task = {"task_id": "GC036", "prompt": "Pan, then recenter."}
     assert ra.decide_action(task, None, [], 0, 30, SimpleNamespace()) == "WAIT"
     assert (C.REMINDER in calls[0]["prompt"]) == (mode != "off")
+
+
+def test_completion_flag_resets_between_arms(monkeypatch):
+    from adapters.lingbot_world2 import run as R
+    modules = []
+    def fresh(**kw):
+        ra = SimpleNamespace(decide_action=lambda *a: "END", run_task=lambda *a: None, main=lambda: 0)
+        modules.append((ra, ra.decide_action))
+        return ra
+    monkeypatch.setattr(R, "import_run_agent", fresh)
+    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(sys, "argv", ["run.py"])
+    monkeypatch.delenv("LINGBOT_GC_COMPLETION_HINT", raising=False)
+    monkeypatch.delenv("LINGBOT_PLAYER_HINT", raising=False)
+    assert R.main(["run.py", "--lingbot-gc-completion-hint"]) == 0
+    assert modules[0][0].decide_action({"task_id": "GC033"}, None, [], 0, 30, None) == "END"
+    assert R.STATS.gc_completion_hints == R.STATS.gc_completion_ends == 1
+    assert R.main(["run.py"]) == 0
+    assert not R.GC_COMPLETION and modules[1][0].decide_action is modules[1][1]
+    assert R.STATS.gc_completion_hints == R.STATS.gc_completion_ends == 0
