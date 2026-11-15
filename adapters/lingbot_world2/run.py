@@ -359,9 +359,6 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     window, argv = _window(argv, environ)
     flags["turn_step"], argv = _turn_step(argv, environ)
     flags["turn_cal"] = flags["turn_cal"] or bool(flags["turn_step"])  # a step is a calibrated rate
-    if flags["turn_step"] and flags.get("scripted"):
-        raise SystemExit("--lingbot-turn-step cannot be combined with --lingbot-scripted-player: the script counts "
-                         "yaw chunks at turn calibration's 45 degrees, so a different step would change the path")
     flags.update(window)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
@@ -520,6 +517,7 @@ class LingBotWorld2Engine:
               + (", IF identity cue on" if IF_IDENTITY else "")
               + (", measured turn on" if STATS.measured_turn else "")
               + (f", scripted player on ({SP.units():g} tokens per chunk"
+                 + (f", pitch {SP.units('pitch'):g}" if SP.units() != SP.units("pitch") else "")
                  + ("" if TURN_CAL else ", angles uncalibrated: turn-cal off") + ")" if STATS.scripted else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
@@ -540,8 +538,12 @@ class LingBotWorld2Engine:
     def _calibrate(self, name, n_keys):
         """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
         if TURN_CAL:
-            P.calibrate(S.parse_chunk_name(name) is None, n_keys,
-                        int(getattr(self.args, "action_frame_unit", 20) or 20))
+            dataset = S.parse_chunk_name(name) is None
+            if dataset and P.CHUNK_YAW_DEG and not STATS.turn_step_dataset:
+                print(f"[lingbot] turn step: inactive for {name} (dataset mode keeps {P.UNIT_YAW_DEG:g} degrees "
+                      f"per token)", flush=True)
+            STATS.turn_step_dataset = STATS.turn_step_dataset or bool(dataset and P.CHUNK_YAW_DEG)
+            P.calibrate(dataset, n_keys, int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
         original_prompt = prompt
@@ -771,7 +773,8 @@ def main(argv: list[str] | None = None) -> int:
                                  ("return stop", RETURN_STOP), ("IF horizon", IF_HORIZON),
                                  ("player history endpoints", flags["history_endpoints"]),
                                  ("measured turn", flags["measured_turn"])) if on]
-        print(f"[lingbot] scripted player: on ({SP.units():g} rotation tokens per chunk, then WAIT tail and END; "
+        print(f"[lingbot] scripted player: on ({SP.units():g} yaw / {SP.units('pitch'):g} pitch tokens per chunk, "
+              f"then WAIT tail and END; "
               f"LLM player not called)" + (f"; not reached: {', '.join(inert)}" if inert else ""), flush=True)
     rc = run_agent.main()
     agent_api.finish(run_agent)

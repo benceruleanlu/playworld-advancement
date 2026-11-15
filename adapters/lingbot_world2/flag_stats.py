@@ -51,7 +51,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-cond-schedule             cond_sched=on|skip, cond_sched_chunks, cond_sched_calls (session chunks and
                                       DiT forward calls whose early-step cam/text scales differed from 1.0)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
-  --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it)
+  --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it),
+                                      or turn_step=inactive for a task run as one dataset call (`<task>_full`)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
                                       wait-only insight), scripted_planned (script + tail chunks),
                                       scripted_chunks (decisions answered from the script), scripted_end
@@ -121,6 +122,7 @@ class FlagStats:
         self.if_subject_prompts = 0
         self.weight_mod_steps = self.weight_mod_chunks = 0
         self.if_identity_prompts = 0
+        self.turn_step_dataset = False  # a `<task>_full` call ran: the step does not apply there
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
@@ -255,7 +257,7 @@ class FlagStats:
         if self.window:
             s.update(window=self.window)
         if self.turn_step:
-            s.update(turn_step=f"{self.turn_step:g}")
+            s.update(turn_step="inactive" if self.turn_step_dataset else f"{self.turn_step:g}")
         if self.if_identity:
             s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))

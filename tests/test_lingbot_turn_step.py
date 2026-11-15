@@ -80,11 +80,9 @@ def test_configure_parses_validates_and_implies_turn_cal():
     assert flags["turn_step"] == 0 and flags["turn_cal"] is True
     src = (ROOT / "adapters" / "lingbot_world2" / "run.py").read_text()
     assert '    P.CHUNK_YAW_DEG = flags["turn_step"]\n    if flags["turn_step"]:' in src  # applied unconditionally
-    # the scripted player sizes its yaw chunks for 45 degrees; a different step would change its path
-    with pytest.raises(SystemExit):
-        RUN.configure(["run.py", "--lingbot-turn-step", "90", "--lingbot-scripted-player"], environ={})
-    assert RUN.configure(["run.py", "--lingbot-turn-step", "0", "--lingbot-scripted-player"],
-                         environ={})[0]["turn_step"] == 0
+    # the scripted player follows the step (its yaw chunks are sized from CHUNK_YAW_DEG)
+    assert RUN.configure(["run.py", "--lingbot-turn-step", "90", "--lingbot-scripted-player"],
+                         environ={})[0]["turn_step"] == 90.0
     for bad in ("5", "200", "fast"):
         with pytest.raises(SystemExit):
             RUN.configure(["run.py", "--lingbot-turn-step", bad], environ={})
@@ -96,3 +94,35 @@ def test_flag_line_only_grows_when_the_step_is_set():
     st = F.FlagStats(True, "goal", False, False, turn_step=90.0)
     assert F.FlagStats.line(st.summary("GC033")).endswith("turn_step=90")
     assert st.total_line().endswith("turn_step=90")
+
+
+def _segments(task):
+    """Minimal stand-in for upstream parse_segments on `→*n -> ←*n` style actions."""
+    word = {"→": "RIGHT", "←": "LEFT", "u": "UP", "d": "DOWN"}
+    return [(word[seg.split("*")[0].strip()], int(seg.split("*")[1])) for seg in task["action"].split("->")]
+
+
+def test_scripted_player_sizes_yaw_chunks_from_the_step():
+    from adapters.lingbot_world2 import scripted_player as SP  # noqa: PLC0415
+    valid = ("LEFT", "RIGHT", "UP", "DOWN")
+    out_back = {"action": "→*4 -> ←*4"}
+    P.reset({})
+    assert SP.units() == SP.units("pitch") == 2.0
+    assert SP.script(out_back, _segments, valid) == ["RIGHT", "RIGHT", "LEFT", "LEFT"]  # 45 per chunk: 90 out, back
+    P.CHUNK_YAW_DEG = 90.0
+    try:
+        assert SP.units() == 4.0 and SP.units("pitch") == 2.0
+        assert SP.script(out_back, _segments, valid) == ["RIGHT", "LEFT"]  # still 90 out and back
+        assert SP.script({"action": "u*2 -> d*2"}, _segments, valid) == ["UP", "DOWN"]  # pitch keeps 40 per chunk
+        angle = sum(math.degrees(P.calibrate(False, 32)[0]) * 32 for _ in SP.script({"action": "→*4"}, _segments, valid))
+        assert angle == pytest.approx(90.0)
+    finally:
+        P.reset({})
+
+
+def test_dataset_task_reports_the_step_inactive():
+    st = F.FlagStats(True, "goal", False, False, turn_step=90.0)
+    st.turn_step_dataset = True
+    assert F.FlagStats.line(st.summary("GC033")).endswith("turn_step=inactive")
+    st.new_task()
+    assert F.FlagStats.line(st.summary("GC031")).endswith("turn_step=90")
