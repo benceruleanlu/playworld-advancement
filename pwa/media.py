@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -136,17 +137,53 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
     return man
 
 
-def update_index(index: Path, man: dict) -> dict:
-    """Add or replace man's run in index.json, newest first."""
-    data = json.loads(index.read_text()) if index.is_file() else {"runs": []}
+def _index_with(data: dict, man: dict) -> dict:
     runs = [r for r in data.get("runs", []) if r.get("exp") != man["exp"]]
     runs.append({"exp": man["exp"], "generated": man["generated"], "n_tasks": len(man["tasks"]), "release_url": man["release_url"],
                  # manifests from before these fields were official scored runs
                  "scored": man.get("scored", True), "labels": man.get("labels", [])})
     data["runs"] = sorted(runs, key=lambda r: r.get("generated", ""), reverse=True)
+    return data
+
+
+def update_index(index: Path, man: dict) -> dict:
+    """Add or replace man's run in index.json, newest first."""
+    data = _index_with(json.loads(index.read_text()) if index.is_file() else {"runs": []}, man)
     index.parent.mkdir(parents=True, exist_ok=True)
     index.write_text(json.dumps(data, indent=1) + "\n")
     return data
+
+
+def is_official(man: dict | None) -> bool:
+    """True for an official scored manifest (manifests from before `scored` existed were official scored runs)."""
+    return bool(man) and bool(man.get("scored", True))
+
+
+def would_downgrade(existing: dict | None, new: dict) -> bool:
+    """True if publishing `new` would replace an official scored manifest with an unscored one, e.g. a later
+    screening-judge or gen-only run of the same EXP, which never sees the official eval/ dir. Such a publish is
+    skipped so the official means, reasons and release notes survive."""
+    return is_official(existing) and not is_official(new)
+
+
+def to_main(media_dir: Path, man_path: Path) -> bool:
+    """Copy the manifest at man_path to media_dir/EXP.json and add it to media_dir/index.json, all or nothing:
+    everything is read and checked before anything is written, so a malformed file never leaves a manifest
+    without an index entry. Returns False (writes nothing) when it would downgrade an official manifest."""
+    man = json.loads(man_path.read_text())
+    dest = media_dir / f"{man['exp']}.json"
+    existing = json.loads(dest.read_text()) if dest.is_file() else None
+    if would_downgrade(existing, man):
+        log(f"[pwa] media {man['exp']}: main already has the official scored scenes; not replacing them with an unscored run")
+        return False
+    index = media_dir / "index.json"
+    data = _index_with(json.loads(index.read_text()) if index.is_file() else {"runs": []}, man)
+    media_dir.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".tmp")
+    tmp.write_text(json.dumps(man, indent=1, ensure_ascii=False) + "\n")
+    index.write_text(json.dumps(data, indent=1) + "\n")
+    tmp.replace(dest)
+    return True
 
 
 def _cell(x) -> str:
@@ -198,3 +235,25 @@ def release_notes(man: dict) -> str:
             f"**License:** these videos are released under [{LICENSE}](https://creativecommons.org/licenses/by-nc-sa/4.0/), "
             "non-commercial use only. Changes: re-encoded to 480p H.264 without audio; posters are one frame of each rollout.\n\n"
             f"**Removal requests:** [open an issue]({REPO_URL}/issues/new?title=Scene+removal+request).\n")
+
+
+def _main(argv: list[str]) -> int:
+    """Workflow helpers (no dataset needed):
+    python -m pwa.media to-main MEDIA_DIR MANIFEST   publish MANIFEST into MEDIA_DIR (exit 0 also when skipped)
+    python -m pwa.media keeps-official MAIN_MANIFEST NEW_MANIFEST   exit 0 if NEW would downgrade MAIN, else 1"""
+    if len(argv) == 3 and argv[0] == "to-main":
+        to_main(Path(argv[1]), Path(argv[2]))
+        return 0
+    if len(argv) == 3 and argv[0] == "keeps-official":
+        try:
+            main_man = json.loads(Path(argv[1]).read_text()) if Path(argv[1]).is_file() and Path(argv[1]).stat().st_size else None
+            return 0 if would_downgrade(main_man, json.loads(Path(argv[2]).read_text())) else 1
+        except (OSError, ValueError) as e:  # cannot tell: keep whatever is published
+            print(f"keeps-official: {e}", file=sys.stderr)
+            return 0
+    print(_main.__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv[1:]))
