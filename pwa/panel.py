@@ -18,6 +18,11 @@ FAR = 1.0  # a screening task mean this far from the official one would flip a c
 SPLIT = 0.5  # pass-to-pass spread reported for self-agreement (the dev baseline had 10/24 at 0.5+)
 
 
+def caps_differ(cap_a, cap_b) -> str:
+    return (f"chunk caps differ (A={cap_a or 'none'}, B={cap_b or 'none'}); rollouts have different lengths, "
+            "so the delta mixes the method with the horizon")
+
+
 def _sign(d: float) -> int:
     return 0 if abs(d) < 1e-9 else (1 if d > 0 else -1)
 
@@ -109,6 +114,9 @@ def render_panel_cells(c: dict) -> str:
     out = io.StringIO()
     p = lambda s="": print(s, file=out)  # noqa: E731
     p(f"*** screening panel: {NOTE} ***")
+    caps = c.get("max_chunks") or {}
+    if caps.get("a") != caps.get("b"):
+        p(f"*** WARNING: {caps_differ(caps.get('a'), caps.get('b'))} ***")
     for i, s in enumerate(c["slugs"], 1):
         pj = c["per_judge"][s]
         p(f"  J{i} = {s}  (alone: up {pj['up']}  down {pj['down']})")

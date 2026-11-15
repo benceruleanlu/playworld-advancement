@@ -351,6 +351,9 @@ def test_panel_cells_moves_only_when_every_judge_agrees():
     assert by["T1"]["judges"]["j2"]["delta"] == pytest.approx(1.5)
     txt = panel.render_panel_cells(c)
     assert "screening, not comparable to the leaderboard" in txt and "panel up 1  down 1  of 4" in txt
+    assert "caps differ" not in txt
+    c["max_chunks"] = {"a": 4, "b": None}  # set by `pwa cells` from each run's meta.json
+    assert "chunk caps differ (A=4, B=none)" in panel.render_panel_cells(c)
 
 
 def test_spearman_known_values():

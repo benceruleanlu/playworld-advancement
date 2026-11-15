@@ -48,6 +48,15 @@ def _gen_args(p):
                         "--num-chunks, default 30). Labelled a capped smoke run everywhere; never an official score")
 
 
+def _warn_caps(exp_a: str, exp_b: str) -> list:
+    """Chunk caps of A and B; warns when they differ (the delta then mixes the method with the horizon)."""
+    from .panel import caps_differ
+    caps = [core.chunk_cap(core.read_meta(e)) for e in (exp_a, exp_b)]
+    if caps[0] != caps[1]:
+        log(f"[pwa] WARNING: {caps_differ(*caps)}")
+    return caps
+
+
 def _judge_args(p, panel: bool = False, required: bool = False):
     more = ("; repeat for a panel of judges" if panel else "")
     p.add_argument("--judge-model", action="append", default=None, required=required, metavar="[openai:]MODEL[:THINKING]",
@@ -336,11 +345,13 @@ def dispatch(a) -> int:  # noqa: C901
         common = {t["task_id"] for t in sa} & {t["task_id"] for t in sb}
         if len(common) < max(len(sa), len(sb)):
             log(f"[pwa] task lists differ; comparing on the {len(common)} common tasks")
+        caps = _warn_caps(a.exp_a, a.exp_b)
         pairs = [(report.build(a.exp_a, [t for t in sa if t["task_id"] in common], judge=j),
                   report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=j)) for j in judges]
         if missing := [j.spec for j, (ra, rb) in zip(judges, pairs) if not ra["passes"] or not rb["passes"]]:
             raise PwaError(f"both experiments need at least one scored pass under every judge; missing: {' '.join(missing)}")
         c = panel.panel_cells(pairs)
+        c["max_chunks"] = {"a": caps[0], "b": caps[1]}
         emit(c, a.json, panel.render_panel_cells(c))
         return 0
 
@@ -362,10 +373,7 @@ def dispatch(a) -> int:  # noqa: C901
         common = {t["task_id"] for t in sa} & {t["task_id"] for t in sb}
         if len(common) < max(len(sa), len(sb)):
             log(f"[pwa] task lists differ; comparing on the {len(common)} common tasks")
-        caps = [core.chunk_cap(core.read_meta(e)) for e in (a.exp_a, a.exp_b)]
-        if caps[0] != caps[1]:
-            log(f"[pwa] WARNING: chunk caps differ (A={caps[0] or 'none'}, B={caps[1] or 'none'}); rollouts have "
-                f"different lengths, so the delta mixes the method with the horizon")
+        _warn_caps(a.exp_a, a.exp_b)
         ra = report.build(a.exp_a, [t for t in sa if t["task_id"] in common], judge=judge)
         rb = report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=judge)
         if not ra["passes"] or not rb["passes"]:
