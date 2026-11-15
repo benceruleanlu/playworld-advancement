@@ -314,6 +314,7 @@ from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
 from adapters.lingbot_world2 import pose_memory as PM  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
+from adapters.lingbot_world2 import repe_steer as REPE  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
@@ -466,6 +467,9 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     flags["yarn_q"], argv = YQ.parse(argv, environ)
     if flags["yarn_q"].enabled and flags["stateless"]:
         raise SystemExit("--lingbot-yarn-q requires session mode")
+    flags["repe_steer"], argv = REPE.parse(argv, environ)
+    if flags["repe_steer"].enabled and flags["stateless"]:
+        raise SystemExit("--lingbot-repe-steer requires session mode")
     window, argv = _window(argv, environ)
     flags["turn_step"], argv = _turn_step(argv, environ)
     flags["turn_cal"] = flags["turn_cal"] or bool(flags["turn_step"])  # a step is a calibrated rate
@@ -556,6 +560,7 @@ WARP_REANCHOR = WR.WarpReanchorConfig()  # --lingbot-warp-reanchor / LINGBOT_WAR
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
 IF_SETTLE = IS.SettleConfig()
 SETTLE: IS.SettleBudget | None = None
+REPE_STEER = REPE.SteerConfig()
 YAW_SERVO = False  # --lingbot-yaw-servo / LINGBOT_YAW_SERVO=1, off by default; session + turn-cal
 YAW_SERVO_CFG = YSV.ServoConfig()  # its knobs (--lingbot-yaw-servo-k / -beta, or env)
 TURNTABLE = TT.TurntableConfig()  # --lingbot-turntable-poses / LINGBOT_TURNTABLE_POSES=1, off by default
@@ -715,6 +720,7 @@ class LingBotWorld2Engine:
               + ((", sink key scale ignored (stateless)" if STATELESS
                   else ", sink key scale inert (sink 0)" if SINK == 0 else f", {SINK_SCALE.describe()}")
                  if SINK_SCALE.enabled else "")
+              + (f", {REPE_STEER.describe()}" if REPE_STEER.enabled else "")
               + (f", {POSE_MEM.describe()}" if POSE_MEM.enabled else "")
               + (f", {SPLIT_SINK.describe()}" if SPLIT_SINK.enabled else "")
               + (f", {WARP_REANCHOR.describe()}" if WARP_REANCHOR.enabled else "")
@@ -841,11 +847,15 @@ class LingBotWorld2Engine:
         self._calibrate(name, len(keys), action)
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
+        steered0 = getattr(self.session, "repe_steered", 0)
         if not cont:
             horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
             reanchor = REANCHOR and S.reanchor_task(name)
             # only with the flag, so the no-flag reset call stays main's
             mod = {"third_person": WM.is_third_person(prompts._current.get("task"), name)} if self.weight_mod else {}
+            if REPE.applies_to(prompts._current.get("task"), name, REPE_STEER):
+                mod["repe_scale"] = REPE_STEER.scale
+                STATS.repe_armed()
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
                                reanchor=reanchor,
@@ -913,6 +923,7 @@ class LingBotWorld2Engine:
         STATS.gc_eased_turns += ease
         STATS.noise_mean_samples += getattr(coupler, "count", 0) - coupled
         STATS.reanchored(self.session.reanchor_events - anchored)
+        STATS.steered(getattr(self.session, "repe_steered", 0) - steered0)
         STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
                              getattr(self.session, "cond_sched_calls", 0) - cs_calls)
         if KV_NOISE.enabled:
@@ -1013,7 +1024,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG, SPLIT_SINK, IF_SETTLE, SETTLE, YARN_Q
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG, SPLIT_SINK, IF_SETTLE, SETTLE, YARN_Q, REPE_STEER
     global WARP_REANCHOR
     global TURNTABLE, _PARSE_SEGMENTS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
@@ -1026,7 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
-    COND_SCHED, YARN_Q = flags["cond_sched"], flags["yarn_q"]
+    COND_SCHED, YARN_Q, REPE_STEER = flags["cond_sched"], flags["yarn_q"], flags["repe_steer"]
     SINK_SCALE = flags["sink_scale"]
     POSE_MEM = flags["pose_mem"]
     SPLIT_SINK = flags["split_sink"]
@@ -1057,7 +1068,7 @@ def main(argv: list[str] | None = None) -> int:
                                  turntable=TURNTABLE.walk if TURNTABLE.enabled else "",
                                  turntable_rescale=TURNTABLE.enabled and TURNTABLE.rescale,
                                  split_sink=SPLIT_SINK.enabled, if_settle=IF_SETTLE.enabled,
-                                 yarn_q=YARN_Q.enabled)
+                                 yarn_q=YARN_Q.enabled, repe_steer=REPE_STEER.enabled)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

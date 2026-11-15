@@ -63,6 +63,7 @@ import numpy as np
 from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import pose_memory as PM
 from adapters.lingbot_world2 import poses as P
+from adapters.lingbot_world2 import repe_steer as REPE
 from adapters.lingbot_world2 import sink_scale as SK
 from adapters.lingbot_world2 import split_sink as SS
 from adapters.lingbot_world2 import turntable as TT
@@ -375,6 +376,7 @@ class LingBotSession:
         self.stg, self.stg_chunks, self.stg_calls = stg, 0, 0
         # --lingbot-sink-key-scale: config (None = off), whether this rollout's task matched, chunks scaled
         self.sink_scale, self.sink_scale_on, self.sink_scaled_chunks = sink_scale, False, 0
+        self.repe_steered = 0
         # --lingbot-pose-memory: config (None = off), whether this rollout's task matched (set by the engine after
         # reset), and counters over the session's life (flag_stats reads deltas; pm_peak_bytes is per rollout)
         self.pose_mem, self.pose_mem_on = pose_mem, False
@@ -400,6 +402,7 @@ class LingBotSession:
         self._anchor = None
         self._anchored = set()  # latents re-anchored to the input image (kv_noise keeps their chunk clean)
         self.detector = None
+        self._repe_scale = None
         self._warp_tracker = None
         self.pmem = None          # --lingbot-pose-memory bank, cleared on every reset
         self._pm_snapshot = None  # host copy of the original sink slots [anchor, anchor + latents) of every block
@@ -412,7 +415,7 @@ class LingBotSession:
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
               reanchor: bool = False, third_person: bool = False,
-              noise_mean: bool = False):
+              noise_mean: bool = False, repe_scale: float | None = None):
         import torch  # noqa: PLC0415
         import torchvision.transforms.functional as TF  # noqa: PLC0415
         from wan.utils.cam_utils import get_Ks_transformed  # noqa: PLC0415
@@ -438,7 +441,11 @@ class LingBotSession:
 
         pipe.scheduler.set_timesteps(pipe.num_train_timesteps, shift=self.shift)
         self.timesteps = pipe.scheduler.timesteps[list(TIMESTEPS_INDEX)]
-        self.context = encode_prompt(pipe, prompt, self.t5_cache)
+        self._repe_scale = repe_scale
+        self.context = (REPE.encode_steered(pipe, prompt, self.t5_cache, repe_scale, encode_prompt)
+                        if repe_scale is not None else encode_prompt(pipe, prompt, self.t5_cache))
+        if repe_scale is not None:
+            self.repe_steered += 1
         self.prompt = prompt
 
         Ks = torch.tensor([P.INTRINSICS_480P], dtype=torch.float32)
@@ -635,7 +642,10 @@ class LingBotSession:
             raise RuntimeError("reset the session before updating its prompt")
         if prompt == self.prompt:
             return False
-        context = encode_prompt(self.pipe, prompt, self.t5_cache)
+        context = (REPE.encode_steered(self.pipe, prompt, self.t5_cache, self._repe_scale, encode_prompt)
+                   if self._repe_scale is not None else encode_prompt(self.pipe, prompt, self.t5_cache))
+        if self._repe_scale is not None:
+            self.repe_steered += 1
         self.context, self.prompt = context, prompt
         self.cross_init = False  # upstream overwrites text K/V on the next first-call forward
         return True

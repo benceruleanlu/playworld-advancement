@@ -115,7 +115,8 @@ class FlagStats:
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
                  pose_mem: bool = False, yaw_servo: bool = False, warp_reanchor: bool = False,
                  turntable: str = "", turntable_rescale: bool = False, split_sink: bool = False,
-                 if_settle: bool = False, yarn_q: bool = False):
+                 if_settle: bool = False, yarn_q: bool = False,
+                 repe_steer: bool = False):
         self.split_sink = bool(split_sink)
         self.warp_reanchor = bool(warp_reanchor)
         self.pose_mem = bool(pose_mem)
@@ -126,6 +127,7 @@ class FlagStats:
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.yarn_q = bool(yarn_q)
+        self.repe_steer = bool(repe_steer)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.kv_noise, self.kv_noise_t = kv_noise, kv_noise_t
@@ -165,7 +167,7 @@ class FlagStats:
                        "if_settle_tasks": 0, "if_settle_frames": 0,
                        "turntable_frames": 0, "turntable_rescaled": 0,
                        **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS},
-                       "warp_events": 0, "warp_patches": 0}
+                       "warp_events": 0, "warp_patches": 0, "repe_steered": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -207,6 +209,13 @@ class FlagStats:
         self.if_horizon_cap = 0
         self.if_horizon_ends = 0
         self.if_settle_budget = self.if_settle_frames = 0
+        self.repe_steer_armed, self.repe_steered = False, 0
+
+    def repe_armed(self):
+        self.repe_steer_armed = True
+
+    def steered(self, n: int = 1):
+        self.repe_steered += int(n)
 
     def caption(self, used: bool):
         if used:
@@ -419,6 +428,9 @@ class FlagStats:
             s.update(if_settle="on" if self.if_settle_budget else "skip", if_settle_budget=self.if_settle_budget, if_settle_frames=self.if_settle_frames)
         if self.yarn_q:
             s.update(yarn_q="on", yarn_q_chunks=self.yarn_q_chunks)
+        if self.repe_steer:
+            s.update(repe_steer="on" if (self.repe_steer_armed or self.repe_steered) else "skip",
+                     repe_steered=self.repe_steered)
         return s
 
     @staticmethod
@@ -469,7 +481,8 @@ class FlagStats:
                     {k: t[f"pose_mem_{k}"] for k in POSE_MEM_FIELDS}).items()) if self.pose_mem else "")
                 + (f" warp_events={t['warp_events']} warp_patches={t['warp_patches']}" if self.warp_reanchor else "")
                 + (f" if_settle_tasks={t['if_settle_tasks']} if_settle_frames={t['if_settle_frames']}" if self.if_settle else "")
-                + (f" yarn_q=on yarn_q_chunks={t['yarn_q_chunks']}" if self.yarn_q else ""))
+                + (f" yarn_q=on yarn_q_chunks={t['yarn_q_chunks']}" if self.yarn_q else "")
+                + (f" repe_steered={t['repe_steered']}" if self.repe_steer else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -508,6 +521,7 @@ class FlagStats:
         t["split_sink_chunks"] += self.split_sink_chunks
         t["split_sink_fg_tokens"] += self.split_sink_fg_tokens
         t["yaw_gain_frames"] += self.yaw_gain_frames
+        t["repe_steered"] += self.repe_steered
         t["yaw_servo_chunks"] += self.yaw_servo_chunks
         t["yaw_servo_untrusted"] += self.yaw_servo_untrusted
         t["turntable_frames"] += self.turntable_frames
