@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import math
 
+from .core import cap_label
 from .report import MOVE, _avg, _md2, _md_cell, cells, f2
 
 NOTE = "screening, not comparable to the leaderboard"
@@ -33,7 +34,10 @@ def panel(reps: list[dict]) -> dict:
         vals = [m for m in means.values() if m is not None]
         tasks.append({"task_id": tid, "family": t0["family"], "means": means,
                       "spread": max(vals) - min(vals) if len(vals) == len(reps) else None})
+    # every report of one experiment reads the same meta.json, so any judge's cap is the run's cap
+    cap = next((r["max_chunks"] for r in reps if r.get("max_chunks")), None)
     return {"exp": reps[0]["exp"], "panel": True, "note": NOTE, "judges": [r["judge"] for r in reps],
+            "max_chunks": cap,
             "slugs": slugs, "overall": {r["judge"]["slug"]: r["overall"] for r in reps}, "tasks": tasks,
             "reports": reps}
 
@@ -45,6 +49,9 @@ def render_panel(p: dict, md: bool = False) -> str:
     if md:
         pr(f"## {_md_cell(p['exp'])}: screening panel")
         pr()
+        if p.get("max_chunks"):
+            pr(f"> **{_md_cell(cap_label(p['max_chunks']).capitalize())}.** Smoke tier only; never the site headline.")
+            pr()
         pr(f"> **Screening panel ({_md_cell(_names(p['judges']))}): {NOTE}.** Dev screening only; "
            "not written to results/experiments.csv.")
         pr()
@@ -55,6 +62,8 @@ def render_panel(p: dict, md: bool = False) -> str:
                + f" | {_md2(t['spread'])} |")
         pr("| **overall** | | " + " | ".join(f"**{_md2(p['overall'][s])}**" for s in slugs) + " | |")
         return out.getvalue()
+    if p.get("max_chunks"):
+        pr(f"*** {cap_label(p['max_chunks'])} ***")
     pr(f"*** screening panel: {NOTE} ***")
     for i, s in enumerate(slugs, 1):
         pr(f"  J{i} = {s}")

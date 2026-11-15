@@ -278,6 +278,8 @@ jobs:
 
       - name: Report
         if: inputs.stage != 'gen-only'
+        env:
+          GH_TOKEN: ${{ github.token }}  # the official-artifact lookup for judge calibration below calls gh api
         run: |
           # The run title only sees inputs; a score-only run of a capped generation gets its label from meta.json here.
           cap=$(python -c 'import sys; from pwa.core import chunk_cap, read_meta; print(chunk_cap(read_meta(sys.argv[1])) or "")' "$EXP" || true)
@@ -289,10 +291,17 @@ jobs:
             if [[ ! -d "runs/$EXP/eval/pass1" ]]; then
               # best effort: the official eval/ of these videos from the newest unexpired run-EXP artifact holding one,
               # for this step only (deleted on exit, so Publish scenes still sees an unscored run)
-              ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=run-$EXP&per_page=20" \
-                      --jq '.artifacts[] | select(.expired | not) | .id' 2>/dev/null || true)
+              if ! ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=run-$EXP&per_page=20" \
+                      --jq '.artifacts[] | select(.expired | not) | .id' 2>"$RUNNER_TEMP/gh.err"); then
+                echo "::warning title=calibration lookup failed::artifact list for run-$EXP: $(head -c 300 "$RUNNER_TEMP/gh.err" | tr '\n' ' ')"
+                ids=""
+              fi
+              [[ -n "$ids" ]] || echo "no unexpired run-$EXP artifact found for calibration"
               for id in $ids; do
-                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/official.zip" || continue
+                if ! gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/official.zip" 2>"$RUNNER_TEMP/gh.err"; then
+                  echo "::warning title=calibration download failed::artifact $id: $(head -c 300 "$RUNNER_TEMP/gh.err" | tr '\n' ' ')"
+                  continue
+                fi
                 if unzip -Z1 "$RUNNER_TEMP/official.zip" | grep -q '^eval/pass1/'; then
                   trap 'rm -rf "runs/$EXP/eval"' EXIT
                   unzip -qo "$RUNNER_TEMP/official.zip" 'eval/*' -d "runs/$EXP" && echo "official eval/ from artifact $id"

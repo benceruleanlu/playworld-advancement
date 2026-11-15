@@ -281,6 +281,21 @@ def _rep(exp, slug, tasks):
             "passes": [1, 2], "overall": None}
 
 
+def test_panel_report_keeps_capped_smoke_label():
+    reps = [_rep("e", "j1", {"T1": [2, 2]}), _rep("e", "j2", {"T1": [3, 3]})]
+    for r in reps:
+        r["max_chunks"] = 4
+    p = panel.panel(reps)
+    assert p["max_chunks"] == 4
+    for md in (False, True):
+        out = panel.render_panel(p, md)
+        assert "capped smoke run: 4 agent chunks per rollout (official 30)" in out.lower()
+    for r in reps:
+        r["max_chunks"] = None
+    for md in (False, True):
+        assert "capped" not in panel.render_panel(panel.panel(reps), md).lower()
+
+
 def test_panel_cells_moves_only_when_every_judge_agrees():
     a1 = _rep("a", "j1", {"T1": [2, 2], "T2": [3, 3], "T3": [2, 2], "T4": [2, 2], "T5": [None, None]})
     b1 = _rep("b", "j1", {"T1": [3, 3], "T2": [2, 2], "T3": [3, 3], "T4": [2, 2], "T5": [3, 3]})
