@@ -32,7 +32,16 @@ Everything below uses the eight scenes read as camera. On OE034 the estimator re
 
 Two mirrored scripts per scene: left 90 then right 90, and right 90 then left 90.
 
-{{GAIN_TABLE}}
+| Scene | Left, first turn | Left, after reversal | Right, first turn | Right, after reversal | Left over right |
+|---|---|---|---|---|---|
+| GC005 | 1.48 | 1.44 | 1.18 | 1.06 | 1.30 |
+| GC031 | 1.72 | 1.44 | 1.36 | 1.29 | 1.19 |
+| GC033 | 1.24 | 1.11 | 0.91 | 0.94 | 1.27 |
+| GC036 | 1.51 | 1.34 | 1.14 | 1.17 | 1.24 |
+| GC038 | 1.24 | 1.36 | 1.12 | 1.20 | 1.13 |
+| OE047 | 1.55 | 1.48 | 1.22 | 1.24 | 1.23 |
+| OE048 | 1.99 | 1.70 | 1.16 | 1.44 | 1.42 |
+| OE069 | 0.88 | 0.89 | 0.56 | 0.85 | 1.26 |
 
 - Left turns render more than right turns in every one of the eight scenes: the ratio of the two gains is 1.13 to 1.42, mean 1.25.
 - The level differs by scene. Right-turn gain runs from 0.56 to 1.44 (mean 1.11), left from 0.88 to 1.99 (mean 1.40). No single constant makes "90 degrees" render as 90 everywhere.
@@ -82,7 +91,7 @@ So `ncc` with frame 0 is a check on geometry, not a stand-in for the judge. This
 
 ## What this means for other flags
 
-- `--lingbot-yaw-gain` (#119): the left over right ratio is stable enough (1.13 to 1.42) that a fixed pair can close out-and-back turns approximately; the level is not, so absolute angles stay scene-dependent. {{FIXED}}
+- `--lingbot-yaw-gain` (#119): the left over right ratio is stable enough (1.13 to 1.42) that a fixed pair can close out-and-back turns approximately; the level is not, so absolute angles stay scene-dependent. Tried on the five GC scenes (10 trials, `fixed-gain-and-mirror.jsonl`): the pair left 0.8 / right 1.0 takes the mean end error from 22.7 to 6.4 degrees (largest 15.2), ends further away than no gain in 2 of the 10 trials, and brings the end view back (`ncc` at least 0.6) in 6 of 10. It needs no new code.
 - Backlash compensation (#114): the measurements above do not support a reversal transient on these scenes.
 - Re-anchor and pose-indexed memory (#123) act when the commanded pose is back at a stored pose. With gains of 0.56 to 1.99 the rendered view is somewhere else at that moment, by tens of degrees after a 90-degree leg. They depend on the heading being right first.
 
