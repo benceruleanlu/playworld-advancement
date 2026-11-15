@@ -145,13 +145,19 @@ def is_pure_turn(keys) -> bool:
 
 class PoseTrack:
     """Absolute camera track across steps. advance(keys) -> normalised relative
-    poses for the new latent frames (one per 4 pixel frames)."""
+    poses for the new latent frames (one per 4 pixel frames).
+
+    yaw_gain (left, right), --lingbot-yaw-gain, off (None) by default: the relative poses returned
+    (what the model gets) turn j / l by the gain, while `latents` (what ReturnDetector reads) follow
+    the intended track without it, kept separately in `intended_last`. Off, both tracks are one."""
 
     def __init__(self, translation_gain: float = 1.0):
         self.translation_gain = translation_gain
-        self.last = np.eye(4)        # absolute pose of the latest pixel frame
-        self.prev_latent = None      # absolute pose of the latest latent frame
-        self.latents = None          # absolute poses of the last advance()'s latents (one per rel)
+        self.yaw_gain = None         # set per call by run.py with --lingbot-yaw-gain
+        self.last = np.eye(4)        # absolute pose of the latest pixel frame (model track)
+        self.intended_last = np.eye(4)  # same, intended track (no yaw gain)
+        self.prev_latent = None      # absolute pose of the latest latent frame (model track)
+        self.latents = None          # intended absolute poses of the last advance()'s latents (one per rel)
 
     def advance(self, keys: list[str], ease_turns: bool = False) -> np.ndarray:
         first = self.prev_latent is None
@@ -160,14 +166,23 @@ class PoseTrack:
         # Raised-cosine speed: half speed at edges, 1.5x mid-chunk; sum preserves total angle.
         scales = (1 - 0.5 * np.cos(2 * np.pi * (np.arange(len(keys)) + 0.5) / len(keys))
                   if ease_turns and is_pure_turn(keys) else None)
-        cur = self.last
+        gain = self.yaw_gain
+        cur, want = self.last, (self.intended_last if gain else None)
         lat = [cur] if first else []  # latent 0 is pixel frame 0
+        ilat = [want] if first else []
         for i, k in enumerate(keys, 1):
-            cur = cur @ P.key_delta(k, self.translation_gain, 1.0 if scales is None else float(scales[i - 1]))
+            s = 1.0 if scales is None else float(scales[i - 1])
+            if gain:
+                want = want @ P.key_delta(k, self.translation_gain, s)
+                cur = cur @ P.key_delta(k, self.translation_gain, s, yaw_gain=gain)
+            else:
+                cur = cur @ P.key_delta(k, self.translation_gain, s)
             if i % 4 == 0:
                 lat.append(cur)
+                ilat.append(want)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
-        self.last, self.prev_latent, self.latents = cur, lat[-1], np.stack(lat)
+        self.last, self.prev_latent = cur, lat[-1]
+        self.intended_last, self.latents = (want, np.stack(ilat)) if gain else (cur, np.stack(lat))
         return normalise_translation(rel)
 
 
