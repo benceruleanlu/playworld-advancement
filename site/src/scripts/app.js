@@ -52,7 +52,7 @@
   // ended without a result: failed, cancelled, or a stale running row. Hidden by default.
   function isEnded(r) { return isLive(r) && (r.status === "failed" || r.status === "cancelled" || isStale(r)); }
   // capped smoke tier: rollouts cut to 10 of 30 chunks, a behaviour check only, never comparable with official scores
-  function isCapped(r) { return /^smk-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
+  function isCapped(r) { return /^smk\d*-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
   function isOpen(r) { return r.action_source === "dataset"; }
   function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
@@ -659,7 +659,7 @@
       links: [["#64", PR + "64"]], evidence: [] },
     { title: "Capped smoke tier", status: "shipped",
       what: "Quick behaviour checks: each rollout stops after 10 of its 30 chunks, on 2 or 3 chosen tasks, one GPU per task, one pass of the screening judge.", fams: [],
-      body: "Uses the benchmark's own --num-chunks 10 option, so a run finishes in a fraction of the time of a full one. A capped rollout covers a third of the task, so its numbers are not comparable with official scores; its row in the log carries no score and ends as generated. This page badges these rows \"capped smoke\" (name starting smk- or notes saying capped smoke) and keeps them out of the headline, the ruler, the task-type scores, the Progress table and the best-so-far line. They are read for player behaviour and for whether each optional change fired.",
+      body: "Uses the benchmark's own --num-chunks 10 option, so a run finishes in a fraction of the time of a full one. A capped rollout covers a third of the task, so its numbers are not comparable with official scores; its row in the log carries no score and ends as generated. This page badges these rows \"capped smoke\" (name starting smk- or smk13- and similar, or notes saying capped smoke) and keeps them out of the headline, the ruler, the task-type scores, the Progress table and the best-so-far line. They are read for player behaviour and for whether each optional change fired.",
       links: [], evidence: ["smk-gc-base-c10-v1", "smk-gc-hint-c10-v1"] },
     { title: "Out-of-sight memory work", status: "dropped",
       what: "Changes to what the model keeps in memory while the camera looks away. Not pursued before submission.", fams: ["outsight"],
