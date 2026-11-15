@@ -34,14 +34,16 @@ MAX_ARMS = 8
 
 
 def parse_arms(text: str) -> list[list[str]]:
-    """'|'-separated runner arg strings -> one argv list per arm. An empty segment is a baseline arm
-    (no extra args), so " | --lingbot-turn-cal" is baseline vs turn-cal."""
+    """'|'-separated runner arg strings -> one argv list per arm. An empty segment, or one that is just
+    `base` (the label listing() prints for it), is a baseline arm (no extra args), so " | --lingbot-turn-cal"
+    is baseline vs turn-cal and "base" alone is a one-arm baseline run."""
     if not (text or "").strip():
         raise PwaError("--arms is empty; give '|'-separated runner arg strings, e.g. ' | --lingbot-turn-cal'")
     arms = []
     for seg in text.split(SEP):
         try:
-            arms.append(shlex.split(seg))
+            argv = shlex.split(seg)
+            arms.append([] if argv == ["base"] else argv)
         except ValueError as e:
             raise PwaError(f"cannot parse arm {seg.strip()!r}: {e}") from e
     if len(arms) > MAX_ARMS:
