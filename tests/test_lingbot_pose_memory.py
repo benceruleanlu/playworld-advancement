@@ -657,9 +657,14 @@ def test_yaw_scale_and_unwrapping():
     for bad in ("0", "nan", "x", "5"):
         with pytest.raises(SystemExit):
             PM.parse(["--lingbot-pose-memory", f"--lingbot-pose-mem-yaw-scale={bad}"], environ={})
-    for bad in ("rule=x", "pick=x"):
+    for bad in ("rule=x", "pick=x", "rel=x"):
         with pytest.raises(SystemExit):
             PM.parse(["--lingbot-pose-memory", f"--lingbot-pose-mem-{bad}"], environ={})
+    assert ON.rel == "stored" and ", rel " not in ON.describe()
+    rel_still, _ = PM.parse(["--lingbot-pose-memory", "--lingbot-pose-mem-rel", "still"], environ={})
+    rel_cur, _ = PM.parse(["--lingbot-pose-memory"], environ={"LINGBOT_POSE_MEM_REL": "current"})
+    assert rel_still.rel == "still" and "rel still" in rel_still.describe()
+    assert rel_cur.rel == "current" and "rel current" in rel_cur.describe()
     pm = PM.PoseMemory(ON, 6, 18)
     vs = np.concatenate([pm.views([_yaw_pose(9.0 * (4 * c + k)) for k in range(4)], c) for c in range(12)])
     assert np.allclose(vs[:, 0], 9.0 * np.arange(48))  # 423 degrees, unwrapped
@@ -721,8 +726,102 @@ def test_planner_cli(capsys):
     assert PL.main(["OE048", "--chunked"]) == 0
     out = capsys.readouterr().out
     assert "OE048_chunk_01" not in out and "| install <- " in out and out.splitlines()[-1].startswith("OE048 chunked:")
+    assert PL.main(["GC033", "--lingbot-pose-mem-rel", "current"]) == 0
+    out = capsys.readouterr().out
+    assert "rel current:move" in out and "rel current:still" in out
+    rows_stored, s_stored = PL.plan_task(PL.find_task("GC033", DATA), ON)
+    rows_still, s_still = PL.plan_task(PL.find_task("GC033", DATA), PM.PoseMemoryConfig(True, rel="still"))
+    rows_cur, s_cur = PL.plan_task(PL.find_task("GC033", DATA), PM.PoseMemoryConfig(True, rel="current"))
+    assert s_stored["retrievals"] == s_still["retrievals"] == s_cur["retrievals"] == 3
+    assert all("rel_mode" not in r for r in rows_stored)
+    assert [r["rel"] for r in rows_stored if r["kind"] in ("install", "retime")] == [["move"]] * 6
+    assert [r["rel"] for r in rows_still if r["kind"] in ("install", "retime")] == [["still"]] * 6
+    assert [r["rel"] for r in rows_cur if r["kind"] in ("install", "retime")] == [["move"]] * 4 + [["still"]] * 2
     with pytest.raises(SystemExit):
         PL.main(["GC033", "--lingbot-pose-mem-latents", "8"])  # sink 6 too small: refused as in the runner
+
+
+def test_pose_mem_rel_stored_still_and_current(monkeypatch, capsys):
+    """--lingbot-pose-mem-rel controls the relative poses passed to _mem_recompute (_plucker and weight_mod.step),
+    re-conditioning an installed view under rel=current when motion changes (including stopping on an in-window view)."""
+    monkeypatch.setattr(P, "YAW", math.radians(22.5) / 20)  # turn-cal dataset rate: 18 degrees per chunk
+
+    class _RegimeWM(contextlib.nullcontext):
+        def __init__(self):
+            super().__init__()
+            self.cam_scale, self.text_scale, self._regime, self._base_cam = 1.0, 1.0, "move", 1.0
+
+        def step(self, rel, third_person=False):
+            still = PM.rel_motion(rel) == "still"
+            self.cam_scale = self._base_cam = 0.0 if still else 1.0
+            self.text_scale, self._regime = 1.0, ("static" if still else "move")
+            return still
+
+        def denoise_step(self, i, n):
+            pass
+
+        def end_chunk(self):
+            self.cam_scale = self._base_cam
+
+    keys = S.fit_keys(["j"] * 80 + ["l"] * 80 + ["none"] * 50, S.keys_needed(13, first=True))
+    runs = {}
+    for mode in ("stored", "still", "current"):
+        sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, rel=mode))
+        sess.weight_mod = _RegimeWM()
+        plucker_seen, mem_plucker, mem_scales = [], [], []
+        orig_plucker = sess._plucker
+        orig_forward = sess._mem_forward
+        sess._plucker = lambda r, _orig=orig_plucker, _ps=plucker_seen: (_ps.append(np.array(r)), _orig(r))[1]
+
+        def rec_forward(*a, _orig=orig_forward, _s=sess, _ps=plucker_seen, _mp=mem_plucker, _ms=mem_scales, **k):
+            _ms.append(_s.weight_mod.cam_scale)
+            res = _orig(*a, **k)
+            _mp.append(_ps[-1])
+            return res
+
+        sess._mem_forward = rec_forward
+        sess.step(keys)
+        out = capsys.readouterr().out
+        assert sess.pm_installs == 3 and sess.pm_retimes == 3 and len(mem_scales) == 6
+        runs[mode] = (mem_plucker, mem_scales, out)
+
+    stored_rels, stored_scales, stored_out = runs["stored"]
+    still_rels, still_scales, still_out = runs["still"]
+    cur_rels, cur_scales, cur_out = runs["current"]
+    # stored chunks 2, 1, 0 were generated turning left ('j': negative yaw delta -> r[1, 0, 2] < 0)
+    assert all(r[1, 0, 2] < -1e-3 for r in stored_rels) and stored_scales == [1.0] * 6
+    assert "rel=" not in stored_out
+    # still: every recompute passes identity poses and static weight-mod scale 0.0
+    assert all(np.allclose(r, np.eye(4)) for r in still_rels) and still_scales == [0.0] * 6
+    assert "rel=still:still" in still_out
+    # current: chunks 7..9 turn right across all 4 latents, chunk 10 turns right on latent 0 then enters the tail,
+    # and chunks 11..12 hold still across all 4 latents
+    assert all(r[1, 0, 2] > 1e-3 for r in cur_rels[:3]) and cur_rels[3][0, 0, 2] > 1e-3
+    assert all(np.allclose(r, np.eye(4)) for r in cur_rels[4:])
+    assert cur_scales == [1.0] * 4 + [0.0] * 2
+    assert "rel=current:move" in cur_out and "rel=current:still" in cur_out
+
+    # time=sink + rel=current: stopping on an in-window view refreshes mem_rel to still once, then rests
+    sess, _, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, time="sink", rel="current"))
+    sess.weight_mod = _RegimeWM()
+    seen = []
+    orig_forward = sess._mem_forward
+    sess._mem_forward = lambda entry, views, rope_lat, slot, mem_rel=None: (
+        seen.append((np.array(mem_rel), sess.weight_mod.cam_scale)),
+        orig_forward(entry, views, rope_lat, slot, mem_rel),
+    )[1]
+    # chunks 0..4 turn left (76 keys = 12 + 4*16), chunks 5..7 turn right back to chunk 2's view, chunks 8..9 hold
+    stop_keys = ["j"] * 76 + ["l"] * 48 + ["none"] * 32
+    sess.step(stop_keys)
+    stop_out = capsys.readouterr().out
+    # chunk 6 installs chunk 2 while turning right (move); chunk 7 keeps turning right (same rel_c: 0 forwards);
+    # chunk 8 stops on that view (retime -> still); chunk 9 stays stopped (same rel_c: 0 forwards)
+    assert sess.pm_installs == 1 and sess.pm_retimes == 1 and sess.pm_forwards == 2 and len(seen) == 2
+    assert seen[0][0][1, 0, 2] > 1e-3 and seen[0][1] == 1.0
+    assert np.allclose(seen[1][0], np.eye(4)) and seen[1][1] == 0.0
+    assert "chunk 6 <- chunk 2" in stop_out and "rel=current:move" in stop_out
+    assert "chunk 8 keeps chunk 2 re-timed" in stop_out and "rel=current:still" in stop_out
+    assert "chunk 7" not in stop_out and "chunk 9" not in stop_out
 
 
 def test_retime_drops_a_kept_memory_that_no_longer_covers_the_view(monkeypatch):
