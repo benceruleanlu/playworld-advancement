@@ -1,0 +1,101 @@
+{
+ "exp": "orc14-gc-v1-a2",
+ "release_tag": "run-orc14-gc-v1-a2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-orc14-gc-v1-a2",
+ "generated": "2026-11-15T03:26:16Z",
+ "git_sha": "53be9148e2f0471de93f9733e829756ae5d66d84",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-turn-cal"
+ ],
+ "player_model": "",
+ "notes": "14B, dataset actions (perfect-driver reference, open loop, not a score claim): default turn rates vs turn calibration [arm 2/2 of orc14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-turn-cal]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "orc14-gc-v1-a2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC005",
+   "family": "gc",
+   "mean": 1.0,
+   "status": [
+    "missing"
+   ],
+   "reason": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "GC016",
+   "family": "gc",
+   "mean": 3.4,
+   "status": [
+    "ok"
+   ],
+   "reason": "视频较好地展现了男子走向宝塔并抬头仰望的过程，各物体的一致性和相对位置保持稳定，仅在后半段出现了一次合理的视角切换。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC016.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC016.jpg"
+  },
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 4.0,
+   "status": [
+    "ok"
+   ],
+   "reason": "相机未能完成360度旋转，也没有回到初始的十字路口视角。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 2.35,
+   "status": [
+    "ok"
+   ],
+   "reason": "The camera executes the requested turns, but completely fails to maintain world consistency, as all initial window contents disappear upon return and a massive blue camera object hallucinates in the foreground.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 2.9499999999999997,
+   "status": [
+    "gate_fail"
+   ],
+   "reason": "视频成功执行了平移操作，场景结构和颜色基本稳定，但招牌在重新进入视野时文字内容发生了明显改变。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC036.jpg"
+  },
+  {
+   "task_id": "GC038",
+   "family": "gc",
+   "mean": 1.75,
+   "status": [
+    "ok"
+   ],
+   "reason": "相机未能执行最后的向右转动以停在初始方向，而是持续向左平移并在最后向前移动，轨迹未完全完成。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC038.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC038.jpg"
+  }
+ ]
+}
