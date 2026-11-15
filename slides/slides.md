@@ -18,24 +18,26 @@ drawings:
 
 <div class="lede">
 
-Research agents proposed changes as pull requests and GitHub held the state. The subject: steering LingBot-World v2 at inference time on PlayWorld. No leaderboard score.
+Research agents proposed changes as pull requests; GitHub held all state.
 
 </div>
+
+<div class="chip1 mt-3">Subject: steering LingBot-World v2 at inference time on PlayWorld</div>
 
 <div class="dg hnums mt-6">
-  <div><span class="n">157</span>pull requests, as of #176</div>
-  <div><span class="n">36</span>proposals</div>
-  <div><span class="n">101</span>runs logged</div>
-  <div><span class="n">26</span>hours</div>
+  <div><span class="n">157</span>pull requests, all on GitHub</div>
+  <div><span class="n">36</span>research-agent proposals, one PR each</div>
+  <div><span class="n">101</span>experiment runs in the shared CSV</div>
+  <div><span class="n">26</span>hours, first PR to last</div>
 </div>
 
-<div class="mt-5 text-sm muted">
+<div class="mt-5 text-sm">
 
-Genie 3: 2.12 (PlayWorld paper, 171 tasks). Ours: 1.64 ± 0.13 (24 dev tasks, no flags).
+Not comparable: Genie 3 scores 2.12 on all 171 tasks in the PlayWorld paper. Our only official closed-loop run is 1.64 ± 0.13 on 24 dev tasks, so we claim no leaderboard score.
 
 </div>
 
-<div class="mt-6 text-sm">
+<div class="mt-8 text-base font-semibold">
 
 github.com/benceruleanlu/playworld-advancement
 
@@ -44,8 +46,9 @@ github.com/benceruleanlu/playworld-advancement
 <style>
 .muted { opacity: 0.75; }
 .lede { font-size: 20px; line-height: 1.4; max-width: 760px; opacity: 0.8; margin-top: 4px; }
-.hnums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; font-size: 15px; }
-.hnums .n { display: block; font-size: 34px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: #2f6fd6; }
+.hnums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; font-size: 15px; }
+.chip1 { display: inline-block; border: 1px solid currentColor; border-radius: 4px; padding: 2px 10px; font-size: 15px; }
+.hnums .n { display: block; font-size: 44px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: #2f6fd6; }
 html.dark .hnums .n { color: #7fa8ee; }
 </style>
 
@@ -61,12 +64,12 @@ Site: benceruleanlu.github.io/playworld-advancement (results, Pairs, blind revie
 DEMO CUT (9 slides, about two minutes), by title:
 1. this title slide;
 2. "One coordinating agent session ran the proposal flow, and GitHub held the state";
-3. "157 pull requests, 36 proposals and 101 runs in 26 hours; every one is on GitHub";
-4. "A task is an image, a goal and actions, played out by LingBot-World v2 and scored 1 to 5";
-5. "In the PlayWorld paper Genie 3 scores 2.12; our only official closed-loop dev score is 1.64 on 24 tasks";
-6. "The official judge scored the same video 1.3 apart, and the seed alone changes the video";
-9. "A yaw servo cut the end-heading error on turning geometry consistency (GC) tasks; it has no official judge score";
-10. "A stack of six flags scored about a point higher on out-of-sight, under the proxy judge only";
+3. "157 pull requests, 36 proposals and 101 logged runs in 26 hours, all recorded in the GitHub repo";
+4. "Each task is one clip, generated from an image and scored 1 to 5 by a judge";
+5. "Genie 3 scores 2.12 in the paper; our one closed-loop dev score is 1.64 on 24 tasks";
+6. "The same video got official scores of 1.35 and 2.65";
+9. "A yaw servo cut end-heading error from 70 to 5.6 degrees on a turning task; no official judge score";
+10. "Under a proxy judge only, a six-flag stack gained about +1 on out-of-sight; a lead, not a result";
 12. "No 171-task run was launched, so there is no leaderboard score".
 Skip in the demo: the flags and adoption rule slide, the attention cache slide, the per-flag results slide, credits.
 
@@ -79,60 +82,49 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 
 <div class="grid gap-6 mt-3" style="grid-template-columns: 1fr 190px;">
 <div class="dg">
-<svg viewBox="0 0 640 330" width="100%" role="img" aria-label="The proposal loop: research agents open proposal pull requests, review agents check them, the coordinating session merges or closes them, dispatches experiment runs, and results are written back to GitHub and feed the next proposals." style="overflow: visible;">
+<svg viewBox="0 0 640 300" width="100%" role="img" aria-label="The proposal loop: research agents open proposal pull requests, review agents check them, the coordinating session decides, merges and dispatches experiment runs, results are written back to GitHub and feed the next proposals." style="overflow: visible;">
 <defs><marker id="ahA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="currentColor"/></marker></defs>
 <g fill="none" stroke="currentColor" stroke-width="1">
-<rect x="12" y="12" width="190" height="84" rx="4" opacity="0.45"/>
-<rect x="8" y="8" width="190" height="84" rx="4" opacity="0.7"/>
-<rect x="4" y="4" width="190" height="84" rx="4" class="opq" stroke="none"/>
-<rect x="4" y="4" width="190" height="84" rx="4" fill="rgba(47,111,214,0.16)"/>
-<rect x="225" y="4" width="190" height="84" rx="4"/>
-<rect x="446" y="4" width="190" height="84" rx="4" fill="rgba(47,111,214,0.16)"/>
-<rect x="225" y="123" width="190" height="84" rx="4" fill="rgba(47,111,214,0.38)" stroke-width="2"/>
-<rect x="446" y="123" width="190" height="84" rx="4"/>
-<rect x="446" y="242" width="190" height="84" rx="4"/>
-<rect x="225" y="242" width="190" height="84" rx="4"/>
-<rect x="4" y="242" width="190" height="84" rx="4" stroke-dasharray="5 4"/>
+<rect x="12" y="12" width="190" height="100" rx="4" opacity="0.45"/>
+<rect x="8" y="8" width="190" height="100" rx="4" opacity="0.7"/>
+<rect x="4" y="4" width="190" height="100" rx="4" class="opq" stroke="none"/>
+<rect x="4" y="4" width="190" height="100" rx="4" fill="rgba(47,111,214,0.16)"/>
+<rect x="225" y="4" width="190" height="100" rx="4"/>
+<rect x="446" y="4" width="190" height="100" rx="4" fill="rgba(47,111,214,0.16)"/>
+<rect x="446" y="190" width="190" height="100" rx="4" fill="rgba(47,111,214,0.38)" stroke-width="2"/>
+<rect x="225" y="190" width="190" height="100" rx="4"/>
+<rect x="4" y="190" width="190" height="100" rx="4"/>
 </g>
 <g stroke="currentColor" stroke-width="1.5" fill="none" marker-end="url(#ahA)">
-<path d="M196,46 H222"/>
-<path d="M417,46 H443"/>
-<path d="M470,90 L400,121"/>
-<path d="M417,165 H443"/>
-<path d="M444,284 H418"/>
-<path d="M223,284 H197"/>
-<path d="M99,240 V100"/>
-<path d="M400,209 L470,240"/>
+<path d="M200,54 H222"/>
+<path d="M417,54 H443"/>
+<path d="M541,106 V187"/>
+<path d="M444,240 H418"/>
+<path d="M223,240 H197"/>
+<path d="M99,188 V114"/>
 </g>
 <g class="lbl">
-<text x="99" y="34" class="h">Research agents</text>
-<text x="99" y="56">coordinator subagents,</text>
-<text x="99" y="74">one idea each</text>
-<text x="320" y="30" class="h">Proposal pull request</text>
-<text x="320" y="52" class="mono">proposal/&lt;idea&gt;</text>
-<text x="320" y="72">one flag, tests, smoke plan</text>
-<text x="541" y="34" class="h">Review agents</text>
-<text x="541" y="56">merge, merge with fixes,</text>
-<text x="541" y="74">or reject</text>
-<text x="320" y="152" class="h">Coordinating</text>
-<text x="320" y="172" class="h">agent session</text>
-<text x="320" y="193">one session</text>
-<text x="541" y="149" class="h">Merge to main</text>
-<text x="541" y="171">opt-in flag, off by default,</text>
-<text x="541" y="191">or close with a reason</text>
-<text x="541" y="268" class="h">Experiment run</text>
-<text x="541" y="290">GitHub Actions to Modal</text>
-<text x="541" y="310">GPUs, arm 1 is the control</text>
-<text x="320" y="268" class="h">Written back to GitHub</text>
-<text x="320" y="290">results row, report,</text>
-<text x="320" y="310">clips in a Release</text>
-<text x="99" y="272" class="h">Findings</text>
-<text x="99" y="294">AGENTS.md status,</text>
-<text x="99" y="314">PR comments</text>
-<text x="108" y="166" class="st">feed the next</text>
-<text x="108" y="184" class="st">proposals</text>
-<text x="440" y="119" class="lab">verdicts</text>
-<text x="452" y="222" class="lab">dispatches</text>
+<text x="99" y="40" class="h">Research agents</text>
+<text x="99" y="64">one idea each,</text>
+<text x="99" y="84">as subagents</text>
+<text x="320" y="38" class="h">Proposal PR</text>
+<text x="320" y="62" class="mono">proposal/&lt;idea&gt;</text>
+<text x="320" y="84">one flag, tests</text>
+<text x="541" y="40" class="h">Review agents</text>
+<text x="541" y="64">merge, fix,</text>
+<text x="541" y="84">or reject</text>
+<text x="541" y="220" class="h">Coordinating</text>
+<text x="541" y="242" class="h">agent session</text>
+<text x="541" y="266">decides, merges, dispatches</text>
+<text x="320" y="226" class="h">Experiment run</text>
+<text x="320" y="250">Actions to Modal GPUs,</text>
+<text x="320" y="270">one run with no flags</text>
+<text x="99" y="226" class="h">Written back</text>
+<text x="99" y="250">results row, report,</text>
+<text x="99" y="270">clips, AGENTS.md</text>
+<text x="108" y="148" class="st">feed the next</text>
+<text x="108" y="168" class="st">proposals</text>
+<text x="550" y="152" class="st">verdicts</text>
 </g>
 </svg>
 </div>
@@ -157,20 +149,20 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 <style>
 .opq { fill: var(--slidev-theme-background, #fff); }
 html.dark .opq { fill: #121212; }
-.lbl text { fill: currentColor; font-size: 14px; text-anchor: middle; }
-.lbl text.h { font-size: 16px; font-weight: 700; }
+.lbl text { fill: currentColor; font-size: 15px; text-anchor: middle; }
+.lbl text.h { font-size: 18px; font-weight: 700; }
 .lbl text.mono { font-family: ui-monospace, monospace; font-size: 13px; }
 .lbl text.st { text-anchor: start; }
 .lbl text.lab { text-anchor: start; font-size: 13px; }
 .nums { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
 .nums div { line-height: 1.25; }
-.sstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; font-size: 14px; }
+.sstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; font-size: 15px; }
 .sstrip .sk { font-weight: 700; margin-right: 2px; }
 .sstrip .chip { border: 1px solid currentColor; border-radius: 4px; padding: 2px 8px; white-space: nowrap; }
 .sstrip .chip b { font-weight: 700; color: #2f6fd6; margin-right: 3px; }
 html.dark .sstrip .chip b { color: #7fa8ee; }
 .sstrip .chip code { font-size: 1em; background: none; padding: 0; }
-.sstrip .off { opacity: 0.8; font-style: italic; }
+.sstrip .off { font-size: 16px; opacity: 0.9; font-style: normal; }
 .nums .n { display: block; font-size: 34px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; color: #2f6fd6; }
 html.dark .nums .n { color: #7fa8ee; }
 </style>
@@ -235,7 +227,7 @@ The 30 rollouts before the fix are also the "Unverified launches" cost listed ab
 
 ---
 
-# 157 pull requests, 36 proposals and 101 runs in 26 hours; every one is on GitHub
+# 157 pull requests, 36 proposals and 101 logged runs in 26 hours, all recorded in the GitHub repo
 
 <div class="dg mt-1">
 <Timeline />
@@ -243,7 +235,7 @@ The 30 rollouts before the fix are also the "Unverified launches" cost listed ab
 
 <div class="text-sm mt-1">
 
-One dot per item, stacked per half hour. Runs stopped when the GPU workspace was disabled.
+One dot per item per half hour. The last run was logged at 09:29 UTC, after the GPU workspace was disabled at 09:01.
 
 </div>
 
@@ -263,13 +255,13 @@ The chart was generated by a one-off script into slides/components/Timeline.vue 
 
 ---
 
-# A task is an image, a goal and actions, played out by LingBot-World v2 and scored 1 to 5
+# Each task is one clip, generated from an image and scored 1 to 5 by a judge
 
 <div class="dg mt-3">
 <div class="flex items-stretch gap-1">
   <div class="box flex-1"><b>Task</b>image, goal, actions</div>
   <div class="arr">→</div>
-  <div class="box flex-1 fill"><b>Runner</b>LingBot-World v2, flags</div>
+  <div class="box flex-1 fill"><b>Runner</b>LingBot-World v2 (14B)</div>
   <div class="arr">→</div>
   <div class="box flex-1"><b>Clip</b>up to about 70 s</div>
   <div class="arr">→</div>
@@ -279,22 +271,22 @@ The chart was generated by a one-off script into slides/components/Timeline.vue 
 </div>
 <div class="mt-4">
 <ClipRow :items="[
-  { exp: 'lb14-session-agent-dev-v1', task: 'GC033', head: 'Geometry consistency (GC)', sub: '48 tasks. Move away and back: is it still the same place?' },
-  { exp: 'lb14-session-agent-dev-v1', task: 'IF002', head: 'Interaction fidelity (IF)', sub: '50 tasks. Press a key: does the subject do what was asked?' },
-  { exp: 'lb14-session-agent-dev-v1', task: 'OE001', head: 'Insight evolution', sub: '30 tasks. Wait and watch: does a process keep going sensibly?' },
-  { exp: 'lb14-session-agent-dev-v1', task: 'OE039', head: 'Out-of-sight evolution', sub: '43 tasks. Look away and back: did the hidden part move on sensibly?' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'GC033', head: 'Geometry consistency (GC)', sub: '48 tasks. Move away and back: is it still the same place? Watch the return.' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'IF002', head: 'Interaction fidelity (IF)', sub: '50 tasks. Press a key: does the subject do what was asked? Watch the first seconds.' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'OE001', head: 'Insight evolution', sub: '30 tasks. Wait and watch: does a process keep going sensibly? Watch the whole clip.' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'OE039', head: 'Out-of-sight evolution', sub: '43 tasks. Look away and back: did the hidden part move on sensibly? Watch the return.' },
 ]" />
 </div>
 </div>
 
-<div class="text-sm mt-3">
+<div class="text-base mt-4">
 
-35 of 101 logged runs had an AI player (closed loop). The rest replayed fixed actions, for A/B tests only.
+Only 35 of our 101 runs had an AI player pressing keys live (closed loop). The other 66 replayed fixed actions, so they count for A/B tests only.
 
 </div>
 
 <!--
-The boxes are the path one task takes; the clips are one control task per family from lb14-session-agent-dev-v1 (closed loop, no flags; CC BY-NC-SA 4.0, generated with LingBot-World v2). Clip list: results/media/lb14-session-agent-dev-v1.json. Clips load from GitHub Releases (run-lb14-session-agent-dev-v1) and do not autoplay. The captions are PlayWorld's four task families with their task counts (171 in all); the questions follow FAMINFO in site/src/scripts/families.js and describe the family, not what these clips show.
+The boxes are the path one task takes; the clips are example clips, one control task per family (GC033, IF002, OE001, OE039) from lb14-session-agent-dev-v1 (closed loop, no flags; CC BY-NC-SA 4.0, generated with LingBot-World v2). Clip list: results/media/lb14-session-agent-dev-v1.json. Clips load from GitHub Releases (run-lb14-session-agent-dev-v1) and do not autoplay. The captions are PlayWorld's four task families with their task counts (171 in all); the questions follow FAMINFO in site/src/scripts/families.js and describe the family, not what these clips show.
 
 Benchmark: PlayWorld (Ding et al.), 171 tasks: GC 48, IF 50, insight 30, out-of-sight 43. Splits: dev and dev2, 24 each with 6 per family; heldout 123, unscored. A task with a gate (for example, return to the start view) scores 1.0 if the gate fails. Insight and out-of-sight task IDs both start with OE; the family is in the task JSON.
 
@@ -311,36 +303,30 @@ Actions. results/experiments.csv on main has 105 rows; 4 are fake_runner pipelin
 
 ---
 
-# In the PlayWorld paper Genie 3 scores 2.12; our only official closed-loop dev score is 1.64 on 24 tasks
+# Genie 3 scores 2.12 in the paper; our one closed-loop dev score is 1.64 on 24 tasks
 
-<div class="dg mt-4" style="font-size: 15px;">
+<div class="dg mt-4" style="font-size: 20px;">
 <div class="pchart">
-  <div class="prow"><div class="pname">Genie 3</div><div class="ptrack"><span class="pdot" style="left: 74.7%"></span><span class="pval" style="left: 74.7%">2.12</span></div></div>
-  <div class="prow"><div class="pname">LingBot-World v2, paper's web demo</div><div class="ptrack"><span class="pdot" style="left: 54.7%"></span><span class="pval" style="left: 54.7%">1.82</span></div></div>
+  <div class="prow"><div class="pname">Genie 3</div><div class="ptrack"><span class="pdot hi" style="left: 74.7%"></span><span class="pval" style="left: 74.7%">2.12</span></div></div>
+  <div class="prow"><div class="pname">LingBot-World v2 (paper's web demo, not our code)</div><div class="ptrack"><span class="pdot" style="left: 54.7%"></span><span class="pval" style="left: 54.7%">1.82</span></div></div>
   <div class="prow"><div class="pname">SANA-WM</div><div class="ptrack"><span class="pdot" style="left: 32%"></span><span class="pval" style="left: 32%">1.48</span></div></div>
   <div class="prow"><div class="pname">Matrix-Game 3.0</div><div class="ptrack"><span class="pdot" style="left: 9.3%"></span><span class="pval" style="left: 9.3%">1.14</span></div></div>
   <div class="paxis"><span style="left: 0%">1.0</span><span style="left: 33.3%">1.5</span><span style="left: 66.7%">2.0</span><span style="left: 100%">2.5</span></div>
-  <div class="small muted" style="margin-left: 270px; margin-top: 4px;">Paper overall score, all 171 tasks (1 to 5)</div>
+  <div class="small muted" style="margin-left: 330px; margin-top: 4px;">Paper overall score, all 171 tasks (1 to 5)</div>
 </div>
-<div class="box dash mt-5" style="text-align: left; max-width: 700px;"><b style="display:inline">Ours, not on this axis:</b> 1.64 ± 0.13 on 24 dev tasks, closed loop, official judge. Not comparable.</div>
-</div>
-
-<div class="text-sm mt-4">
-
-The 1.82 is the paper's run through LingBot's web demo, not our code.
-
+<div class="box dash mt-5" style="text-align: left; max-width: 900px; font-size: 22px;"><b style="display:inline">Ours, not on this axis:</b> 1.64 ± 0.13, 24 dev tasks, 2 judge passes (paper: 171 tasks). A smaller sample, so not comparable.</div>
 </div>
 
 <style>
 .pchart { position: relative; }
-.prow { display: grid; grid-template-columns: 270px 1fr; align-items: center; height: 38px; }
+.prow { display: grid; grid-template-columns: 330px 1fr; align-items: center; height: 52px; }
 .pname { text-align: right; padding-right: 16px; }
 .ptrack { position: relative; height: 100%; border-left: 1px solid currentColor; margin-right: 40px; }
 .ptrack::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dotted currentColor; opacity: 0.35; }
 .pdot { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: #8b8b8b; transform: translate(-50%, -50%); }
 .pdot.hi { background: #2f6fd6; }
 .pval { position: absolute; top: 50%; transform: translate(14px, -50%); font-variant-numeric: tabular-nums; font-weight: 600; }
-.paxis { position: relative; margin-left: 270px; margin-right: 40px; height: 22px; border-top: 1px solid currentColor; }
+.paxis { position: relative; margin-left: 330px; margin-right: 40px; height: 22px; border-top: 1px solid currentColor; }
 .paxis span { position: absolute; top: 2px; transform: translateX(-50%); font-size: 14px; }
 </style>
 
@@ -360,7 +346,7 @@ The heldout 123 tasks are unscored, as the repo rules require until code freeze.
 
 ---
 
-# The official judge scored the same video 1.3 apart, and the seed alone changes the video
+# The same video got official scores of 1.35 and 2.65
 
 <div class="dg grid gap-8 mt-4" style="grid-template-columns: 1fr 380px;">
 <div>
@@ -372,24 +358,25 @@ The heldout 123 tasks are unscored, as the repo rules require until code freeze.
     <span class="sspan" style="left: 8.75%; width: 32.5%"></span><span class="sspanlab" style="left: 25%">1.3 apart</span>
   </div>
   <div class="saxis"><span style="left:0%">1</span><span style="left:25%">2</span><span style="left:50%">3</span><span style="left:75%">4</span><span style="left:100%">5</span></div>
-  <div class="box fill mt-6" style="text-align:left"><b>Six-task family mean</b>moves about 0.5 on the same videos, so smaller differences are not visible</div>
+  <div class="small muted" style="margin-left:20px">task score, 1 to 5</div>
+  <div class="box fill mt-4" style="text-align:left"><b>Judge noise on a six-task family mean: about 0.5</b>any gain smaller than that cannot be told apart from re-scoring the same videos</div>
 </div>
 <div>
-  <b style="font-size:16px">IF002, same flags and actions</b>
-  <div class="small muted mb-2">Watch: same task, seed alone changes the video</div>
+  <b style="font-size:16px">Seeds also change the video (IF002, not scored)</b>
+  <div class="small muted mb-2">Watch: same task, same flags, only the seed differs</div>
   <ClipPair task="IF002" control="stk14-fx-dev-v1-a1" treatment="stk14-fx-dev-v1-a3" controlLabel="Seed 0" treatmentLabel="Seed 1" :width="180" />
 </div>
 </div>
 
-<div class="cap">Seed pair: control arms of the stack run, fixed actions, not scored by the official judge. CC BY-NC-SA 4.0, generated with LingBot-World v2.</div>
+<div class="cap">Right: two runs with no flags changed, only the seed differs; not scored by the official judge. CC BY-NC-SA 4.0, generated with LingBot-World v2.</div>
 
 <style>
 .strip { position: relative; height: 96px; border-bottom: 1px solid currentColor; margin-right: 20px; margin-left: 20px; }
-.saxis { position: relative; height: 22px; margin: 0 20px; font-size: 14px; }
+.saxis { position: relative; height: 24px; margin: 0 20px; font-size: 16px; }
 .saxis span { position: absolute; top: 2px; transform: translateX(-50%); }
 .sdot { position: absolute; bottom: 10px; width: 16px; height: 16px; border-radius: 50%; background: #2f6fd6; transform: translateX(-50%); }
 .sdot.fail { background: #8b8b8b; }
-.slab { position: absolute; bottom: 32px; transform: translateX(-50%); text-align: center; font-size: 14px; white-space: nowrap; }
+.slab { position: absolute; bottom: 32px; transform: translateX(-50%); text-align: center; font-size: 16px; white-space: nowrap; }
 .sspan { position: absolute; top: 18px; height: 8px; border: 1px solid currentColor; border-bottom: none; }
 .sspanlab { position: absolute; top: 0; transform: translateX(-50%); font-size: 14px; font-weight: 600; white-space: nowrap; }
 </style>
@@ -403,35 +390,35 @@ Proxy judge (openai:gpt-6-luna): on byte-identical clips, per-task scores moved 
 
 The practical bar: about 0.5 for a six-task family mean under the official judge, about 0.6 under the proxy judge.
 
-Right: both clips are the no-flag control arms of stk14-fx-dev-v1: arm 1 at the default seed 0, arm 3 with --seed 1, the same runner arguments otherwise (results/experiments.csv notes). Both replay the dataset's actions. Nothing but the seed differs. The size of the difference was not measured; the pair only shows that it exists, which is why the adoption rule asks for a gain that repeats on both seeds (the next slide). stk14-fx-dev-v1 was generated after the official judge's credits ran out and has proxy judge scores only. The pair is also in the site's Pairs section.
+Right: both clips are the no-flag control arms of stk14-fx-dev-v1 (stk14-fx-dev-v1-a1 and stk14-fx-dev-v1-a3): arm 1 at the default seed 0, arm 3 with --seed 1, the same runner arguments otherwise (results/experiments.csv notes). Both replay the dataset's actions. Nothing but the seed differs. The size of the difference was not measured; the pair only shows that it exists, which is why the adoption rule asks for a gain that repeats on both seeds (the next slide). stk14-fx-dev-v1 was generated after the official judge's credits ran out and has proxy judge scores only. The pair is also in the site's Pairs section.
 -->
 
 ---
 
-# Each change is an opt-in flag on the model or the AI player; none met the adoption rule, so none is adopted
+# 30+ opt-in flags are on main; none passed our bar, so none is adopted
 
 <div class="dg mt-4">
 <div class="grid items-center gap-x-2 gap-y-3" style="grid-template-columns: 1.1fr 24px 1fr 24px 0.9fr 24px 1fr;">
   <div class="box" style="grid-row: span 2;"><b>Same inputs</b>same task image<br>same seed<br>same actions</div>
   <div class="arr" style="grid-row: span 2;">⇉</div>
-  <div class="box"><b>Control</b>flags off</div>
+  <div class="box"><b>Control</b>every flag off</div>
   <div class="arr" style="grid-row: span 2;">⇉</div>
   <div class="box fill2" style="grid-row: span 2;"><b>Judge</b>same judge<br>2 or 4 passes</div>
   <div class="arr" style="grid-row: span 2;">→</div>
   <div class="box" style="grid-row: span 2;"><b>One comparison</b>treatment minus control,<br>per task and family</div>
-  <div class="box fill"><b>Treatment</b>flags differ (one, or a stack)</div>
+  <div class="box fill"><b>Treatment</b>one flag, or a stack of flags on</div>
 </div>
-<div class="small muted mt-5">Adoption rule</div>
-<div class="grid grid-cols-3 gap-3 mt-1">
-  <div class="box dash"><b>A task moves a full point</b>no gate lost</div>
-  <div class="box dash"><b>The gain repeats</b>on two seeds</div>
-  <div class="box dash"><b>Decision tier</b>closed loop, 14B, full length, official judge</div>
+<div class="text-base mt-6"><b>Our bar for adopting a flag (all three)</b> (none of the flags has reached the third box)</div>
+<div class="grid grid-cols-3 gap-4 mt-1 text-lg">
+  <div class="box dash"><b>One task gains a full point</b>and no pass/fail check is lost</div>
+  <div class="box dash"><b>The gain repeats</b>on a second random seed</div>
+  <div class="box dash"><b>Tested for real</b>closed loop, 14B model, full length, official judge</div>
 </div>
 </div>
 
-<div class="text-sm mt-5">
+<div class="text-lg mt-6">
 
-More than 30 flags are on main, all off by default. No run reached the decision tier.
+**Result: 0 of 30+ flags adopted.** Every comparison so far was open loop or small-sample, so none could meet the bar.
 
 </div>
 
@@ -452,9 +439,9 @@ Practice, not a written rule: since about 18:35 model-side flags were compared w
 
 # The model keeps the opening view and the last 2 seconds; everything in between is dropped
 
-<div class="dg mt-8">
-<div class="flex gap-1 text-center items-stretch" style="height: 96px">
-  <div class="box fill2 flex flex-col justify-center" style="flex: 6"><b>Opening view</b>kept for the whole clip</div>
+<div class="dg mt-10">
+<div class="flex gap-1 text-center items-stretch" style="height: 130px">
+  <div class="box fill2 flex flex-col justify-center" style="flex: 6"><b>Opening view</b>kept for the whole clip (default)</div>
   <div class="box dash flex flex-col justify-center" style="flex: 5"><b>Middle</b>dropped</div>
   <div class="box fill flex flex-col justify-center" style="flex: 8"><b>Last ~2 s</b>kept</div>
   <div class="box grey flex flex-col justify-center" style="flex: 4"><b>Next chunk</b>being made</div>
@@ -464,20 +451,20 @@ Practice, not a written rule: since about 18:35 model-side flags were compared w
   <span class="brk" style="left: 37.5%">not to scale</span>
   <span style="left: 82.6%">now</span>
 </div>
-<div class="grid grid-cols-2 gap-3 mt-6">
-  <div class="box"><b>Return to the opening view</b>it is still in memory</div>
-  <div class="box dash"><b>Return to any other view</b>seen over ~2 s ago: gone</div>
+<div class="grid grid-cols-2 gap-3 mt-8" style="font-size: 22px">
+  <div class="box"><b>Return to the opening view</b>still in the cache (use not measured)</div>
+  <div class="box dash"><b>Return to any other view</b>seen over ~2 s ago: no longer in the cache</div>
 </div>
 </div>
 
 <div class="text-sm mt-5">
 
-This is the configuration, not a measurement. The GPU probe that would measure it is unmerged (#37).
+This is the model's default setting, not a measurement. The test that would measure it is an open pull request that is not merged (#37).
 
 </div>
 
 <style>
-.taxis { position: relative; height: 28px; border-top: 1px solid currentColor; margin-top: 4px; font-size: 14px; }
+.taxis { position: relative; height: 28px; border-top: 1px solid currentColor; margin-top: 4px; font-size: 18px; }
 .taxis span { position: absolute; top: 4px; transform: translateX(-50%); white-space: nowrap; }
 .taxis span:first-child { transform: none; }
 .taxis .brk { opacity: 0.7; font-style: italic; }
@@ -490,27 +477,27 @@ Detail behind the plain words: LingBot's attention (KV) cache is 18 latents incl
 
 "It is still in memory" means the start view's frames are attended, not that the model uses them well; that has not been measured.
 
-Two flags change this window: keep-first 10 (sink 10) and attention window 22. Both are part of the stack on the slide "A stack of six flags scored about a point higher on out-of-sight, under the proxy judge only".
+Two flags change this window: keep-first 10 (sink 10) and attention window 22. Both are part of the stack on the slide "Under a proxy judge only, a six-flag stack gained about +1 on out-of-sight; a lead, not a result".
 -->
 
 ---
 
-# A yaw servo cut the end-heading error on turning geometry consistency (GC) tasks; it has no official judge score
+# A yaw servo cut end-heading error from 70 to 5.6 degrees on a turning task; no official judge score
 
-<div class="grid gap-6 mt-2" style="grid-template-columns: 1fr 400px;">
+<div class="grid gap-6 mt-2" style="grid-template-columns: 1fr 480px;">
 <div class="dg">
 <HeadingChart />
 </div>
 <div class="dg">
   <b style="font-size:15px">GC036: control vs yaw servo</b>
   <div class="small muted mb-2">Watch the last second: the servo clip ends back at the start heading</div>
-  <ClipPair task="GC036" control="svgc14-fx-v1-a1" treatment="svgc14-fx-v1-a2" controlLabel="Control" treatmentLabel="Yaw servo" :width="190" />
+  <ClipPair task="GC036" control="svgc14-fx-v1-a1" treatment="svgc14-fx-v1-a2" controlLabel="Control (no servo)" treatmentLabel="Yaw servo" :width="230" />
 </div>
 </div>
 
 <div class="text-sm mt-3">
 
-Each chunk it measures the rendered turn and corrects the next command. Chart runs: fixed actions, no official judge score.
+Every chunk, the servo measures how far the video actually turned and corrects the next command. Only GC033 and GC036 are checked independently of the servo; the other four use its own estimate. Fixed actions, no official judge score.
 
 </div>
 
@@ -528,29 +515,30 @@ The chart's runs replay fixed actions. Other servo runs: sv14-fx-v1 and sv14-fx-
 
 ---
 
-# A stack of six flags scored about a point higher on out-of-sight, under the proxy judge only; other families were mixed
+# Under a proxy judge only, a six-flag stack gained about +1 on out-of-sight; a lead, not a result
 
 <div class="grid gap-6 mt-2" style="grid-template-columns: 1fr 440px;">
 <div class="dg">
   <b style="font-size:15px">Out-of-sight, stack minus control</b>
   <div class="small muted">proxy judge, six tasks per pair</div>
   <div class="dbars mt-3">
-    <div class="dline" style="left: 50%"><span>proxy noise bar 0.6</span></div>
+    <div class="dline" style="left: 50%"><span>0.6: identical-clip gap</span></div>
     <div class="drow"><span class="dl">dev, seed 0</span><span class="db" style="width: 85%"></span><span class="dv" style="left: 85%">+1.02</span></div>
     <div class="drow"><span class="dl">dev, seed 1</span><span class="db" style="width: 76.7%"></span><span class="dv" style="left: 76.7%">+0.92</span></div>
     <div class="drow"><span class="dl">dev2, other tasks</span><span class="db" style="width: 81.7%"></span><span class="dv" style="left: 81.7%">+0.98</span></div>
   </div>
   <div class="daxis"><span style="left:0%">0</span><span style="left:25%">0.3</span><span style="left:50%">0.6</span><span style="left:75%">0.9</span><span style="left:100%">1.2</span></div>
-  <div class="small mt-4">Stack: turn calibration, caption prompt, insight director, interaction fidelity (IF) slow translation, sink 10, window 22</div>
+  <div class="small mt-4">Stack: turn calibration, caption prompt, insight director, slow translation (IF tasks), keep first 10 latents, attention window 22</div>
+  <div class="small mt-3 muted">Other families, same three pairs: GC +0.59, -0.16, +0.30; IF +0.40, -0.25, +0.45. Only out-of-sight cleared 0.6 in all three.</div>
 </div>
 <div class="dg flex flex-col gap-1">
   <div class="small muted">Watch: what the hidden part looks like on return. Clips not scored by the official judge.</div>
-  <ClipPair task="OE039" control="stk14-fx-dev-v1-a1" treatment="stk14-fx-dev-v1-a2" controlLabel="Control" treatmentLabel="Stack" :width="200" />
-  <ClipPair task="OE047" control="stk14-fx-dev-v1-a1" treatment="stk14-fx-dev-v1-a2" controlLabel="Control" treatmentLabel="Stack" :width="200" />
+  <ClipPair task="OE039" control="stk14-fx-dev-v1-a1" treatment="stk14-fx-dev-v1-a2" controlLabel="Control" treatmentLabel="Stack" :width="220" />
+  <ClipPair task="OE047" control="stk14-fx-dev-v1-a1" treatment="stk14-fx-dev-v1-a2" controlLabel="Control" treatmentLabel="Stack" :width="220" />
 </div>
 </div>
 
-<div class="cap">Fixed actions, seed 0. CC BY-NC-SA 4.0, generated with LingBot-World v2.</div>
+<div class="cap">Chart: fixed actions, three pairs. Clips: seed 0. CC BY-NC-SA 4.0, generated with LingBot-World v2.</div>
 
 <style>
 .dbars { position: relative; padding-top: 22px; margin-left: 130px; margin-right: 52px; }
@@ -579,34 +567,35 @@ Clips: OE039 and OE047 at seed 0, results/media/stk14-fx-dev-v1-a1.json and -a2.
 
 ---
 
-# No flag's gain has repeated cleanly; the largest single moves were mixed on a second look
+# Nothing we tried held up on a second look; no flag is adopted
 
-<div class="dg grid grid-cols-4 gap-3 mt-6 tiers">
-  <div class="box fill2"><b>Measured</b><div class="m">Yaw servo: end heading</div></div>
-  <div class="box fill"><b>Lead, small sample</b><div class="m">Stack: out-of-sight about +1 (proxy judge), 2 seeds + dev2</div></div>
-  <div class="box"><b>Mixed</b><div class="m">Turn calibration on GC031: +1.95, then +0.35</div><div class="m">Sink 10 + window 22, OE039: +2.44 at seed 1; seed 0 mixed</div><div class="m">Caption prompt: 2 tasks up, 2 down</div></div>
-  <div class="box dash"><b>Dropped</b><div class="m">Sink key scale: −0.46 to −0.85</div><div class="m">Conditioning schedule: insight 3.00 → 1.50</div><div class="m">Pose memory: +0.20 (proxy), bar 0.34</div></div>
+<div class="dg grid grid-cols-4 gap-3 mt-8 tiers">
+  <div class="box fill2"><b>Measured</b><div class="m">Yaw servo: end-heading error on one turn task 70° to 5.6° (fixed actions, no official judge score)</div></div>
+  <div class="box fill"><b>Lead, small sample</b><div class="m">Six-flag stack: out-of-sight about +1 on a proxy judge; same direction on 3 pairs of 6 tasks</div></div>
+  <div class="box"><b>Mixed</b><div class="m">Turn calibration, same task twice: +1.95, then +0.35</div><div class="m">Longer memory window, one task: +2.44 at one seed, mixed at the other</div><div class="m">Caption prompt: 2 tasks up, 2 down</div></div>
+  <div class="box dash"><b>Dropped</b><div class="m">Memory key scaling: −0.46 to −0.85</div><div class="m">Conditioning schedule: insight 3.00 → 1.50 (2 tasks)</div><div class="m">Pose memory: +0.20 (proxy), below the 0.34 bar</div></div>
 </div>
 
-<div class="text-sm mt-6">
+<div class="text-base mt-8">
 
-Official judge and one seed unless marked. Each comparison covers 15 tasks or fewer.
+Small samples (15 tasks or fewer, mostly one seed), so none of these is a score. Official judge unless marked proxy.
 
 </div>
 
 <style>
-.tiers .box { text-align: left; display: flex; flex-direction: column; gap: 6px; }
-.tiers .m { font-size: 14px; border-top: 1px solid rgba(128,128,128,0.4); padding-top: 5px; }
+.tiers .box { text-align: left; display: flex; flex-direction: column; gap: 10px; min-height: 360px; font-size: 22px; }
+.tiers .box b { font-size: 26px; }
+.tiers .m { font-size: 19px; line-height: 1.3; border-top: 1px solid rgba(128,128,128,0.4); padding-top: 8px; }
 </style>
 
 <!--
 Sources: AGENTS.md "Status against the timeline": the yaw servo and stack bullets under the proxy judge findings, the sks14-fx-v1, dec14-ins-v1, win14-fx-v1 and pose memory bullets, and "What the fixed-action results say so far"; results/experiments.csv for the sink key scale rows.
 
-Measured: the yaw servo's end heading, geometry with no official judge score (the slide "A yaw servo cut the end-heading error on turning geometry consistency (GC) tasks; it has no official judge score").
+Measured: the yaw servo's end heading, geometry with no official judge score (the slide "A yaw servo cut end-heading error from 70 to 5.6 degrees on a turning task; no official judge score").
 
 Lead: the stack, about +1 on out-of-sight under the proxy judge (the stack slide).
 
-Mixed: turn calibration, the same comparison run twice on GC031, gave +1.95 and then +0.35 (the +0.35 is from fx14-model-dev-v2); generation is deterministic, so that spread is a config difference or judge spread. Sink 10 with window 22 (two flags) raised OE039 from 1.00 to 3.44 (+2.44) at seed 1 (win14-fx-v1). At seed 0 the same flags gave OE039 1.75 in win14-fx-v1, inside the 1.25 to 2.00 of the plain controls, but 3.12 in pm14-fx-v2-a4 (same flags, earlier commit); whether those two clips are the same video is not checked, so seed 0 is mixed. Caption prompt: 2 tasks up and 2 down by a full point, fx14-model-dev-v2 arm 2 to 3.
+Task ids are kept here, off the slide face. Mixed: turn calibration, the same comparison run twice on GC031, gave +1.95 and then +0.35 (the +0.35 is from fx14-model-dev-v2); generation is deterministic, so that spread is a config difference or judge spread. Sink 10 with window 22 (two flags) raised OE039 from 1.00 to 3.44 (+2.44) at seed 1 (win14-fx-v1). At seed 0 the same flags gave OE039 1.75 in win14-fx-v1, inside the 1.25 to 2.00 of the plain controls, but 3.12 in pm14-fx-v2-a4 (same flags, earlier commit); whether those two clips are the same video is not checked, so seed 0 is mixed. Caption prompt: 2 tasks up and 2 down by a full point, fx14-model-dev-v2 arm 2 to 3.
 
 Dropped: sink key scale lowered out-of-sight (sks14-fx-v1, official judge, one seed, 6 tasks): control 2.10, arms 1.65, 1.33 and 1.25, so -0.46, -0.77 and -0.85 (CSV: 2.1042, 1.6458, 1.3333, 1.2500). The conditioning schedule halved insight, 3.00 to 1.50, on the two tasks it ran, OE001 and OE018 (dec14-ins-v1). Pose memory retrieves as planned after #129 with no geometric gain, +0.20 under the proxy judge against a bar of 0.34. These drops rest on one seed and six tasks or fewer, the same caution as the stack lead in the other direction.
 
@@ -619,28 +608,28 @@ Sample sizes: the sink key scale group is 6 tasks; mem14-fx-v1 and win14-fx-v1 a
 
 <div class="dg mt-6">
 <div class="tl">
-  <div class="tlband" style="left: 51.9%; right: 0;"><span>proxy judge scores only</span></div>
-  <div class="tlev" style="left: 32.6%"><b>03:55</b>official judge credits out<br>(topped up by 04:27)</div>
+  <div class="tlband" style="left: 51.9%; right: 0;"><span>proxy judge only (not official)</span></div>
+  <div class="tlev" style="left: 32.6%"><b>03:55</b>judge credits out<br>(back by 04:27)</div>
   <div class="tlev" style="left: 51.9%"><b>06:14</b>out for good</div>
-  <div class="tlev" style="left: 75.1%"><b>09:01</b>GPU workspace disabled<br>during a closed-loop run</div>
+  <div class="tlev" style="left: 75.1%"><b>09:01</b>GPU provider cut off<br>a closed-loop run</div>
   <div class="tlaxis"><span style="left:0%">00:00</span><span style="left:25%">03:00</span><span style="left:50%">06:00</span><span style="left:75%">09:00</span><span style="left:100%">12:00 UTC</span></div>
 </div>
-<div class="small muted" style="margin-top: 30px;">Nov 15, UTC. Before this, the 171-task control run waited on an AI player check that never completed (issue #9).</div>
-<div class="grid grid-cols-3 gap-3 mt-5">
-  <div class="box"><b>Results site</b>benceruleanlu.github.io/<br>playworld-advancement<br><span class="muted">runs, scores, Pairs;<br>73 of 101 runs have clips</span></div>
-  <div class="box"><b>Blind review</b>…/playworld-advancement/review/<br><span class="muted">hides the arms until you finish</span></div>
-  <div class="box"><b>Repo</b>github.com/benceruleanlu/<br>playworld-advancement<br><span class="muted">code, results log, reports</span></div>
+<div class="small muted" style="margin-top: 30px;">Nov 15, UTC. The 171-task run never started: a pre-run check of the AI player did not finish (issue #9). After 06:14 only the proxy judge was available, and small-sample judge scores are not trusted, so nothing is adopted.</div>
+<div class="grid grid-cols-3 gap-3 mt-8">
+  <div class="box" style="font-size:18px"><b>Watch the clips</b>benceruleanlu.github.io/<br>playworld-advancement<br><span class="muted">control vs treatment</span></div>
+  <div class="box" style="font-size:18px"><b>Blind review</b>…/playworld-advancement/review/<br><span class="muted">arms hidden until you finish</span></div>
+  <div class="box" style="font-size:18px"><b>Repo</b>github.com/benceruleanlu/<br>playworld-advancement<br><span class="muted">code, results log, reports</span></div>
 </div>
 </div>
 
 <style>
-.tl { position: relative; height: 104px; margin: 0 30px; }
+.tl { position: relative; height: 130px; margin: 0 30px; }
 .tlband { position: absolute; bottom: 0; height: 18px; background: rgba(139,139,139,0.25); }
-.tlband span { position: absolute; right: 4px; top: 0; font-size: 13px; white-space: nowrap; }
-.tlev { position: absolute; bottom: 0; transform: translateX(-50%); text-align: center; font-size: 14px; padding-bottom: 26px; white-space: nowrap; border-left: none; }
+.tlband span { position: absolute; right: 4px; top: 0; font-size: 15px; white-space: nowrap; }
+.tlev { position: absolute; bottom: 0; transform: translateX(-50%); text-align: center; font-size: 17px; padding-bottom: 26px; white-space: nowrap; border-left: none; }
 .tlev::after { content: ''; position: absolute; left: 50%; bottom: 0; height: 24px; border-left: 2px solid #2f6fd6; }
-.tlev b { display: block; font-size: 15px; }
-.tlaxis { position: absolute; left: 0; right: 0; bottom: -24px; height: 22px; border-top: 1px solid currentColor; font-size: 14px; }
+.tlev b { display: block; font-size: 19px; }
+.tlaxis { position: absolute; left: 0; right: 0; bottom: -24px; height: 22px; border-top: 1px solid currentColor; font-size: 16px; }
 .tlaxis span { position: absolute; top: 2px; transform: translateX(-50%); white-space: nowrap; }
 .tlaxis span:last-child { transform: translateX(-100%); }
 </style>
@@ -667,16 +656,17 @@ Pairs in this deck: GC033, IF002, OE001 and OE039 in lb14-session-agent-dev-v1 (
 
 | | |
 |---|---|
-| **PlayWorld** | Benchmark, harness, verifier, task data: Ding et al., arXiv:2608.13552. Code kxding/PlayWorld (no licence; pinned submodule, not copied). Data jocelynd/playworld-bench. Task images from Pexels and web search keep their sources' terms. |
+| **PlayWorld** | Benchmark, harness, verifier and task data: Ding et al., arXiv:2608.13552 (code kxding/PlayWorld, no licence, pinned submodule, not copied; data jocelynd/playworld-bench). Task images keep the terms of Pexels and web search. |
 | **LingBot-World v2** | Robbyant Team, arXiv:2607.07534, CC BY-NC-SA 4.0. Weights and modules run unchanged; `session.py` re-implements its sampling loop. |
-| **Reference scores** | Genie 3 (Google DeepMind), SANA-WM (NVIDIA), Matrix-Game 3.0 (Skywork AI), LingBot-World v2: PlayWorld paper. |
-| **Judges and player** | Official judge: Gemini 3.1 Pro (Google). Proxy judge (not official) and AI player: OpenAI `gpt-6-luna`; dev control player `gpt-4.1-mini`. |
+| **Reference scores** | Genie 3 (Google DeepMind), SANA-WM (NVIDIA), Matrix-Game 3.0 (Skywork AI), LingBot-World v2: all from the PlayWorld paper. |
+| **Judges and player** | Official judge: Gemini 3.1 Pro (Google). Its credits ran out, so later scores are proxy only. Proxy judge and AI player: an OpenAI model (`gpt-6-luna`). Dev control player: `gpt-4.1-mini`. |
 | **Scene videos** | Generated with LingBot-World v2, CC BY-NC-SA 4.0, non-commercial. Removal: open an issue titled "Scene removal request". |
 
 </div>
 
 <style>
-.credits table { font-size: 16px; }
+.credits table { font-size: 18px; line-height: 1.3; }
+.credits td { padding: 6px 12px; }
 .credits thead { display: none; }
 .credits td:first-child { white-space: nowrap; }
 .credits code { white-space: nowrap; }
