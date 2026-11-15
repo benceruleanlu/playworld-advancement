@@ -678,6 +678,60 @@
       body: "LingBot-World v2 ships inference code only, and the weights we run are a distilled few-step model whose training loop is not released. A plain low-rank fine-tune would likely break its few-step sampler, and each debug cycle would take about an hour. Kept as future work.",
       links: [["#58", "https://github.com/" + REPO + "/issues/58"]], evidence: [], doc: RESEARCH + "red-team-and-plan.md" }
   ];
+  /* ---------- iteration speed (edit here as runs land; measured numbers only) ---------- */
+  // SPEED.runs: wall clock of real runs. SPEED.steps: where the time of one run went. SPEED.levers: status rows.
+  // lever status: in use | open PR | being built | testing
+  var SPEED = {
+    runs: [
+      { exp: "smk-gc-hint-c10-v1", what: "14B, 3 tasks on 3 GPUs, capped at 10 chunks, 1 screening-judge pass", time: "11 min 11 s", note: "end to end" },
+      { exp: "Earlier 1-task dispatch", what: "14B, 1 task on 1 GPU, full length (30 chunks)", time: "about 14.5 min", note: "end to end" }
+    ],
+    steps: [
+      ["Actions setup", "about 1 min"],
+      ["Model load", "289 s"],
+      ["First chunk", "97 s"],
+      ["Each later chunk", "about 11 s"]
+    ],
+    stepsOf: "smk-gc-hint-c10-v1",
+    levers: [
+      { name: "Chunk cap (10 of 30 chunks)", status: "in use" },
+      { name: "Several arms in one dispatch", status: "open PR", link: ["#67", PR + "67"] },
+      { name: "Warm GPU container between runs", status: "being built" },
+      { name: "Faster cold start (model load)", status: "being built" },
+      { name: "1.3B model for smoke runs", status: "testing", note: "speed test running" },
+      { name: "Less Actions overhead per run", status: "being built" }
+    ]
+  };
+  function renderSpeed() {
+    var box = $("speed"); if (!box) return; clear(box);
+    var runs = el("table", null, [el("thead", null, [el("tr", null, [
+      el("th", { class: "exp", scope: "col", text: "Run" }), el("th", { class: "num", scope: "col", text: "Wall clock" })])])]);
+    var rb = el("tbody");
+    SPEED.runs.forEach(function (r) {
+      rb.appendChild(el("tr", null, [
+        el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp }), el("div", { class: "meta-line", text: r.what })]),
+        el("td", { class: "num" }, [el("div", { text: r.time }), el("div", { class: "std", text: r.note })])]));
+    });
+    runs.appendChild(rb);
+    var steps = el("table", null, [el("thead", null, [el("tr", null, [
+      el("th", { class: "exp", scope: "col", text: "Step in " + SPEED.stepsOf }), el("th", { class: "num", scope: "col", text: "Time" })])])]);
+    var sb = el("tbody");
+    SPEED.steps.forEach(function (st) { sb.appendChild(el("tr", null, [el("td", { class: "exp", text: st[0] }), el("td", { class: "num", text: st[1] })])); });
+    steps.appendChild(sb);
+    var ul = el("ul", { class: "levers" });
+    SPEED.levers.forEach(function (l) {
+      var cls = { "in use": "ok", "open PR": "partial", "testing": "warn" }[l.status] || "";
+      var li = el("li", null, [el("span", { class: "nm", text: l.name }), el("span", { class: "badge " + cls, text: l.status })]);
+      if (l.note) li.appendChild(el("span", { class: "std", text: l.note }));
+      if (l.link) li.appendChild(el("a", { href: l.link[1], target: "_blank", rel: "noopener", text: "PR " + l.link[0] }));
+      ul.appendChild(li);
+    });
+    box.appendChild(el("div", { class: "speedgrid" }, [
+      el("div", { class: "scroll" }, [runs]), el("div", { class: "scroll" }, [steps])]));
+    box.appendChild(el("h3", { class: "levhead", text: "Speed changes" }));
+    box.appendChild(ul);
+  }
+
   var STATUS_LABEL = { shipped: "in use", testing: "built, not yet tested", planned: "in review", dropped: "dropped" };
 
   /* ---------- protocol checks ---------- */
@@ -1040,7 +1094,7 @@
   function renderAll() {
     var vis = visible();
     pruneSel(vis);
-    renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords();
+    renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords(); renderSpeed();
     renderTiles(); renderBoard(); renderBarChips(vis); renderBars(vis); renderLine(vis); renderCompare(vis);
     syncUrl();
     var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
