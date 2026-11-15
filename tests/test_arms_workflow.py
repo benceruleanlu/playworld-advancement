@@ -269,7 +269,7 @@ def test_commit_arm_scenes_writes_manifests_index_and_links(tmp_path):
     text = summary.read_text()
     site = "https://o.github.io/r/"
     assert f"[g-a1]({site}?scenes=g-a1&scene=GC036#scenes)" in text
-    assert f"({site}?compare=GC036&a=g-a1&b=g-a2#compare-clips)" in text and "g-a3" not in text
+    assert f"({site}?compare=GC036&b=g-a1&c=g-a2#compare-clips)" in text and "g-a3" not in text
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")

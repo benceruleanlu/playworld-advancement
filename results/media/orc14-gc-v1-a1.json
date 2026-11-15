@@ -39,7 +39,8 @@
    ],
    "reason": "镜头完全没有执行要求的360度环绕雕塑运动，视角始终保持不变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC005.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC005.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC005.jpg",
+   "reason_en": "The camera completely fails to execute the requested 360-degree orbit around the sculpture, with the viewpoint remaining unchanged throughout."
   },
   {
    "task_id": "GC016",
@@ -50,7 +51,8 @@
    ],
    "reason": "视频中男子走向宝塔并仰视的动作连贯，人物、宝塔及周围环境的身份、材质和颜色均保持了良好的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC016.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC016.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC016.jpg",
+   "reason_en": "In the video, the man's movement walking toward the pagoda and looking up is coherent, and the identity, materials, and colors of the person, pagoda, and surrounding environment maintain good consistency."
   },
   {
    "task_id": "GC031",
@@ -61,7 +63,8 @@
    ],
    "reason": "视频未能完成连贯的360度环视，而是通过多次硬切在公路和初始公园场景之间切换，且初始场景重新出现时两人和白色长椅完全消失，指示牌结构也发生了改变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC031.jpg",
+   "reason_en": "The video fails to complete a coherent 360-degree pan, instead switching between a highway and the initial park scene via multiple hard cuts; when the initial scene reappears, the two people and the white bench have completely disappeared, and the signpost structure has changed."
   },
   {
    "task_id": "GC033",
@@ -72,7 +75,8 @@
    ],
    "reason": "镜头执行了先左后右的旋转轨迹，但画面中途出现巨大的不明物体遮挡，且最终未能完全对准初始的橱窗视角，因此判定为部分成功。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC033.jpg",
+   "reason_en": "The camera executes a left-then-right rotation trajectory, but a huge unknown object occludes the frame midway, and it ultimately fails to fully align with the initial shop window view, so it is judged as a partial success."
   },
   {
    "task_id": "GC036",
@@ -83,7 +87,8 @@
    ],
    "reason": "视频仅表现出单一的持续向左平移，未能执行提示词要求的“从左向右平移”以及“回到中心”的轨迹序列。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC036.jpg",
+   "reason_en": "The video only shows a single continuous pan to the left, failing to execute the 'pan from left to right' and 'return to center' trajectory sequence requested in the prompt."
   },
   {
    "task_id": "GC038",
@@ -94,7 +99,8 @@
    ],
    "reason": "视频仅完成了向右转和向前移动的初始部分，未能执行后续的向左转、向后走以及转回原方向的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC038.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC038.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a1/GC038.jpg",
+   "reason_en": "The video only completes the initial parts of turning right and moving forward, failing to execute the subsequent instructions to turn left, walk backward, and turn back to the original direction."
   }
  ]
 }

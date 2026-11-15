@@ -45,7 +45,8 @@
    ],
    "reason": "镜头成功执行了左转并转回的动作，但重新面对原橱窗时，内部的所有关键物品均被替换，布局彻底改变，一致性极差。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/GC033.jpg",
+   "reason_en": "The camera successfully executes the left turn and return, but when facing the original display window again, all key items inside have been replaced and the layout has completely changed, resulting in extremely poor consistency."
   },
   {
    "task_id": "IF010",
@@ -56,7 +57,8 @@
    ],
    "reason": "主体形态发生严重突变，未能保持机器狗的身份。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF010.jpg",
+   "reason_en": "The subject's form undergoes a severe sudden mutation, failing to maintain its identity as a robotic dog."
   },
   {
    "task_id": "IF034",
@@ -67,7 +69,8 @@
    ],
    "reason": "虽然执行了抓取和提起的动作轨迹，但交互主体（机械臂和碗）发生了严重的身份突变，且环境消失。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF034.jpg",
+   "reason_en": "Although the trajectory of grasping and lifting is executed, the interacting subjects (the robotic arm and the bowl) undergo severe identity mutations, and the environment disappears."
   },
   {
    "task_id": "OE001",

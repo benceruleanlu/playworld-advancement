@@ -1,0 +1,164 @@
+{
+ "exp": "sks14-fx-v1-a1",
+ "release_tag": "run-sks14-fx-v1-a1",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a1",
+ "generated": "2026-11-15T04:32:48Z",
+ "git_sha": "814b26c0728dc1fe713bea1ca6ad4dd2ecea3965",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal"
+ ],
+ "player_model": "",
+ "notes": "sink key scale on out-of-sight, fixed actions, official judge 4 passes [arm 1/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "sks14-fx-v1-a1.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "OE034",
+   "family": "outsight",
+   "mean": 1.0,
+   "status": [
+    "score_1.0"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "镜头未能按照提示要求返回初始视角。",
+   "reason_en": "The camera failed to return to the initial viewpoint as instructed by the prompt.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE034.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE034.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": 2.0,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    1.0,
+    2.0,
+    3.0,
+    2.0
+   ],
+   "reason": "镜头完成了360度环视和后退，但重新出现时的白狗变成了不同的品种（垂耳变立耳），且缺乏有意义的动作演变。",
+   "reason_en": "The camera completed a 360-degree pan and pulled back, but when the white dog reappeared, it had changed into a different breed (floppy ears became upright ears) and lacked meaningful motion progression.",
+   "fail_reason": "未能回到初始视角，且未执行后退动作。",
+   "fail_pass": 1,
+   "fail_reason_en": "Failed to return to the initial viewpoint and did not perform the backward action.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": 2.625,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.0,
+    2.0,
+    3.5,
+    2.0
+   ],
+   "reason": "视频成功执行了镜头的右转、转回和上仰动作，且男子在扶梯上的位置合理上升，但在镜头移开期间走廊中出现了男子的复制体，存在严重的逻辑和身份错误。",
+   "reason_en": "The video successfully executed the camera's pan right, pan back, and tilt up, and the man reasonably moved higher up the escalator, but a duplicate of the man appeared in the hallway while the camera was turned away, resulting in a serious logical and identity error.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": 3.375,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.5,
+    4.0,
+    4.0,
+    2.0
+   ],
+   "reason": "视频成功展示了镜头移开期间咖啡液面的合理累积，但镜头返回后背景植物发生了严重的幻觉替换。",
+   "reason_en": "The video successfully showed a reasonable rise in the coffee level while the camera was turned away, but after the camera returned, the background plants suffered from severe hallucinated replacement.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE048.jpg"
+  },
+  {
+   "task_id": "OE058",
+   "family": "outsight",
+   "mean": 1.25,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头虽然执行了左右转动，但未能成功返回初始视角。",
+   "reason_en": "Although the camera panned left and right, it failed to return to the initial viewpoint.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE058.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE058.jpg"
+  },
+  {
+   "task_id": "OE069",
+   "family": "outsight",
+   "mean": 2.375,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.0,
+    3.0,
+    1.0,
+    2.5
+   ],
+   "reason": "未按指令向右转回，而是持续向左旋转。",
+   "reason_en": "Instead of turning back to the right as instructed, it continued rotating to the left.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE069.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a1/OE069.jpg"
+  }
+ ]
+}

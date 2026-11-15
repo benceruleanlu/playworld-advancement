@@ -45,7 +45,8 @@
    ],
    "reason": "视频在复杂的相机环绕和返回初始视角的过程中，成功保持了雕像及其周围环境的身份、外观和空间布局的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC005.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC005.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC005.jpg",
+   "reason_en": "Throughout the complex camera orbiting and return to the initial viewpoint, the video successfully maintained consistency in the identity, appearance, and spatial layout of the statue and its surrounding environment."
   },
   {
    "task_id": "GC033",
@@ -56,7 +57,8 @@
    ],
    "reason": "镜头返回初始锚定区域时，橱窗内的主要物体消失，标志文字变为乱码，空间布局完全重置，表现出严重的对象持久性失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC033.jpg",
+   "reason_en": "When the camera returned to the initial anchor area, the main objects inside the display window disappeared, the sign text turned into garbled text, and the spatial layout completely reset, showing a severe failure in object permanence."
   },
   {
    "task_id": "GC036",
@@ -67,7 +69,8 @@
    ],
    "reason": "视频仅展示了持续向右平移，完全未执行基础动作序列中要求的先向左平移以及最后的向左平移，轨迹与指令严重不符。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a2/GC036.jpg",
+   "reason_en": "The video only shows continuous panning to the right and completely failed to perform the initial left pan and the final left pan required in the base action sequence; the trajectory severely mismatches the instructions."
   }
  ]
 }
