@@ -110,7 +110,7 @@ agent or refined. See scripted_player.py.
 
 IF fixed camera (off by default): `--lingbot-if-fixed-camera` or LINGBOT_IF_FIXED_CAMERA=1 sends
 stationary camera poses on matching third-person IF tasks from the first frame. The original subject
-goal stays in the auto-caption prompt. Session only; refuses pose hints and measured turn.
+goal stays in the auto-caption prompt. Session only; refuses pose hints, measured turn and IF settle.
 Counts suppressed motion frames in if_fixed_camera_frames; no timing, noise or conditioning-layer changes.
 
 Conditioning schedule (off by default, session only): `--lingbot-cond-schedule` or LINGBOT_COND_SCHEDULE=1
