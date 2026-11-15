@@ -39,7 +39,8 @@
    ],
    "reason": "镜头旋转角度过小，未能完成360度旋转，也未能回到初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC031.jpg",
+   "reason_en": "The camera's rotation angle is too small, failing to complete a 360-degree rotation and failing to return to the initial view."
   },
   {
    "task_id": "GC033",
@@ -50,7 +51,8 @@
    ],
    "reason": "镜头执行了向左和向右的运动轨迹，但在返回过程中场景内容发生了严重突变，未能真实呈现原始的展示窗，因此仅算作部分完成。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC033.jpg",
+   "reason_en": "The camera executes the left and right motion trajectory, but the scene content undergoes severe sudden changes during the return, failing to faithfully render the original display window, so it is only counted as partially completed."
   },
   {
    "task_id": "GC036",
@@ -61,7 +63,8 @@
    ],
    "reason": "视频仅展示了持续向左平移的动作，未能执行向右平移以及回到中心的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC036.jpg",
+   "reason_en": "The video only shows a continuous pan to the left, failing to execute the instructions to pan right and return to the center."
   },
   {
    "task_id": "OE034",
@@ -72,7 +75,8 @@
    ],
    "reason": "视频在镜头移动过程中发生了灾难性的变形和场景替换，斑马完全失去了原有形态，鸵鸟和生菜消失，未能展现任何合理的隐藏状态演进或场景一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE034.jpg",
+   "reason_en": "During camera movement, the video suffers catastrophic distortion and scene replacement: the zebra completely loses its original form, the ostrich and lettuce disappear, and it fails to show any reasonable hidden state evolution or scene consistency."
   },
   {
    "task_id": "OE047",
@@ -83,7 +87,8 @@
    ],
    "reason": "视频在镜头转回后发生了灾难性的场景重置，自动扶梯完全消失，男子的服装也发生了改变，没有任何有意义的隐藏状态进展。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE047.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE047.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE047.jpg",
+   "reason_en": "After the camera turns back, the video suffers a catastrophic scene reset: the escalator completely disappears, the man's clothing also changes, and there is no meaningful hidden state progression."
   },
   {
    "task_id": "OE058",
@@ -94,7 +99,8 @@
    ],
    "reason": "未执行向左转回的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE058.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE058.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE058.jpg",
+   "reason_en": "Failed to execute the instruction to turn back to the left."
   }
  ]
 }

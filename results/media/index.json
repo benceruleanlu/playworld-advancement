@@ -1,123 +1,183 @@
 {
  "runs": [
   {
-   "exp": "dec14-ins-v1-a2",
-   "generated": "2026-11-15T04:06:22Z",
-   "n_tasks": 2,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-dec14-ins-v1-a2",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 2/2 of dec14-ins-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule"
-   ]
-  },
-  {
-   "exp": "dec14-ins-v1-a1",
-   "generated": "2026-11-15T04:06:08Z",
-   "n_tasks": 2,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-dec14-ins-v1-a1",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 1/2 of dec14-ins-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal"
-   ]
-  },
-  {
-   "exp": "sks14-fx-v1-a4",
-   "generated": "2026-11-15T03:59:55Z",
+   "exp": "pm14-fx-v2-a2",
+   "generated": "2026-11-15T05:01:58Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a4",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a2",
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 4/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-key-scale 0.7 --lingbot-sink-scale-after 4"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
-   "exp": "sks14-fx-v1-a3",
-   "generated": "2026-11-15T03:59:42Z",
+   "exp": "pm14-fx-v2-a1",
+   "generated": "2026-11-15T05:01:54Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a3",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a1",
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 3/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-key-scale 0.4"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
-   "exp": "sks14-fx-v1-a2",
-   "generated": "2026-11-15T03:59:29Z",
+   "exp": "pm14-fx-v2-a3",
+   "generated": "2026-11-15T05:01:51Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a2",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a3",
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 2/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-key-scale 0.7"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
-   "exp": "sks14-fx-v1-a1",
-   "generated": "2026-11-15T03:59:16Z",
+   "exp": "pm14-fx-v2-a4",
+   "generated": "2026-11-15T05:01:44Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a1",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a4",
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 1/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
-   "exp": "sp14-gc-v1-a4",
-   "generated": "2026-11-15T03:58:41Z",
+   "exp": "pm14-fx-v1-a2",
+   "generated": "2026-11-15T04:56:08Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a4",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v1-a2",
+   "scored": true,
    "labels": [
-    "not scored",
-    "scripted dataset moves (no AI player), A/B only",
-    "arm 4/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-reanchor"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
-   "exp": "sp14-gc-v1-a3",
-   "generated": "2026-11-15T03:58:29Z",
+   "exp": "pm14-fx-v1-a3",
+   "generated": "2026-11-15T04:56:05Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a3",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v1-a3",
+   "scored": true,
    "labels": [
-    "not scored",
-    "scripted dataset moves (no AI player), A/B only",
-    "arm 3/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-ease-turns"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
-   "exp": "sp14-gc-v1-a2",
-   "generated": "2026-11-15T03:58:17Z",
+   "exp": "pm14-fx-v1-a1",
+   "generated": "2026-11-15T04:56:01Z",
    "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a2",
-   "scored": false,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v1-a1",
+   "scored": true,
    "labels": [
-    "not scored",
-    "scripted dataset moves (no AI player), A/B only",
-    "arm 2/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-chunk-director"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
    "exp": "sp14-gc-v1-a1",
-   "generated": "2026-11-15T03:58:06Z",
+   "generated": "2026-11-15T04:36:37Z",
    "n_tasks": 6,
    "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a1",
-   "scored": false,
+   "scored": true,
    "labels": [
-    "not scored",
-    "scripted dataset moves (no AI player), A/B only",
-    "arm 1/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna"
+    "scripted dataset moves (no AI player), A/B only"
+   ]
+  },
+  {
+   "exp": "mem14-fx-v1-a1",
+   "generated": "2026-11-15T04:34:41Z",
+   "n_tasks": 9,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-mem14-fx-v1-a1",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "sks14-fx-v1-a1",
+   "generated": "2026-11-15T04:32:48Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a1",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "sks14-fx-v1-a3",
+   "generated": "2026-11-15T04:32:42Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a3",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "sks14-fx-v1-a2",
+   "generated": "2026-11-15T04:32:39Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a2",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "sks14-fx-v1-a4",
+   "generated": "2026-11-15T04:32:22Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a4",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "sp14-gc-v1-a4",
+   "generated": "2026-11-15T04:32:10Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a4",
+   "scored": true,
+   "labels": [
+    "scripted dataset moves (no AI player), A/B only"
+   ]
+  },
+  {
+   "exp": "sp14-gc-v1-a2",
+   "generated": "2026-11-15T04:32:01Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a2",
+   "scored": true,
+   "labels": [
+    "scripted dataset moves (no AI player), A/B only"
+   ]
+  },
+  {
+   "exp": "sp14-gc-v1-a3",
+   "generated": "2026-11-15T04:31:54Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a3",
+   "scored": true,
+   "labels": [
+    "scripted dataset moves (no AI player), A/B only"
+   ]
+  },
+  {
+   "exp": "dec14-ins-v1-a1",
+   "generated": "2026-11-15T04:31:17Z",
+   "n_tasks": 2,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-dec14-ins-v1-a1",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "dec14-ins-v1-a2",
+   "generated": "2026-11-15T04:31:14Z",
+   "n_tasks": 2,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-dec14-ins-v1-a2",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
@@ -148,18 +208,6 @@
    "scored": true,
    "labels": [
     "replayed dataset moves (open loop), A/B only"
-   ]
-  },
-  {
-   "exp": "mem14-fx-v1-a1",
-   "generated": "2026-11-15T03:45:09Z",
-   "n_tasks": 9,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-mem14-fx-v1-a1",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 1/4 of mem14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal"
    ]
   },
   {

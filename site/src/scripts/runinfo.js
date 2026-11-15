@@ -35,6 +35,17 @@ export const FLAG_NAMES = {
   "--lingbot-sink-key-scale": function (v) { return "sink key scale " + v; },
   "--lingbot-sink-scale-after": function (v) { return "from chunk " + v; },
   "--lingbot-sink-scale-tasks": function (v) { return "tasks " + v; },
+  "--lingbot-pose-memory": "pose memory",
+  "--lingbot-pose-mem-deg": function (v) { return "match within " + v + " degrees"; },
+  "--lingbot-pose-mem-trans": function (v) { return "match within " + v + " units"; },
+  "--lingbot-pose-mem-leave-deg": function (v) { return "left after " + v + " degrees"; },
+  "--lingbot-pose-mem-leave-trans": function (v) { return "left after " + v + " units"; },
+  "--lingbot-pose-mem-latents": function (v) { return v + " recalled latents"; },
+  "--lingbot-pose-mem-anchor": function (v) { return "keep " + v + " first latents"; },
+  "--lingbot-pose-mem-time": function (v) { return "recall time " + v; },
+  "--lingbot-pose-mem-fallback": function (v) { return "no match: " + v; },
+  "--lingbot-pose-mem-tasks": function (v) { return "tasks " + v; },
+  "--lingbot-pose-mem-max-mb": function (v) { return "bank cap " + v + " MB"; },
   "--lingbot-kv-noise": "noisy memory writes",
   "--lingbot-kv-noise-t": function (v) { return "noise level " + v; },
   "--lingbot-stg": "step-0 self-guidance",
@@ -56,6 +67,10 @@ var KNOB_OF = {
   "--lingbot-sink-scale-after": "--lingbot-sink-key-scale", "--lingbot-sink-scale-tasks": "--lingbot-sink-key-scale",
   "--lingbot-kv-noise-t": "--lingbot-kv-noise",
   "--lingbot-yaw-gain-left": "--lingbot-yaw-gain", "--lingbot-yaw-gain-right": "--lingbot-yaw-gain",
+  "--lingbot-pose-mem-deg": "--lingbot-pose-memory", "--lingbot-pose-mem-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-leave-deg": "--lingbot-pose-memory",
+  "--lingbot-pose-mem-leave-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-latents": "--lingbot-pose-memory",
+  "--lingbot-pose-mem-anchor": "--lingbot-pose-memory", "--lingbot-pose-mem-time": "--lingbot-pose-memory", "--lingbot-pose-mem-fallback": "--lingbot-pose-memory",
+  "--lingbot-pose-mem-tasks": "--lingbot-pose-memory", "--lingbot-pose-mem-max-mb": "--lingbot-pose-memory",
   "--lingbot-stg-steps": "--lingbot-stg", "--lingbot-stg-blocks": "--lingbot-stg", "--lingbot-stg-w": "--lingbot-stg"
 };
 // what a value flag tests, for a group title ("Attention window test")

@@ -43,7 +43,8 @@
    ],
    "reason": "视频执行了摄像机旋转并返回，初始橱窗内的关键物体在重现时保持了良好的身份、外观和位置一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/GC033.jpg",
+   "reason_en": "The video executes a camera rotation and return, and the key objects inside the initial display window maintain good consistency in identity, appearance, and position when they reappear."
   },
   {
    "task_id": "IF010",
@@ -54,7 +55,8 @@
    ],
    "reason": "视频中机器狗成功执行了左转并直行的轨迹，但在行走过程中完全变形为一只真实的狗，导致严重的物理不合理性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/IF010.jpg",
+   "reason_en": "In the video, the robotic dog successfully executes the trajectory of turning left and walking straight, but completely morphs into a real dog while walking, leading to severe physical implausibility."
   },
   {
    "task_id": "IF034",
@@ -65,7 +67,8 @@
    ],
    "reason": "场景在接触前发生硬重置，导致动作未完成。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a1/IF034.jpg",
+   "reason_en": "The scene undergoes a hard reset before contact, causing the action to remain unfinished."
   },
   {
    "task_id": "OE001",

@@ -40,7 +40,8 @@
    ],
    "reason": "相机完成了360度旋转，但在返回初始视角时，场景受到严重的黄绿色噪点破坏，导致物体形状、纹理和颜色出现严重的一致性失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC031.jpg",
+   "reason_en": "The camera completes a 360-degree rotation, but upon returning to the initial viewpoint, the scene is corrupted by severe yellow-green noise, causing serious consistency failures in object shapes, textures, and colors."
   },
   {
    "task_id": "GC033",
@@ -51,7 +52,8 @@
    ],
    "reason": "镜头仅执行了向左旋转的动作，且一直持续，未能按照指令要求向右转回初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC033.jpg",
+   "reason_en": "The camera only rotates to the left and continues doing so, failing to turn back right to the initial viewpoint as instructed."
   },
   {
    "task_id": "GC036",
@@ -62,7 +64,8 @@
    ],
    "reason": "视频仅完成了向左和向右的平移，缺失了最后向左平移回到中心的动作，轨迹未完全按照指令执行。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC036.jpg",
+   "reason_en": "The video only completes the leftward and rightward pans, missing the final leftward pan back to the center, so the trajectory is not fully executed as instructed."
   }
  ]
 }

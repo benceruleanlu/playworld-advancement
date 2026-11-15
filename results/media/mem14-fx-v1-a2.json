@@ -45,7 +45,8 @@
    ],
    "reason": "镜头虽然进行了向右的环视，但未能完成360度旋转并回到初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/GC031.jpg",
+   "reason_en": "Although the camera pans around to the right, it fails to complete a 360-degree rotation and return to the initial viewpoint."
   },
   {
    "task_id": "GC033",
@@ -67,7 +68,8 @@
    ],
    "reason": "视频在连续的镜头平移中出现了严重的物体复制和突变，包括凭空出现第二个喷泉以及粉色面板上生成第二个'HATS'招牌，同时原有招牌的文字细节也发生了改变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/GC036.jpg",
+   "reason_en": "During the continuous camera pan, severe object duplication and mutation occur, including a second fountain appearing out of nowhere and a second 'HATS' sign being generated on the pink panel, while the text details of the original sign also change."
   },
   {
    "task_id": "OE034",
@@ -78,7 +80,8 @@
    ],
    "reason": "镜头成功完成了向右平移并返回的动作，但转回后三只斑马的条纹图案完全改变，且初始画面中的鸵鸟和地上的生菜不合理地完全消失，存在严重的身份和物体一致性错误。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE034.jpg",
+   "reason_en": "The camera successfully pans right and returns, but after returning, the stripe patterns of the three zebras completely change, and the ostrich and the lettuce on the ground from the initial frame unreasonably disappear completely, showing severe identity and object consistency errors."
   },
   {
    "task_id": "OE039",
@@ -89,7 +92,8 @@
    ],
    "reason": "视频成功执行了360度环视和后退，狗在重新出现时展现了合理的姿态变化，但在后退阶段狗的品种和胸背带发生了严重的突变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE039.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE039.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE039.jpg",
+   "reason_en": "The video successfully executes a 360-degree pan and moves backward, with the dog showing reasonable pose changes upon reappearing; however, during the backward phase, the dog's breed and harness undergo severe sudden changes."
   },
   {
    "task_id": "OE047",
@@ -100,7 +104,8 @@
    ],
    "reason": "镜头按提示完成了旋转，但男子并未在视线外继续乘坐扶梯，而是离开后又返回，并在镜头仰视时荒谬地复制并出现在天花板上，物理逻辑和轨迹连续性严重崩坏。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE047.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE047.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE047.jpg",
+   "reason_en": "The camera completes the rotation as prompted, but instead of continuing on the escalator out of sight, the man leaves and returns, absurdly duplicating and appearing on the ceiling when the camera tilts up, showing a severe breakdown in physical logic and trajectory continuity."
   },
   {
    "task_id": "OE048",
@@ -111,7 +116,8 @@
    ],
    "reason": "镜头成功向右并返回，但返回后原背景中的盆栽被替换为银色电器，且经过长时间隐藏后杯中咖啡量未见合理增加，状态未能正确累积。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE048.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE048.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE048.jpg",
+   "reason_en": "The camera successfully pans right and returns, but upon returning, the potted plant in the original background is replaced by a silver appliance, and after being hidden for a long time, the amount of coffee in the cup does not reasonably increase, failing to accumulate state properly."
   },
   {
    "task_id": "OE058",
@@ -133,7 +139,8 @@
    ],
    "reason": "镜头成功完成了180度旋转并返回，但原本应在视线外向下移动的母亲和女孩在镜头旋转时矛盾地瞬移到了镜头前方，导致了严重的空间逻辑和物理累积错误。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE069.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE069.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a2/OE069.jpg",
+   "reason_en": "The camera successfully completes a 180-degree rotation and returns, but the mother and girl, who should have moved downward out of sight, paradoxically teleport in front of the camera during the rotation, causing severe spatial logic and physical accumulation errors."
   }
  ]
 }

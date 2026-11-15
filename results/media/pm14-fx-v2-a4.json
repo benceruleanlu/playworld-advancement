@@ -1,0 +1,168 @@
+{
+ "exp": "pm14-fx-v2-a4",
+ "release_tag": "run-pm14-fx-v2-a4",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a4",
+ "generated": "2026-11-15T05:01:44Z",
+ "git_sha": "c72c4c9b97f3b5b63123d1dceaa8a5294477b0b1",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-sink-size",
+  "10",
+  "--lingbot-local-attn",
+  "22"
+ ],
+ "player_model": "",
+ "notes": "pose memory variants: opening compressed to 1 latent, re-timed memory, pose track corrected by yaw gain 0.85, plus the window control for pm14-fx-v1 arm 3; control is pm14-fx-v1-a1 (generation is deterministic) [arm 4/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-size 10 --lingbot-local-attn 22]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "pm14-fx-v2-a4.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 2.0,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.4,
+    1.4,
+    3.0,
+    2.2
+   ],
+   "reason": "镜头虽然执行了旋转动作，但一直在向右转，未能完成完整的360度旋转并回到初始视角。",
+   "reason_en": "Although the camera performs a rotation, it keeps turning right and fails to complete a full 360-degree rotation to return to the initial viewpoint.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 4.15,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    4.0,
+    4.6,
+    4.0,
+    4.0
+   ],
+   "reason": "视频成功执行了向左旋转并返回的镜头动作，重新观察到的初始橱窗内各关键物体在身份、纹理、颜色及相对位置上均保持了极高的一致性。",
+   "reason_en": "The video successfully executes the camera movement of rotating left and returning. The key objects in the revisited initial display window maintain extremely high consistency in identity, texture, color, and relative position.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 1.8,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    2.2,
+    3.0,
+    1.0,
+    1.0
+   ],
+   "reason": "相机平移重访右侧墙壁时，原黄色招牌和暗墙被粉色店面完全替换，导致严重的身份和颜色一致性失败。",
+   "reason_en": "When the camera pans to revisit the right wall, the original yellow sign and dark wall are completely replaced by a pink storefront, resulting in a severe failure in identity and color consistency.",
+   "fail_reason": "镜头仅持续向左平移，未能执行向右平移并返回中心的指令。",
+   "fail_pass": 3,
+   "fail_reason_en": "The camera only keeps panning left and fails to execute the instruction to pan right and return to the center.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/GC036.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": 3.125,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.5,
+    4.0,
+    3.0,
+    2.0
+   ],
+   "reason": "视频展示了合理的相机旋转与后退及狗的姿态演进，但在旋转中途错误地生成了主体的复制品。",
+   "reason_en": "The video shows plausible camera rotation, pulling back, and progression of the dog's posture, but mistakenly generates a duplicate of the subject midway through the rotation.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": 2.0,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    2.0,
+    3.0,
+    1.0,
+    2.0
+   ],
+   "reason": "视频虽然完成了镜头的右转、转回和仰视动作，但男子在进入电梯后于镜头转回时违背物理规律地瞬移回扶梯底部，导致严重的身份与轨迹连贯性失败。",
+   "reason_en": "Although the video completes the camera movements of turning right, turning back, and looking up, after entering the elevator, the man defies the laws of physics by teleporting back to the bottom of the escalator when the camera turns back, leading to a severe failure in identity and trajectory continuity.",
+   "fail_reason": "The camera fails to execute the requested right turn and return.",
+   "fail_pass": 3,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": 2.875,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.5,
+    2.0,
+    3.0,
+    3.0
+   ],
+   "reason": "视频在前半段成功执行了要求的镜头右转和转回，且杯中咖啡液面合理上升；但在完成动作后，镜头进行了多次多余的左右摆动，且杯中积累的咖啡在后续画面中突然清空重置。",
+   "reason_en": "In the first half, the video successfully executes the requested camera turn to the right and return, with the coffee level in the cup rising plausibly. However, after completing the action, the camera makes several unnecessary side-to-side swings, and the coffee accumulated in the cup suddenly empties and resets in subsequent frames.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a4/OE048.jpg"
+  }
+ ]
+}

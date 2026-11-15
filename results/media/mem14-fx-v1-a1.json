@@ -2,12 +2,12 @@
  "exp": "mem14-fx-v1-a1",
  "release_tag": "run-mem14-fx-v1-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-mem14-fx-v1-a1",
- "generated": "2026-11-15T03:45:09Z",
+ "generated": "2026-11-15T04:34:41Z",
  "git_sha": "f1f755236487a0a84c8bd75f673a37101a8bba15",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -20,9 +20,7 @@
  "player_model": "",
  "notes": "attention window arms (sink, local), fixed actions, official judge 4 passes [arm 1/4 of mem14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 1/4 of mem14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "mem14-fx-v1-a1.md",
  "model": {
@@ -39,99 +37,189 @@
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 1.8,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    1.6,
+    1.4,
+    1.4,
+    2.8
+   ],
+   "reason": "镜头成功完成了360度旋转，但在回到初始视角时，原本位于指示牌后方的大树干完全消失，指示牌结构改变，且初始的两人在镜头平移时融合成了一人，存在严重的身份、颜色和相对位置一致性失败。",
+   "reason_en": "The camera successfully completed a 360-degree rotation, but upon returning to the initial viewpoint, the large tree trunk originally behind the signpost completely disappeared, the signpost's structure changed, and the initial two people merged into one during the camera pan, showing severe failures in identity, color, and relative position consistency.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 3.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    3.6,
+    4.0,
+    3.4,
+    4.0
+   ],
+   "reason": "视频成功展示了相机向左转动并返回初始橱窗的过程，橱窗内的物体在重新出现时保持了良好的结构和位置一致性，但'Gift Vouchers'标志上的文字发生了明显的改变。",
+   "reason_en": "The video successfully showed the camera turning left and returning to the initial shop window. The objects inside the window maintained good structural and positional consistency upon reappearing, but the text on the 'Gift Vouchers' sign changed noticeably.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 2.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    3.0,
+    2.2,
+    2.2,
+    3.6
+   ],
+   "reason": "视频展示了连贯的镜头平移，但右侧的'HATS'招牌在重新进入视野时发生了明显的颜色（黄变紫红）和结构突变。",
+   "reason_en": "The video showed a coherent camera pan, but the 'HATS' sign on the right underwent an obvious abrupt change in color (from yellow to magenta) and structure when re-entering the frame.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/GC036.jpg"
   },
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "score_1.0"
    ],
-   "reason": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "镜头未能返回初始视角。",
+   "reason_en": "The camera failed to return to the initial viewpoint.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE034.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE034.jpg"
   },
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    1.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头完成360度旋转后，原本的小狗和背景墙壁被完全替换，发生了严重的场景重置和身份丢失。",
+   "reason_en": "After the camera completed a 360-degree rotation, the original puppy and background wall were completely replaced, resulting in a severe scene reset and loss of identity.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE039.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE039.jpg"
   },
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.0,
+    2.0,
+    2.0
+   ],
+   "reason": "视频成功执行了镜头的转向指令，但主体男子在镜头移动期间发生了严重的瞬移和轨迹断裂，从扶梯瞬移至走廊又重置回扶梯，破坏了物理连续性。",
+   "reason_en": "The video successfully executed the camera turning instruction, but the main male subject experienced severe teleportation and trajectory breaks during the camera movement, teleporting from the escalator to the hallway and then resetting back to the escalator, breaking physical continuity.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE047.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE047.jpg"
   },
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 3.1875,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    3.0,
+    3.0,
+    3.25,
+    3.5
+   ],
+   "reason": "镜头成功完成右转并转回，咖啡液面在移开期间合理上升，但重新出现时杯子和背景植物发生了严重的替换。",
+   "reason_en": "The camera successfully turned right and turned back. The coffee liquid level rose reasonably while out of frame, but the cup and background plants were severely replaced upon reappearing.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE048.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE048.jpg"
   },
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
    "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": null,
    "poster": null
   },
   {
    "task_id": "OE069",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.875,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    3.5,
+    3.0,
+    3.0,
+    2.0
+   ],
+   "reason": "镜头成功完成了向左旋转并转回的动作，扶梯也保持了向下的运行状态，但镜头转回后母亲的背包图案发生了明显改变，且人物与镜头的相对距离出现了不合理的缩短。",
+   "reason_en": "The camera successfully rotated left and turned back, and the escalator maintained its downward operation. However, after the camera turned back, the pattern on the mother's backpack changed noticeably, and the relative distance between the characters and the camera shortened unreasonably.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE069.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-mem14-fx-v1-a1/OE069.jpg"
   }

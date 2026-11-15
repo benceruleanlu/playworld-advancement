@@ -2,12 +2,12 @@
  "exp": "sks14-fx-v1-a4",
  "release_tag": "run-sks14-fx-v1-a4",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a4",
- "generated": "2026-11-15T03:59:55Z",
+ "generated": "2026-11-15T04:32:22Z",
  "git_sha": "814b26c0728dc1fe713bea1ca6ad4dd2ecea3965",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -24,9 +24,7 @@
  "player_model": "",
  "notes": "sink key scale on out-of-sight, fixed actions, official judge 4 passes [arm 4/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-key-scale 0.7 --lingbot-sink-scale-after 4]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 4/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-key-scale 0.7 --lingbot-sink-scale-after 4"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "sks14-fx-v1-a4.md",
  "model": {
@@ -43,66 +41,126 @@
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "镜头未能返回初始视角，最终指向了天空。",
+   "reason_en": "The camera failed to return to the initial viewpoint and ended up pointing at the sky.",
+   "fail_reason": "镜头仅向右平移，未执行返回初始视角的指令。",
+   "fail_pass": 3,
+   "fail_reason_en": "The camera only pans to the right and does not execute the instruction to return to the initial viewpoint.",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE034.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE034.jpg"
   },
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "虽然执行了旋转和后退，但未能回到原始视角的场景。",
+   "reason_en": "Although it executed the rotation and pullback, it failed to return to the scene of the original viewpoint.",
+   "fail_reason": "轨迹完全偏离指令要求。",
+   "fail_pass": 2,
+   "fail_reason_en": "The trajectory completely deviates from the instruction requirements.",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE039.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE039.jpg"
   },
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.0,
+    1.0,
+    2.0
+   ],
+   "reason": "视频虽然完成了镜头的转向提示，但在视线外演变中完全失败，男子重置回扶梯底部且环境发生了硬重置。",
+   "reason_en": "Although the video completed the camera turning prompt, it completely failed in off-screen evolution; the man reset to the bottom of the escalator and the environment underwent a hard reset.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE047.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE047.jpg"
   },
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "未能执行转回初始视角的指令。",
+   "reason_en": "Failed to execute the instruction to turn back to the initial viewpoint.",
+   "fail_reason": "相机未能转回初始视角。",
+   "fail_pass": 4,
+   "fail_reason_en": "The camera fails to rotate back to the initial viewpoint.",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE048.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE048.jpg"
   },
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "相机完全没有执行提示要求的旋转动作。",
+   "reason_en": "The camera completely failed to execute the rotation movement requested by the prompt.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE058.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE058.jpg"
   },
   {
    "task_id": "OE069",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频执行了镜头的左右转动，但当镜头转回原视角时，环境光线变为蓝色，海报改变，且母亲和女儿的外观发生严重变异，未能保持场景和人物的一致性及合理的运动积累。",
+   "reason_en": "The video executed the left-and-right camera pan, but when the camera turned back to the original viewpoint, the ambient lighting turned blue, the poster changed, and the appearances of the mother and daughter mutated severely, failing to maintain scene and character consistency as well as reasonable motion accumulation.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE069.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a4/OE069.jpg"
   }

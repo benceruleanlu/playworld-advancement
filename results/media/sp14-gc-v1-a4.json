@@ -2,12 +2,12 @@
  "exp": "sp14-gc-v1-a4",
  "release_tag": "run-sp14-gc-v1-a4",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a4",
- "generated": "2026-11-15T03:58:41Z",
+ "generated": "2026-11-15T04:32:10Z",
  "git_sha": "785e9ddba69cd26b608731b10b63e667d787147b",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "agent",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -24,9 +24,7 @@
  "player_model": "",
  "notes": "scripted player A/B of chunk-level GC flags; not a closed-loop score [arm 4/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-reanchor]",
  "labels": [
-  "not scored",
-  "scripted dataset moves (no AI player), A/B only",
-  "arm 4/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-reanchor"
+  "scripted dataset moves (no AI player), A/B only"
  ],
  "report": "sp14-gc-v1-a4.md",
  "model": {
@@ -43,66 +41,114 @@
   {
    "task_id": "GC005",
    "family": "gc",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    1.0,
+    2.0
+   ],
+   "reason": "视频在摄像机移动过程中发生了严重的场景重置和物体形变，初始雕像、底座和背景建筑完全丢失并被替换为不相关的物体。",
+   "reason_en": "The video experiences severe scene resets and object deformation during camera movement, with the initial statue, pedestal, and background buildings completely lost and replaced by unrelated objects.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC005.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC005.jpg"
   },
   {
    "task_id": "GC016",
    "family": "gc",
-   "mean": null,
+   "mean": 4.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    4.0,
+    4.0
+   ],
+   "reason": "视频在男子走向宝塔并仰视的过程中，较好地保持了物体身份、纹理、颜色和空间关系的连贯性。",
+   "reason_en": "As the man walks toward the pagoda and looks up, the video maintains good consistency in object identity, texture, color, and spatial relationships.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC016.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC016.jpg"
   },
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 2.5,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.6,
+    2.4
+   ],
+   "reason": "镜头完成了360度环视，但回到初始区域时指示牌结构改变，且原本的两人和长椅未能重现。",
+   "reason_en": "The camera completes a 360-degree pan, but upon returning to the initial area, the signpost's structure changes, and the original two people and bench fail to reappear.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 4.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    4.0,
+    4.0
+   ],
+   "reason": "镜头成功完成向左平移并返回，初始橱窗内的所有关键物体均一致重现。",
+   "reason_en": "The camera successfully pans left and returns, with all key objects inside the initial shop window reappearing consistently.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 2.2,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.4
+   ],
+   "reason": "视频中相机进行了明显的平移运动，但场景出现了严重的硬重置，导致'HATS'招牌重复出现、文本变为'HASTS'，且店铺内部结构和天花板面板的相对位置发生了不可能的改变。",
+   "reason_en": "The camera performs noticeable panning movement in the video, but the scene undergoes a severe hard reset, causing the 'HATS' sign to appear repeatedly, the text to change to 'HASTS', and the relative positions of the store's interior structure and ceiling panels to change impossibly.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC036.jpg"
   },
   {
    "task_id": "GC038",
    "family": "gc",
-   "mean": null,
+   "mean": 2.4,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.8,
+    2.0
+   ],
+   "reason": "视频在相机平移过程中发生了多次严重的硬重置，导致空间布局和物体身份不连续，尽管初始场景在末尾重新出现且外观保持一致。",
+   "reason_en": "The video experiences multiple severe hard resets during camera panning, resulting in discontinuities in spatial layout and object identity, although the initial scene reappears at the end with consistent appearance.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC038.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a4/GC038.jpg"
   }
