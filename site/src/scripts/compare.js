@@ -431,9 +431,11 @@ import { fmtT, playableUrl } from "./clips.js";
     live.forEach(function (s) {
       if (s.failed) return;
       var on = isFinite(s.d) && S.t < s.d - END;
-      if (on && !hold) {
+      // Safari fetches nothing past the metadata for a paused clip, so a clip that is short of data must be
+      // playing to fill; the clock still holds, and the clips that are ready wait paused beside it
+      if (on && (!hold || s.v.readyState < 3)) {
         if (s.v.paused && !s.v.ended) { s.v.playbackRate = S.rate; var p = s.v.play(); if (p && p.catch) p.catch(noop); }
-        if (Math.abs(s.v.currentTime - S.t) > DRIFT * Math.max(1, S.rate)) seekOne(s, S.t);
+        if (!hold && Math.abs(s.v.currentTime - S.t) > DRIFT * Math.max(1, S.rate)) seekOne(s, S.t);
       } else {
         if (!s.v.paused) s.v.pause();
         if (!on && isFinite(s.d)) seekOne(s, s.d);
