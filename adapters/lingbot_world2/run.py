@@ -102,6 +102,7 @@ from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
+from adapters.lingbot_world2 import gc_director as D  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
@@ -111,7 +112,7 @@ from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
-              "--lingbot-gc-completion-hint")
+              "--lingbot-gc-completion-hint", "--lingbot-gc-chunk-director")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -128,13 +129,17 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
         "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
+        "gc_director": "--lingbot-gc-chunk-director" in argv or environ.get("LINGBOT_GC_CHUNK_DIRECTOR", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    if flags["gc_director"] and (mode == "goal" or flags["stateless"]):
+        raise SystemExit("--lingbot-gc-chunk-director requires caption prompting and session mode")
     flags["stall"], argv = W.parse(argv, environ)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
 # Set by main() from configure(); the engine reads them at call time.
+GC_DIRECTOR = False  # --lingbot-gc-chunk-director / LINGBOT_GC_CHUNK_DIRECTOR=1 (requires caption + session)
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
@@ -270,12 +275,17 @@ class LingBotWorld2Engine:
                         int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
+        original_prompt = prompt
         if PROMPT_MODE != "goal":
             goal, prompt = prompt, prompts.model_prompt(prompt, name, PROMPT_MODE)
             STATS.caption(prompt != goal)
             if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
                 print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
                       f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
+        if GC_DIRECTOR and prompt != original_prompt:
+            directed = D.compose(prompt, name, action)
+            STATS.gc_director_chunks += directed != prompt
+            prompt = directed
         with W.watch(name, STALL):
             if self.session is None:
                 return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
@@ -304,6 +314,8 @@ class LingBotWorld2Engine:
                                reanchor=reanchor)
             if reanchor:
                 STATS.armed()
+        if cont and GC_DIRECTOR and name.startswith("GC"):
+            STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
         frames = self.session.step(keys)
@@ -362,14 +374,16 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL
+    global CPU_THREADS, STALL, GC_DIRECTOR
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
+    GC_DIRECTOR = flags["gc_director"]
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
+                                 gc_director=GC_DIRECTOR)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)

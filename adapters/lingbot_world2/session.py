@@ -287,6 +287,7 @@ class LingBotSession:
         pipe.scheduler.set_timesteps(pipe.num_train_timesteps, shift=self.shift)
         self.timesteps = pipe.scheduler.timesteps[list(TIMESTEPS_INDEX)]
         self.context = encode_prompt(pipe, prompt, self.t5_cache)
+        self.prompt = prompt
 
         Ks = torch.tensor([P.INTRINSICS_480P], dtype=torch.float32)
         Ks = get_Ks_transformed(Ks, height_org=480, width_org=832, height_resize=self.h,
@@ -420,6 +421,17 @@ class LingBotSession:
         return emb.to(self.pipe.param_dtype)
 
     # -- step --------------------------------------------------------------
+    def update_prompt(self, prompt: str) -> bool:
+        """Refresh text cross-attention only; preserve visual KV, camera and decoder state."""
+        if not self.started:
+            raise RuntimeError("reset the session before updating its prompt")
+        if prompt == self.prompt:
+            return False
+        context = encode_prompt(self.pipe, prompt, self.t5_cache)
+        self.context, self.prompt = context, prompt
+        self.cross_init = False  # upstream overwrites text K/V on the next first-call forward
+        return True
+
     def step(self, keys: list[str]):
         """Generate len(keys) pixel frames (whole chunks) and return uint8 [F, H, W, 3]:
         first step 16n-3 frames from the input frame, later steps the previous last
