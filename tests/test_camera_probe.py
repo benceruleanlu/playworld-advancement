@@ -182,7 +182,7 @@ def test_report_tables(tmp_path):
     loaded = CP.load_trials([p])
     assert len(loaded) == 5 and [CP.arm_of(r) for r in loaded] == ["open", "open", "servo", "fixed-L0.8", "open"]
     g = CP.gain_table(loaded)
-    assert "| GC033 | 1.24 | 1.11 | 0.91 | 0.94 | 1.27 |" in g
+    assert "| GC033 | 1.24 | 1.11 | 0.91 | 0.94 | 1.29 |" in g     # left (1.24, 1.24, 1.11) over right (0.94, 0.94, 0.91)
     a = CP.arm_table(loaded)
     assert "| GC033 | L90-R90 | 27.2 | - | 1.5 |" in a and "| GC033 | R90-L90 | 17.6 | 0.9 | - |" in a
     assert "mean over the 0 rows every arm ran" in a
