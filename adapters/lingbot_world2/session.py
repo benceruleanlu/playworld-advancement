@@ -18,6 +18,9 @@ no files. Differences from upstream, all deliberate:
     loop does not know in advance;
   * the image conditioning `y` is encoded once for a fixed horizon (it is the
     input image followed by zeros, so it does not depend on the actions);
+  * opt-in streamed `y` (stream_encode=True, --lingbot-fast-y, off by default): `y` is encoded
+    only as far as the rollout has got, keeping the VAE encoder's causal cache across steps,
+    instead of for the whole horizon at reset (same encoder calls on the same inputs);
   * opt-in re-anchoring (reset(reanchor=True), off by default): when the commanded
     camera track returns to the start pose, that latent of `y` is set to the input
     image again (ReturnDetector, _anchor_y).
@@ -34,6 +37,7 @@ import time
 
 import numpy as np
 
+from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import poses as P
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
@@ -203,11 +207,33 @@ def horizon_latents(horizon_frames: int) -> int:
 
 # ------------------------------------------------------------- torch session
 
+def encode_prompt(pipe, prompt: str, disk=None):
+    """T5 context for `prompt`, filling upstream's pipe._t5_cache (same key and device-resident
+    value as upstream), through the optional disk cache (fast_start.EmbeddingCache). Prints one
+    timing line. Returns the context."""
+    import torch  # noqa: PLC0415
+
+    def compute(p):
+        if not pipe.t5_cpu:
+            pipe.text_encoder.model.to(pipe.device)
+            return pipe.text_encoder([p], pipe.device)
+        return [t.to(pipe.device) for t in pipe.text_encoder([p], torch.device("cpu"))]
+
+    t0 = time.time()
+    ctx, source = FS.resolve_context(prompt, pipe._t5_cache, compute, disk,
+                                     to_device=lambda c: [t.to(pipe.device) for t in c])
+    torch.cuda.synchronize()
+    FS.log("reset.text_encode", time.time() - t0,
+           f"(source={source}, t5={'gpu' if not pipe.t5_cpu else 'cpu'}"
+           + (f", disk hits={disk.hits} misses={disk.misses}" if disk is not None else "") + ")")
+    return ctx
+
+
 class LingBotSession:
     """Stateful wrapper around a loaded wan.WanI2VCausal (causal_fast)."""
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
-                 stream_decode: bool | None = None):
+                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -215,6 +241,9 @@ class LingBotSession:
         if stream_decode is None:
             stream_decode = os.environ.get("LINGBOT_STREAM_DECODE", "1") != "0"
         self.stream_decode = stream_decode
+        self.stream_encode = bool(stream_encode)  # --lingbot-fast-y
+        self.t5_cache = t5_cache                  # fast_start.EmbeddingCache or None
+        self._timing = False                      # timing lines for the first step after reset
         self.chunk_id = 0
         self.started = False
         self.reanchor_events = 0  # _anchor_y calls over the session's life (flag_stats reads deltas)
@@ -223,6 +252,7 @@ class LingBotSession:
     def _free(self):
         self.kv = self.cross = self.y = None
         self._feat_map = None
+        self._enc_feat_map = None
         self._all_lat = []
         self._last_frame = None
         self._anchor = None
@@ -237,6 +267,7 @@ class LingBotSession:
 
         pipe = self.pipe
         dev = pipe.device
+        t_reset = time.time()
         self._free()
         torch.cuda.empty_cache()
 
@@ -252,7 +283,7 @@ class LingBotSession:
 
         pipe.scheduler.set_timesteps(pipe.num_train_timesteps, shift=self.shift)
         self.timesteps = pipe.scheduler.timesteps[list(TIMESTEPS_INDEX)]
-        self.context = self._text_context(prompt)
+        self.context = encode_prompt(pipe, prompt, self.t5_cache)
 
         Ks = torch.tensor([P.INTRINSICS_480P], dtype=torch.float32)
         Ks = get_Ks_transformed(Ks, height_org=480, width_org=832, height_resize=self.h,
@@ -261,7 +292,14 @@ class LingBotSession:
 
         self._img = torch.nn.functional.interpolate(
             img[None].cpu(), size=(self.h, self.w), mode="bicubic").transpose(0, 1)  # [3,1,h,w]
-        self._encode_y(horizon_latents(horizon_frames or self.horizon_frames))
+        if self.stream_encode:
+            from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
+            self._enc_feat_map = [None] * count_conv3d(pipe.vae.model.encoder)  # y grows in step()
+        else:
+            t0 = time.time()
+            self._encode_y(horizon_latents(horizon_frames or self.horizon_frames))
+            torch.cuda.synchronize()
+            FS.log("reset.y_encode", time.time() - t0, f"({self.y.shape[1]} latents, full horizon)")
 
         cfg = pipe.model.config
         head_dim = cfg.dim // cfg.num_heads
@@ -286,22 +324,46 @@ class LingBotSession:
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
         self.chunk_id = 0
         self.started = True
+        self._timing = True
+        torch.cuda.synchronize()
+        FS.log("reset.total", time.time() - t_reset)
 
-    def _text_context(self, prompt: str):
-        """Same T5 path and cache as upstream (pipe._t5_cache keyed by sha256)."""
-        import hashlib  # noqa: PLC0415
+    def _ensure_y(self, end_lat: int):
+        """Make `y` cover latents [0, end_lat)."""
+        if self.stream_encode:
+            self._extend_y(end_lat)
+        elif end_lat > self.y.shape[1]:
+            self._encode_y(min(ROPE_LATENTS, end_lat + 8 * CHUNK))
 
+    def _extend_y(self, n_lat: int):
+        """--lingbot-fast-y: append latents to `y` up to n_lat. Mirrors WanVAE_.encode (vae2_1.py):
+        the encoder runs on the image frame, then on 4-frame chunks (here all zeros), with its causal
+        feature cache, which this session keeps across calls instead of clearing it. conv1 (kernel 1
+        in time) and the latent scaling are pointwise in time, so they run per extension."""
         import torch  # noqa: PLC0415
-        pipe = self.pipe
-        key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        if key not in pipe._t5_cache:
-            if not pipe.t5_cpu:
-                pipe.text_encoder.model.to(pipe.device)
-                ctx = pipe.text_encoder([prompt], pipe.device)
-            else:
-                ctx = [t.to(pipe.device) for t in pipe.text_encoder([prompt], torch.device("cpu"))]
-            pipe._t5_cache[key] = ctx
-        return pipe._t5_cache[key]
+        have = 0 if self.y is None else self.y.shape[1]
+        if n_lat <= have:
+            return
+        vae, dev = self.pipe.vae, self.pipe.device
+        m = vae.model
+        mean, inv_std = vae.scale
+        t0 = time.time()
+        with torch.no_grad(), torch.cuda.amp.autocast(dtype=vae.dtype):
+            outs = []
+            for i in range(have, n_lat):
+                x = (self._img if i == 0 else torch.zeros(3, 4, self.h, self.w)).to(dev).unsqueeze(0)
+                outs.append(m.encoder(x, feat_cache=self._enc_feat_map, feat_idx=[0]))
+            mu, _ = m.conv1(torch.cat(outs, 2)).chunk(2, dim=1)
+            mu = (mu - mean.view(1, m.z_dim, 1, 1, 1)) * inv_std.view(1, m.z_dim, 1, 1, 1)
+        lat = mu.float().squeeze(0)
+        msk = torch.zeros(4, n_lat - have, self.lat_h, self.lat_w, device=dev)
+        if have == 0:
+            msk[:, 0] = 1
+        new = torch.concat([msk, lat])
+        self.y = new if self.y is None else torch.cat([self.y, new], dim=1)
+        if self._timing:
+            torch.cuda.synchronize()
+            FS.log("step0.y_encode", time.time() - t0, f"(streamed, latents {have}->{n_lat})")
 
     def _encode_y(self, n_lat: int):
         """y = [mask (4ch), VAE(image then zeros)] for n_lat latents. The encoder is
@@ -368,8 +430,21 @@ class LingBotSession:
         end_lat = (self.chunk_id + n_chunks) * CHUNK
         if end_lat > ROPE_LATENTS:
             raise RuntimeError(f"rollout would reach {end_lat} latents; the RoPE table has {ROPE_LATENTS}")
-        if end_lat > self.y.shape[1]:
-            self._encode_y(min(ROPE_LATENTS, end_lat + 8 * CHUNK))
+        timing, t_mark = self._timing, time.time()
+
+        def mark(part, extra=""):
+            nonlocal t_mark
+            if timing:
+                torch.cuda.synchronize()
+                now = time.time()
+                FS.log(part, now - t_mark, extra)
+                t_mark = now
+
+        self._ensure_y(end_lat)  # logs its own timing line when streamed
+        self._timing = False
+        if timing:
+            torch.cuda.synchronize()
+            t_mark = time.time()
         if self.detector is not None:
             for i in self.detector.update(self.track.latents):
                 self._anchor_y(self.chunk_id * CHUNK + i)
@@ -398,6 +473,8 @@ class LingBotSession:
                     t = torch.stack([ts[i]]).to(pipe.device)
                     pred = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init, **kwargs)[0]
                     self.cross_init = True
+                    if c == 0 and i == 0:
+                        mark("step0.first_forward", "(first DiT call after reset: includes any warm-up)")
                     x0 = pipe._convert_flow_pred_to_x0(flow_pred=pred, xt=latent, timestep=ts[i],
                                                        scheduler=pipe.scheduler)
                     if i < len(ts) - 1:
@@ -409,10 +486,13 @@ class LingBotSession:
                 pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
                 self.chunk_id += 1
             lat = torch.cat(new, dim=1)
+            mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")
             video = self._decode(lat)
+            mark("step0.decode", f"({lat.shape[1]} latents)")
 
         frames = ((video.clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 3, 0).cpu().numpy()
         del video
+        mark("step0.to_host")
         if not first:
             frames = np.concatenate([self._last_frame[None], frames])
         self._last_frame = frames[-1].copy()

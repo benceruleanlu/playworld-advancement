@@ -6,8 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .core import (DATA, FAMILIES, ROOT, SANA_RUNNER, PLAYWORLD, PwaError, exp_dir, log, now,
-                   provenance, read_json, split_label, records, video_path, write_json)
+from .core import (DATA, FAMILIES, ROOT, SANA_RUNNER, PLAYWORLD, PwaError, cap_label, exp_dir, log, now,
+                   provenance, read_json, runner_num_chunks, split_label, records, video_path, write_json)
 
 
 def resolve_runner(runner: str) -> Path:
@@ -37,12 +37,26 @@ def runner_cmd(runner: Path, family: str, ids: list[str], out: Path, a) -> list[
         cmd += ["--shard", str(a.shard), "--num-shards", str(a.num_shards)]
     if os.environ.get("SANA_ROOT"):
         cmd += ["--sana-root", os.environ["SANA_ROOT"]]
+    if getattr(a, "max_chunks", None):
+        # upstream run_agent bounds a closed-loop rollout with --num-chunks (default 30)
+        cmd += ["--num-chunks", str(a.max_chunks)]
     # Agent URL/model/keys and SANA config/checkpoint are read from the env by
     # run_agent's argparse defaults; keeping keys off argv keeps them out of ps/logs.
     return cmd + list(a.extra or [])
 
 
-def gen(a, sel: list[dict]) -> dict:
+def subprocess_launch(cmd: list[str], env: dict, on_line) -> int:
+    """Default: the runner is a child process (one per family); its stdout and stderr go to on_line."""
+    p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, bufsize=1)
+    for line in p.stdout:
+        on_line(line)
+    return p.wait()
+
+
+def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = None) -> dict:
+    """launch(cmd, env, on_line) -> returncode runs one family; pwa gen-arms passes an in-process one
+    (pwa/arms.py). meta_extra is merged into a new meta.json."""
     d = exp_dir(a.exp)
     tag = f".shard{a.shard}of{a.num_shards}" if a.num_shards > 1 else ""
     meta_path, log_path = d / f"meta{tag}.json", d / f"gen{tag}.log"
@@ -57,6 +71,15 @@ def gen(a, sel: list[dict]) -> dict:
     if a.action_source in ("agent", "refined") and not os.environ.get("PLAYER_API_KEY"):
         raise PwaError(f"--action-source {a.action_source} needs PLAYER_API_KEY. Without it upstream silently "
                        f"falls back to dataset/WAIT actions and the rollout is open loop.")
+    cap = getattr(a, "max_chunks", None)
+    if cap is not None:
+        if cap < 1:
+            raise PwaError("--max-chunks must be >= 1", 2)
+        if a.action_source == "dataset":
+            raise PwaError("--max-chunks caps closed-loop agent chunks; --action-source dataset generates one long "
+                           "rollout and ignores it. Use --action-source agent or refined.", 2)
+        if runner_num_chunks(a.extra or []) is not None:
+            raise PwaError("pass the chunk cap once: --max-chunks or `-- --num-chunks`, not both", 2)
     runner = resolve_runner(a.runner)
     # Upstream run_agent labels its lines [SANA_WM] whatever engine runs; relabel for non-SANA runners.
     label = None if a.runner == "sana" else f"[{Path(a.runner).stem if a.runner.endswith('.py') else a.runner}]"
@@ -72,8 +95,15 @@ def gen(a, sel: list[dict]) -> dict:
                 "split_label": split_label(a.split, a.family, a.tasks), "families": a.family,
                 "tasks": [[t["family"], t["task_id"]] for t in sel], "shard": a.shard,
                 "num_shards": a.num_shards, "runner_args": a.extra or [], "notes": a.notes or "",
-                "argv": sys.argv[1:]}
+                "argv": sys.argv[1:], **(meta_extra or {})}
+        if cap:
+            meta["max_chunks"] = cap
+            meta["label"] = cap_label(cap)
+    if (cap or meta.get("max_chunks")) and meta.get("max_chunks") != cap:
+        raise PwaError(f"{a.exp} was generated with max_chunks={meta.get('max_chunks')}; resume it with the same cap", 2)
     write_json(meta_path, meta)
+    if cap:
+        log(f"[pwa] {a.exp}: {cap_label(cap)}")
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     env.setdefault("WORLDMODEL_BENCHMARK_DIR", str(PLAYWORLD))
@@ -91,9 +121,9 @@ def gen(a, sel: list[dict]) -> dict:
             sys.stderr.write(header)
             lf.write(header)
             lf.flush()
-            p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 text=True, bufsize=1)
-            for line in p.stdout:
+
+            def on_line(line):
+                nonlocal agent_errors, agent_fallbacks
                 if "[agent] error attempt" in line:
                     agent_errors += 1
                 elif "[agent] fallback=" in line:
@@ -102,10 +132,11 @@ def gen(a, sel: list[dict]) -> dict:
                     line = line.replace("[SANA_WM]", label)
                 sys.stderr.write(line)
                 lf.write(line)
-            p.wait()
-            if p.returncode != 0:
-                rc_bad.append({"family": fam, "returncode": p.returncode})
-                lf.write(f"[pwa] runner exited {p.returncode}\n")
+
+            rc = launch(cmd, env, on_line)
+            if rc != 0:
+                rc_bad.append({"family": fam, "returncode": rc})
+                lf.write(f"[pwa] runner exited {rc}\n")
 
     produced, failed = [], []
     for tid in expected:

@@ -30,9 +30,10 @@ AFTER_RE = re.compile(r"\bthen\b", re.I)
 DEG_RE = re.compile(r"(\d+)[- ]degrees?", re.I)
 STEPS_RE = re.compile(r"(\d+) steps?", re.I)
 SIDES_RE = re.compile(r"left to right|right to left", re.I)
-DIR_RE = re.compile(r"\b(left|right|up|upward|down|downward|clockwise)\b", re.I)
+DIR_RE = re.compile(r"\b((?:counter|anti)-?clockwise|left|right|up|upward|down|downward|clockwise)\b", re.I)
 YAW_RE = re.compile(r"rotat|turn|pan", re.I)
-DIRS = {"upward": "up", "downward": "down", "clockwise": "right"}
+DIRS = {"upward": "up", "downward": "down", "clockwise": "right", "counterclockwise": "left",
+        "counter-clockwise": "left", "anticlockwise": "left", "anti-clockwise": "left"}
 DEFAULT_DEG, DEFAULT_STEPS = 40.0, 2.0
 
 
@@ -66,7 +67,7 @@ def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn
         sides = {"right": hi, "left": -lo, "up": t_hi, "down": -t_lo, "yaw": max(hi, -lo)}
         rot = sides.get(p.get("side", "any"), max(hi, -lo, t_hi, -t_lo))
         if p["deg"] is None and p["steps"] is None:
-            left = rot >= DEFAULT_DEG or pos >= DEFAULT_STEPS
+            left = rot >= DEFAULT_DEG or pos * tokens_per_step >= DEFAULT_STEPS
         else:
             left = ((p["deg"] is None or rot >= p["deg"])
                     and (p["steps"] is None or pos * tokens_per_step >= p["steps"]))

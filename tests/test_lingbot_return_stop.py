@@ -126,7 +126,20 @@ def test_flag_line_only_grows_when_the_flag_is_on():
     assert st.summary("GC036")["return_stop"] == "skip"
 
 
-def test_run_py_strips_the_flag_and_is_off_by_default():
-    src = (ROOT / "adapters" / "lingbot_world2" / "run.py").read_text()
-    assert 'a != "--lingbot-return-stop"' in src and 'os.environ.get("LINGBOT_RETURN_STOP", "0") == "1"' in src
-    assert "if RETURN_STOP:" in src and "run_agent.decide_action = R.wrap(run_agent.decide_action" in src
+def test_configure_strips_the_flag_and_is_off_by_default():
+    from adapters.lingbot_world2 import run as RUN
+    flags, argv = RUN.configure(["run.py", "--tasks", "OE034"], environ={})
+    assert flags["return_stop"] is False and argv == ["run.py", "--tasks", "OE034"]
+    flags, argv = RUN.configure(["run.py", "--lingbot-return-stop", "--tasks", "OE034"], environ={})
+    assert flags["return_stop"] is True and argv == ["run.py", "--tasks", "OE034"]
+    assert RUN.configure(["run.py"], environ={"LINGBOT_RETURN_STOP": "1"})[0]["return_stop"] is True
+    assert RUN.configure(["run.py"], environ={"LINGBOT_RETURN_STOP": "0"})[0]["return_stop"] is False
+
+
+def test_counterclockwise_is_the_left_side_and_default_steps_are_dataset_steps():
+    for word in ("counterclockwise", "counter-clockwise", "anticlockwise"):
+        assert R.plan(f"Rotate the camera 360 degrees {word} in place, then return to the original view.")["side"] == "left"
+    walk = "Walk forward to the door, then walk back to the original position."
+    assert R.plan(walk) == {"deg": None, "steps": None, "both_sides": False, "side": "any"}
+    assert at(walk, "W1 S1") is None           # 0.9 action = 1.45 dataset steps: not yet 2
+    assert at(walk, "W2 S2") == 4              # 3 steps out, then home
