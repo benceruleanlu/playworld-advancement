@@ -285,3 +285,78 @@ def test_servo_locks_on_a_scene_with_a_moving_subject():
     assert servo.plan(["l"] * 16, RATE) == (1.0, 1.0)
     servo.reset()
     assert not servo.locked                                           # the next rollout starts fresh
+
+
+# ------------------------------------------- heading credit on runs it does not measure (review of #125)
+
+def _trusted_chunk_leaves_error():
+    """One trusted pure-right chunk on a camera that renders half the command: est R 0.7, error +6.75 degrees."""
+    s = FakeSession(1.0, 0.5)
+    servo = YS.YawServo()
+    YS.step(s, servo, ["l"] * 12, RATE, _measure(s), rigid=None)
+    assert servo.error() == pytest.approx(6.75) and servo.est["l"] == pytest.approx(0.7)
+    return s, servo
+
+
+def test_combo_chunks_book_the_extra_yaw_they_send():
+    # Before 038892e a w+l run was booked at the asked angle, not at what the raised gain sends: the error never
+    # went down and every later w+l chunk was planned at gain 1.96 with the error stuck at 6.75.
+    s, servo = _trusted_chunk_leaves_error()
+    errs, gains = [], []
+    for _ in range(4):
+        YS.step(s, servo, ["w+l"] * 16, RATE, _measure(s), rigid=None)
+        errs.append(servo.error())
+        gains.append(servo.last_gain[1])
+    assert gains[0] == pytest.approx((16 * RATE + 6.75) / (16 * RATE * 0.7))       # corrects once
+    assert all(abs(e) < 1e-9 for e in errs)                                          # and the error is closed
+    assert gains[1:] == pytest.approx([1 / 0.7] * 3)                                 # then only the estimate
+
+
+def test_untrusted_run_books_the_extra_yaw_it_sends():
+    s, servo = _trusted_chunk_leaves_error()
+    YS.step(s, servo, ["l"] * 16, RATE, _measure(s), rigid=lambda frames: 0.4)      # one subject-motion chunk
+    assert servo.untrusted == 1 and not servo.locked and abs(servo.error()) < 1e-9
+    YS.step(s, servo, ["l"] * 16, RATE, _measure(s), rigid=None)
+    assert servo.last_gain[1] == pytest.approx(1 / 0.7)                              # not re-sending the 6.75
+
+
+class _NoisyCamera(FakeSession):
+    """Renders left 1.40x and right 1.11x of the commanded yaw (the 14B means in #125), each chunk drawn with 5%
+    spread around them, and the measurement adds 1 degree of noise per run."""
+
+    def __init__(self, rng):
+        super().__init__(1.40, 1.11)
+        self.base, self.rng = dict(self.g), rng
+
+    def step(self, keys):
+        self.g = {d: v * (1 + self.rng.normal(0, 0.05)) for d, v in self.base.items()}
+        return super().step(keys)
+
+    def measure(self, frames):
+        return float(frames[-1, 0] - frames[0, 0]) + float(self.rng.normal(0, 1.0)), 0.0, 1.0
+
+
+def _intended(keys):
+    return sum(YS.SIGN[YS.yaw_part(k)] * RATE for k in keys if YS.yaw_part(k))
+
+
+@pytest.mark.parametrize("segs", [(("j", 80), ("l", 80)), (("l", 320),)], ids=["left90-right90", "right360"])
+def test_simulated_14b_camera_heading_converges(segs):
+    keys = _script(*segs)
+    open_err, servo_err = [], []
+    for seed in range(20):
+        o = _NoisyCamera(np.random.default_rng(seed))
+        o.step(keys)
+        open_err.append(abs(o.heading - _intended(keys)))
+        s, servo, done, track = _NoisyCamera(np.random.default_rng(seed)), YS.YawServo(), [], []
+        for piece in YS.split_chunks(keys, first=True):
+            YS.step(s, servo, piece, RATE, s.measure, rigid=None)
+            done += piece
+            track.append(s.heading - _intended(done))
+        servo_err.append(abs(track[-1]))
+        assert max(abs(e) for e in track[2:]) < 15.0                  # no growing swing once it has two readings
+        for d in (0, 1):
+            g = [gain[d] for _n, gain in s.calls]
+            assert all(YS.LO <= x <= YS.HI for x in g)
+            assert not any({a, b} == {YS.LO, YS.HI} for a, b in zip(g, g[1:]))   # never clamp to clamp
+    assert np.mean(servo_err) < 0.2 * np.mean(open_err) and max(servo_err) < 10.0
