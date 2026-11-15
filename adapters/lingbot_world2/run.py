@@ -359,6 +359,9 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     window, argv = _window(argv, environ)
     flags["turn_step"], argv = _turn_step(argv, environ)
     flags["turn_cal"] = flags["turn_cal"] or bool(flags["turn_step"])  # a step is a calibrated rate
+    if flags["turn_step"] and flags.get("scripted"):
+        raise SystemExit("--lingbot-turn-step cannot be combined with --lingbot-scripted-player: the script counts "
+                         "yaw chunks at turn calibration's 45 degrees, so a different step would change the path")
     flags.update(window)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")

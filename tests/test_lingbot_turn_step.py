@@ -80,6 +80,11 @@ def test_configure_parses_validates_and_implies_turn_cal():
     assert flags["turn_step"] == 0 and flags["turn_cal"] is True
     src = (ROOT / "adapters" / "lingbot_world2" / "run.py").read_text()
     assert '    P.CHUNK_YAW_DEG = flags["turn_step"]\n    if flags["turn_step"]:' in src  # applied unconditionally
+    # the scripted player sizes its yaw chunks for 45 degrees; a different step would change its path
+    with pytest.raises(SystemExit):
+        RUN.configure(["run.py", "--lingbot-turn-step", "90", "--lingbot-scripted-player"], environ={})
+    assert RUN.configure(["run.py", "--lingbot-turn-step", "0", "--lingbot-scripted-player"],
+                         environ={})[0]["turn_step"] == 0
     for bad in ("5", "200", "fast"):
         with pytest.raises(SystemExit):
             RUN.configure(["run.py", "--lingbot-turn-step", bad], environ={})
