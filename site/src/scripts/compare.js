@@ -4,6 +4,7 @@
 // Run names and groups come from runinfo.js. Deep link: ?compare=TASK&b=CONTROL&c=TREATMENT#compare-clips.
 // Older three-slot links (&a=) still open: the last two filled of a, b, c become Control and Treatment.
 import * as RunInfo from "./runinfo.js";
+import { $, el, clear, judgeComment, passesText } from "./ui.js";
 (function () {
   var QKEYS = ["a", "b", "c"];
   var MAX_RUNS = 80; // manifests fetched, newest first
@@ -19,52 +20,6 @@ import * as RunInfo from "./runinfo.js";
   var S = { t: 0, playing: false, rate: 1, loop: true, fps: 16, fpsKnown: false, raf: 0, last: 0 };
   var live = []; // [{exp, v, d, endEl, lenEl}] for the rendered slots
 
-  function $(id) { return document.getElementById(id); }
-  function el(tag, attrs, kids) {
-    var e = document.createElement(tag);
-    if (attrs) for (var k in attrs) {
-      if (k === "text") e.textContent = attrs[k];
-      else if (k === "class") e.className = attrs[k];
-      else if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
-    }
-    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
-    return e;
-  }
-  // The judge's reason: the English display copy (translated after scoring) with a toggle for the judge's original,
-  // which is authoritative; the original alone, marked untranslated, when no copy exists.
-  // A failing pass (gate, IF/OE check, error) that is not the representative one keeps its own reason under it.
-  function judgeComment(t, open) {
-    if (!t.reason) return null;
-    var attrs = open ? { open: "" } : null;
-    var failSt = (t.status || []).filter(function (s) { return s !== "ok"; }).join(", ") || "failed";
-    var failHead = t.fail_reason ? "Pass " + (t.fail_pass === null || t.fail_pass === undefined ? "?" : t.fail_pass) + " (" + failSt + "): " : "";
-    if (t.reason_en) {
-      var origs = [el("p", { class: "jorig", text: t.reason })];
-      var kids = [el("summary", { text: "Judge's comment (translated from the judge's original)" }), el("p", { text: t.reason_en })];
-      if (t.fail_reason) {
-        kids.push(el("p", { class: "jfail", text: failHead + (t.fail_reason_en || t.fail_reason) }));
-        if (t.fail_reason_en) origs.push(el("p", { class: "jorig", text: failHead + t.fail_reason }));
-      }
-      origs.forEach(function (o) { o.hidden = true; });
-      var btn = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
-      btn.addEventListener("click", function () {
-        var hide = !origs[0].hidden;
-        origs.forEach(function (o) { o.hidden = hide; });
-        btn.textContent = hide ? "show original" : "hide original";
-        btn.setAttribute("aria-expanded", hide ? "false" : "true");
-      });
-      return el("details", attrs, kids.concat([btn]).concat(origs));
-    }
-    var plain = [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })];
-    if (t.fail_reason) plain.push(el("p", { class: "jfail", text: failHead + t.fail_reason }));
-    plain.push(el("p", { class: "jnote", text: "judge's own words, untranslated" }));
-    return el("details", attrs, plain);
-  }
-  function passesText(t) {
-    var ps = t.pass_scores || [];
-    return ps.length ? "per pass " + ps.map(function (v) { return typeof v === "number" ? String(Math.round(v * 100) / 100) : "-"; }).join("/") : null;
-  }
-  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
   function noop() {}
   function fmtT(s) {
     if (!isFinite(s)) return "-:--.-";
@@ -329,7 +284,7 @@ import * as RunInfo from "./runinfo.js";
   function flagsLine(i) { return !i.keys ? "flags not recorded" : i.words.length ? i.words.join(", ") : "no flags"; }
   function slotCard(c, role) {
     var m = c.man, t = c.t, row = csvRow(c.exp), cap = capOf(m, row);
-    var v = el("video", { muted: "", playsinline: "", preload: "auto", src: t.video, poster: t.poster || null, "aria-label": role + ": " + c.exp + ", " + t.task_id });
+    var v = el("video", { muted: "", playsinline: "", preload: lazyClips() && !wantPlay ? "none" : "auto", src: t.video, poster: t.poster || null, "aria-label": role + ": " + c.exp + ", " + t.task_id });
     v.muted = true; v.loop = false;
     var endEl = el("div", { class: "cvend", hidden: "" });
     var media = el("div", { class: "media" }, [v, endEl]);
@@ -435,8 +390,18 @@ import * as RunInfo from "./runinfo.js";
     try { if (Math.abs(s.v.currentTime - x) > 0.001) s.v.currentTime = x; } catch (e) { /* not ready */ }
   }
   function seekAll() { live.forEach(function (s) { seekOne(s, S.t); }); updateBar(); }
+  // under 900 px or with data saver, clips fetch nothing until the first play
+  function lazyClips() {
+    var narrow = !!(window.matchMedia && window.matchMedia("(max-width: 899px)").matches);
+    return narrow || !!(navigator.connection && navigator.connection.saveData);
+  }
+  function wake() {
+    var any = false;
+    live.forEach(function (s) { if (!s.failed && s.v.preload === "none") { s.v.preload = "auto"; s.v.load(); any = true; } });
+    return any;
+  }
   function play() {
-    var D = maxDur(); if (!D) return;
+    var D = maxDur(); if (!D) { if (wake()) wantPlay = true; return; }
     if (S.t >= D - END) S.t = 0;
     seekAll();
     S.playing = true; S.last = performance.now();
