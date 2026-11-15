@@ -62,14 +62,23 @@ if RUNNER_ENV.startswith("lingbot"):
     image = _lingbot_image(ROOT, RUNNER_ENV)
 
 
+def shard_argv(argv: list[str], shard: int, num_shards: int) -> list[str]:
+    """`pwa gen` argv for one shard. The shard flags belong to pwa, so they go before the `--` that starts
+    the runner's extra args; appended after it they would reach only the runner, and pwa would treat every
+    worker as shard 0 of 1 (expecting all tasks and overwriting meta.json and gen.log)."""
+    if num_shards <= 1:
+        return list(argv)
+    flags = ["--shard", str(shard), "--num-shards", str(num_shards)]
+    i = argv.index("--") if "--" in argv else len(argv)
+    return [*argv[:i], *flags, *argv[i:]]
+
+
 @app.function(image=image, gpu=GPU, timeout=6 * 3600,
               volumes={"/runs": runs_vol, "/weights": weights_vol},
               secrets=[modal.Secret.from_name("pwa")])
 def gen_shard(argv: list[str], shard: int, num_shards: int, prov: dict[str, str]) -> int:
     env = {**os.environ, **prov}
-    cmd = ["python", "-m", "pwa.cli", "gen", *argv]
-    if num_shards > 1:
-        cmd += ["--shard", str(shard), "--num-shards", str(num_shards)]
+    cmd = ["python", "-m", "pwa.cli", "gen", *shard_argv(argv, shard, num_shards)]
     try:
         return subprocess.run(cmd, cwd="/repo", env=env).returncode
     finally:
