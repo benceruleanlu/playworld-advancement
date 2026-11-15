@@ -247,7 +247,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None):
+                 cond_sched=None, yarn_q=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -264,6 +264,7 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        self.yarn_q, self.yarn_q_chunks = yarn_q, 0
         self._free()
 
     def _free(self):
@@ -343,6 +344,8 @@ class LingBotSession:
             self.weight_mod.reset()
         if self.cond_sched is not None:
             self.cond_sched.reset()
+        if self.yarn_q is not None:
+            self.yarn_q.reset()
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -486,6 +489,7 @@ class LingBotSession:
 
         new, modulated = [], False
         with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
+                (self.yarn_q or contextlib.nullcontext()), \
                 torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
                 cid, chunk_hit = self.chunk_id, False
@@ -493,6 +497,8 @@ class LingBotSession:
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
                     self.weight_mod_chunks += 1
+                if self.yarn_q is not None and self.yarn_q.step(cid, getattr(pipe, "local_attn_size", 18), self.frame_seqlen):
+                    self.yarn_q_chunks += 1
                 with torch.autocast("cuda", enabled=False):
                     emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
@@ -535,6 +541,8 @@ class LingBotSession:
                 # write clean keys/values for this chunk into the KV cache
                 t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
                 pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
+                if self.yarn_q is not None:
+                    self.yarn_q.reset()
                 self.chunk_id += 1
             lat = torch.cat(new, dim=1)
             mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")

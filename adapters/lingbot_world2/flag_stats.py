@@ -74,7 +74,9 @@ class FlagStats:
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
-                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False):
+                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
+                 yarn_q: bool = False):
+        self.yarn_q = bool(yarn_q)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.measured_turn = bool(measured_turn)
@@ -103,11 +105,12 @@ class FlagStats:
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
                        "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
-                       "scripted_chunks": 0, "scripted_ends": 0}
+                       "scripted_chunks": 0, "scripted_ends": 0, "yarn_q_chunks": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
     def new_task(self):
+        self.yarn_q_chunks = 0
         self.if_camera_hints = 0
         self.player_frames_removed = 0
         self.insight_director_prompts = 0
@@ -269,6 +272,8 @@ class FlagStats:
         if self.scripted:
             s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
+        if self.yarn_q:
+            s.update(yarn_q="on", yarn_q_chunks=self.yarn_q_chunks)
         return s
 
     @staticmethod
@@ -299,7 +304,8 @@ class FlagStats:
                 + (f" window={self.window}" if self.window else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
-                   if self.scripted else ""))
+                   if self.scripted else "")
+                + (f" yarn_q=on yarn_q_chunks={t['yarn_q_chunks']}" if self.yarn_q else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -330,6 +336,7 @@ class FlagStats:
         t["if_horizon_ends"] += self.if_horizon_ends
         t["cond_sched_chunks"] += self.cond_sched_chunks
         t["cond_sched_calls"] += self.cond_sched_calls
+        t["yarn_q_chunks"] += self.yarn_q_chunks
         print(self.line(s), flush=True)
         return s
 
