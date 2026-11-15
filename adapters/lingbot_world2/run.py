@@ -44,6 +44,11 @@ Env:
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
+In-process use (pwa gen-arms): main(argv) can be called several times in one process. Each call re-reads
+the flags and env, resets poses' turn rates, the flag counters and prompts' current task, and imports a
+fresh upstream run_agent (so no patch stacks); only the loaded pipe (_PIPES, keyed by checkpoint, T5
+placement and KV window) is shared, and each call's engine builds its own session.
+
 Flag counters (flag_stats.py): after each task one greppable line, e.g.
   [lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30
 and a `[lingbot] flags total ...` line at the end; also "lingbot_flags" in <task>_result.json.
@@ -61,22 +66,35 @@ from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
-run_agent = import_run_agent()
+_FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
+              "--lingbot-reanchor", "--lingbot-player-hint")
 
-STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
-TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL", "0") == "1"
-PROMPT_MODE = "auto" if "--lingbot-caption-prompt" in sys.argv else os.environ.get("LINGBOT_PROMPT_MODE", "goal")
-if PROMPT_MODE not in prompts.MODES:
-    raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {PROMPT_MODE!r}")
-REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR", "0") == "1"
-PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
-sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
-                                              "--lingbot-reanchor", "--lingbot-player-hint")]
-STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
+
+def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
+    """The --lingbot-* flags (or their env vars) in argv, and argv without them. Read once per main() call,
+    so a process that runs several arms (pwa gen-arms) sees each arm's own flags."""
+    mode = "auto" if "--lingbot-caption-prompt" in argv else environ.get("LINGBOT_PROMPT_MODE", "goal")
+    if mode not in prompts.MODES:
+        raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {mode!r}")
+    flags = {
+        "stateless": "--lingbot-stateless" in argv or environ.get("LINGBOT_SESSION", "1") == "0",
+        "turn_cal": "--lingbot-turn-cal" in argv or environ.get("LINGBOT_TURN_CAL", "0") == "1",
+        "prompt_mode": mode,
+        "reanchor": "--lingbot-reanchor" in argv or environ.get("LINGBOT_REANCHOR", "0") == "1",
+        "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
+    }
+    return flags, [a for a in argv if a not in _FLAG_ARGS]
+
+
+# Set by main() from configure(); the engine reads them at call time.
+STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = False
+PROMPT_MODE = "goal"
+STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
 DEFAULT_PROMPT = "A photo-realistic scene with rich details."
+_PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
 
 
 class LingBotWorld2Engine:
@@ -102,12 +120,17 @@ class LingBotWorld2Engine:
         from wan.configs import WAN_CONFIGS  # noqa: PLC0415
 
         self.cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
-        t0 = time.time()
-        self.pipe = wan.WanI2VCausal(
-            config=self.cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-            local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
-            assets_dir=str(assets) if assets else None)
-        print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
+        if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
+            t0 = time.time()
+            _PIPES[key] = wan.WanI2VCausal(
+                config=self.cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
+                local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
+                assets_dir=str(assets) if assets else None)
+            print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        else:
+            print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu})", flush=True)
+        self.pipe = _PIPES[key]
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
@@ -213,14 +236,30 @@ class LingBotWorld2Engine:
         return out
 
 
-run_agent.SanaWMEngine = LingBotWorld2Engine
-prompts.install(run_agent)
-STATS.install(run_agent)
-print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
-if PLAYER_HINT:
-    run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
-                                     session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
-    print("[lingbot] player hint: on", flush=True)
-_rc = run_agent.main()
-print(STATS.total_line(), flush=True)
-raise SystemExit(_rc)
+def main(argv: list[str] | None = None) -> int:
+    """One run_agent invocation. argv is run_agent's (argv[0] is the script). Every call re-reads the flags,
+    resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
+    loaded pipe (_PIPES) is shared between calls in one process."""
+    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, STATS
+    flags, sys.argv = configure(list(sys.argv if argv is None else argv))
+    STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
+    REANCHOR, PLAYER_HINT = flags["reanchor"], flags["player_hint"]
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
+    P.reset()
+    prompts.reset()
+    run_agent = import_run_agent(fresh=True)
+    run_agent.SanaWMEngine = LingBotWorld2Engine
+    prompts.install(run_agent)
+    STATS.install(run_agent)
+    print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
+    if PLAYER_HINT:
+        run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
+                                         session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
+        print("[lingbot] player hint: on", flush=True)
+    rc = run_agent.main()
+    print(STATS.total_line(), flush=True)
+    return rc or 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

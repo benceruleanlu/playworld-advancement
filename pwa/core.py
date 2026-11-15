@@ -251,7 +251,10 @@ def provenance() -> dict:
     return {"git_sha": git("rev-parse", "HEAD") or os.environ.get("PWA_GIT_SHA"), "branch": current_branch(),
             "git_dirty": dirty,
             "submodule_sha": git("rev-parse", "HEAD", cwd=PLAYWORLD) or os.environ.get("PWA_SUBMODULE_SHA"),
-            "hostname": socket.gethostname()}
+            "hostname": socket.gethostname(),
+            # launcher's invocation id (modal_app.py passes PWA_RUN_ID through), so a workflow can tell its own
+            # rollouts from older ones under the same name
+            **({"run_id": os.environ["PWA_RUN_ID"]} if os.environ.get("PWA_RUN_ID") else {})}
 
 
 def write_json(path: Path, obj) -> None:

@@ -640,15 +640,15 @@
       body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. Every 14B run uses it, including the starting model. No run with session memory off exists on the same tasks and model, so its effect is unmeasured, and no such run is planned before submission.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
       // like-for-like only: same 1.3B runner as the stateless baseline
-      match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
+      match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !isCapped(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
     { title: "AI player: gpt-6-luna", status: "testing",
       what: "Every run we compare now uses gpt-6-luna as the AI player, instead of gpt-4.1-mini.", fams: ["gc", "if", "outsight"],
-      body: "The failure count on the 24-task baseline found that the player, not the world model, decided most geometry and out-of-sight outcomes. gpt-4.1-mini reversed left and right 9 to 17 times on each out-of-sight task and up to 25 times on a geometry task, and in 4 of 6 out-of-sight rollouts the camera never returned to the start view, so the judge graded no content. It never ended a rollout more than one step early. The first gpt-6-luna runs on the 6 out-of-sight and 6 geometry practice tasks (lb14-luna-oos-s42, lb14-luna-gc-s42) were stopped before they produced a result. The check now runs on the capped smoke tier: smk-gc-base-c10-v1 uses gpt-6-luna with every optional change off on GC005, GC033 and GC036, read from the action logs (reversals, return to start, early END). Because the player changed, the 1.64 baseline is not the starting-model number.",
-      links: [["#61", PR + "61"]], evidence: ["smk-gc-base-c10-v1"] },
+      body: "The failure count on the 24-task baseline found that the player, not the world model, decided most geometry and out-of-sight outcomes. gpt-4.1-mini reversed left and right 9 to 17 times on each out-of-sight task and up to 25 times on a geometry task, and in 4 of 6 out-of-sight rollouts the camera never returned to the start view, so the judge graded no content. It never ended a rollout more than one step early. The first gpt-6-luna runs on the 6 out-of-sight and 6 geometry practice tasks (lb14-luna-oos-s42, lb14-luna-gc-s42) were stopped before they produced a result. The check moved to the capped smoke tier (GC005, GC033 and GC036 with every optional change off, read from the action logs: reversals, return to start, early END). The 14B run of it, smk-gc-base-c10-v1, was cancelled during generation. The 1.3B run, smk13-gc-base-c10-v1, finished; its action logs are not read yet. So there is still no measured gpt-6-luna behaviour on the 14B model. Because the player changed, the 1.64 baseline is not the starting-model number.",
+      links: [["#61", PR + "61"]], evidence: ["smk13-gc-base-c10-v1"] },
     { title: "Method candidate: caption prompt, re-anchor, player hint", status: "testing",
       what: "Three optional changes, each off unless switched on, merged together so every test runs the same code.", fams: ["gc", "if", "insight", "outsight"],
-      body: "Caption prompt (#32): gives the model the dataset's scene description instead of the player's goal, which is \"wait and observe\" on 29 of 30 insight tasks. The benchmark's own Genie 3 player sends that description too; we disclose its use. Re-anchor (#46): shows the model the input image again when the commanded camera returns to the start pose, on geometry tasks only. Player hint (#59): tells the AI player how far one action turns the camera and where the commanded camera is relative to the start. Each change logs a per-task counter, so a test shows whether it fired. A change is kept only if per-task scores move by a full point on both of two seeds and no task that passed its gate in the baseline fails it. Merged on main with every change switched off (#63); none is scored yet. The first runs (an insight run with the caption prompt and an all-changes smoke run from the integration branch) were stopped before they produced a result. smk-gc-hint-c10-v1 runs the player hint with turn calibration on the capped smoke tier (GC005, GC033, GC036), next to the same tasks with no changes.",
-      links: [["#63", PR + "63"], ["#32", PR + "32"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: ["smk-gc-hint-c10-v1"],
+      body: "Caption prompt (#32): gives the model the dataset's scene description instead of the player's goal, which is \"wait and observe\" on 29 of 30 insight tasks. The benchmark's own Genie 3 player sends that description too; we disclose its use. Re-anchor (#46): shows the model the input image again when the commanded camera returns to the start pose, on geometry tasks only. Player hint (#59): tells the AI player how far one action turns the camera and where the commanded camera is relative to the start. Each change logs a per-task counter, so a test shows whether it fired. A change is kept only if per-task scores move by a full point on both of two seeds and no task that passed its gate in the baseline fails it. Merged on main with every change switched off (#63); none is scored yet. The first runs (an insight run with the caption prompt and an all-changes smoke run from the integration branch) were stopped before they produced a result. On the capped smoke tier, smk-gc-hint-c10-v1 ran the player hint with turn calibration on GC005, GC033 and GC036 with the 14B model and produced all three videos, but the same tasks with no changes were cancelled, so it has nothing to compare with. The 1.3B pair finished (smk13-gc-hint-c10-v1 and smk13-gc-base-c10-v1), and the screening judge preferred the run with the two changes on. That decides nothing: it is one pass of a judge that is more lenient than the official one, on rollouts cut to a third, on the smaller model, with both changes on together, and the run with the changes logged three fallback actions where the player's reply was not used. No official comparison has run.",
+      links: [["#63", PR + "63"], ["#32", PR + "32"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: ["smk-gc-hint-c10-v1", "smk13-gc-hint-c10-v1", "smk13-gc-base-c10-v1"],
       match: function (r) { return r.branch === "method/candidate-v1" || /^cand\d/.test(r.exp) || /caption|re-?anchor|player.?hint/i.test(r.notes); } },
     { title: "Turn calibration", status: "testing",
       what: "Optional turn fix: one turn key now turns the angle the task expects (22.5° sideways, 20° up or down) instead of 34° and 11°.", fams: ["gc", "if", "outsight"],
@@ -660,8 +660,8 @@
       body: "pwa CLI (gen, score, report, compare, cells, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page. pwa cells shows the per-task scores of two runs side by side and counts the tasks that moved by a full point, the readout for keeping or dropping a change.",
       links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"], ["#64", PR + "64"]], evidence: [] },
     { title: "Screening judge", status: "shipped",
-      what: "A second judge (gemini-4-hydrogen) for quick checks on practice tasks. Its scores never appear on this page.", fams: [],
-      body: "Scores from the screening judge go to their own folder and are never written to the results log, so they cannot reach the leaderboard. A calibration run against the official judge (Gemini 3.1 Pro at the benchmark's settings) on the 24 baseline videos was stopped before it finished, so how well the two agree is not measured. Capped smoke runs get one pass of it as a behaviour check, and their rows end as generated with no score. Every number we report comes from the official judge.",
+      what: "A second judge (gemini-4-hydrogen) for quick checks on practice tasks. It is more lenient than the official judge, and its scores never appear on this page.", fams: [],
+      body: "Scores from the screening judge go to their own folder and are never written to the results log, so they cannot reach the leaderboard. We checked it against the official judge (Gemini 3.1 Pro at the benchmark's settings) on the 24 baseline videos, two passes each, at its low thinking setting. It was more lenient: it scored the same videos higher overall and passed all 6 geometry and all 6 out-of-sight gates, where the official judge failed 2 of 6 in each. So it is not used to keep or drop a change until its task-by-task agreement is worked out; a check at its high thinking setting is running. Capped smoke runs get one pass of it as a behaviour check, and their rows end as generated with no score. Every number we report comes from the official judge.",
       links: [["#64", PR + "64"]], evidence: [] },
     { title: "Capped smoke tier", status: "shipped",
       what: "Quick behaviour checks: each rollout stops after 10 of its 30 chunks, on 2 or 3 chosen tasks, one GPU per task, one pass of the screening judge.", fams: [],
@@ -700,12 +700,12 @@
     ],
     stepsOf: "smk-gc-hint-c10-v1",
     levers: [
-      { name: "Chunk cap (10 of 30 chunks)", status: "in use" },
+      { name: "Chunk cap (10 of 30 chunks)", status: "in use", link: ["#69", PR + "69"] },
       { name: "Several arms in one dispatch", status: "open PR", link: ["#67", PR + "67"] },
-      { name: "Warm GPU container between runs", status: "being built" },
-      { name: "Faster cold start (model load)", status: "being built" },
-      { name: "1.3B model for smoke runs", status: "testing", note: "speed test running" },
-      { name: "Less Actions overhead per run", status: "being built" }
+      { name: "Warm GPU container between runs", status: "open PR", link: ["#73", PR + "73"] },
+      { name: "Faster cold start (model load)", status: "open PR", note: "first timing run in progress", link: ["#72", PR + "72"] },
+      { name: "1.3B model for smoke runs", status: "testing", note: "two runs generated, not timed yet" },
+      { name: "Less Actions overhead per run", status: "in use", note: "saving not measured yet", link: ["#70", PR + "70"] }
     ]
   };
   function renderSpeed() {
@@ -1003,7 +1003,15 @@
     var q = new URLSearchParams(); q.set("scenes", exp); if (task) q.set("scene", task);
     return location.pathname + "?" + q.toString() + "#scenes";
   }
+  // ?media=DIR/ (same origin only, like ?csv=) reads index.json and the manifests from DIR instead of main
+  function mediaOverride() {
+    var q = new URLSearchParams(location.search).get("media");
+    if (!q) return null;
+    try { var u = new URL(q.replace(/\/?$/, "/"), location.href); return u.origin === location.origin ? u.href : null; } catch (e) { return null; }
+  }
   function getJson(name) {
+    var ov = mediaOverride();
+    if (ov) return get(ov + name, 6000).then(JSON.parse);
     return get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
   }
   function sceneCard(t, open) {
@@ -1232,5 +1240,11 @@
   wire(); wireScenes(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); });
+    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); shareData(); });
+  // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
+  function shareData() {
+    window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
+      isCapped: isCapped, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
+    document.dispatchEvent(new CustomEvent("pwa:data"));
+  }
 })();

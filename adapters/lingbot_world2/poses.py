@@ -17,13 +17,23 @@ import os
 
 import numpy as np
 
-YAW = float(os.environ.get("LINGBOT_YAW_RAD", "0.03"))
-PITCH = float(os.environ.get("LINGBOT_PITCH_RAD", "0.01"))
-# Turn calibration (off by default; run.py --lingbot-turn-cal). PlayWorld dataset tokens are
-# fixed angles: "→*4" is "turn right 90 degrees", "→*16" a full turn, "u*2" "look up 40 degrees".
-UNIT_YAW_DEG = float(os.environ.get("LINGBOT_UNIT_YAW_DEG", "22.5"))
-UNIT_PITCH_DEG = float(os.environ.get("LINGBOT_UNIT_PITCH_DEG", "20"))
-CHUNK_UNITS = float(os.environ.get("LINGBOT_CHUNK_UNITS", "2"))  # tokens one closed-loop chunk stands for
+
+def reset(environ=os.environ) -> None:
+    """Rotation rates and turn-cal angles from the env (their import-time values). calibrate() overwrites
+    YAW/PITCH, so a process that runs several arms calls this before each one."""
+    global YAW, PITCH, UNIT_YAW_DEG, UNIT_PITCH_DEG, CHUNK_UNITS
+    YAW = float(environ.get("LINGBOT_YAW_RAD", "0.03"))
+    PITCH = float(environ.get("LINGBOT_PITCH_RAD", "0.01"))
+    # Turn calibration (off by default; run.py --lingbot-turn-cal). PlayWorld dataset tokens are
+    # fixed angles: "→*4" is "turn right 90 degrees", "→*16" a full turn, "u*2" "look up 40 degrees".
+    UNIT_YAW_DEG = float(environ.get("LINGBOT_UNIT_YAW_DEG", "22.5"))
+    UNIT_PITCH_DEG = float(environ.get("LINGBOT_UNIT_PITCH_DEG", "20"))
+    CHUNK_UNITS = float(environ.get("LINGBOT_CHUNK_UNITS", "2"))  # tokens one closed-loop chunk stands for
+
+
+YAW = PITCH = UNIT_YAW_DEG = UNIT_PITCH_DEG = CHUNK_UNITS = 0.0
+reset()
+
 LATENT_CHUNK = 4  # generate.py --chunk_size default; latent frames per causal chunk
 # examples/*/intrinsics.npy row 0 (fx, fy, cx, cy) at 480x832; the pipeline rescales it.
 INTRINSICS_480P = (502.9116, 503.10812, 415.77786, 239.77779)
