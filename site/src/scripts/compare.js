@@ -15,6 +15,7 @@ import * as RunInfo from "./runinfo.js";
   // mode "group": one arm group, control picked from it; mode "other": any two runs
   var sel = { mode: "group", group: "", ctl: "", trt: "", task: "" }, ctlOpen = false;
   var wanted = ["", "", ""], wantTask = "", linked = false, scrolled = false;
+  var loaded = false, wantPlay = false; // loaded: manifests are in; wantPlay: start playing once the requested clips have metadata
   var S = { t: 0, playing: false, rate: 1, loop: true, fps: 16, fpsKnown: false, raf: 0, last: 0 };
   var live = []; // [{exp, v, d, endEl, lenEl}] for the rendered slots
 
@@ -198,8 +199,8 @@ import * as RunInfo from "./runinfo.js";
         });
       });
       RI = RunInfo.build(api.rows, runs, mans);
-      choose();
-    }, function () { runs = []; choose(); });
+      loaded = true; choose();
+    }, function () { runs = []; loaded = true; choose(); });
   }
   function choose() {
     var notes = [];
@@ -306,7 +307,7 @@ import * as RunInfo from "./runinfo.js";
     if (chosen.length === 2) {
       df.appendChild(document.createTextNode(RunInfo.difference(RI.get(sel.ctl), RI.get(sel.trt))));
       var g = other ? null : RI.groups[sel.group];
-      if (g) df.appendChild(el("span", { class: "cvboth", text: "Both arms: " + g.common.join(" · ") + (g.setupWords.length ? " · both with " + g.setupWords.join(", ") : "") }));
+      if (g) df.appendChild(el("span", { class: "cvboth", text: "Both arms: " + g.common.join(", ") + (g.setupWords.length ? ", with " + g.setupWords.join(", ") : "") }));
     }
     df.hidden = chosen.length !== 2;
     bar.hidden = !live.length;
@@ -334,7 +335,10 @@ import * as RunInfo from "./runinfo.js";
     var media = el("div", { class: "media" }, [v, endEl]);
     var s = { exp: c.exp, v: v, d: NaN, endEl: endEl, lenEl: null, failed: false };
     live.push(s);
-    v.addEventListener("loadedmetadata", function () { if (isFinite(v.duration)) { s.d = v.duration; updateLens(); updateBar(); } });
+    v.addEventListener("loadedmetadata", function () {
+      if (isFinite(v.duration)) { s.d = v.duration; updateLens(); updateBar(); }
+      if (wantPlay && live.every(function (x) { return x.failed || isFinite(x.d); })) { wantPlay = false; play(); }
+    });
     // a failed clip leaves the shared clock: it never holds playback for buffering and never sets the length
     v.addEventListener("error", function () { s.failed = true; endEl.hidden = false; endEl.textContent = "Clip failed to load"; updateLens(); updateBar(); });
     if (!S.fpsKnown) probeFps(v);
@@ -521,6 +525,12 @@ import * as RunInfo from "./runinfo.js";
       });
     });
     $("cv-loop").addEventListener("change", function (e) { S.loop = e.target.checked; });
+    // story cards and the tour (app.js) ask for one task from two runs: detail { task, b: control, c: treatment, play }
+    document.addEventListener("pwa:compare", function (e) {
+      var d = e.detail || {};
+      wantTask = d.task || ""; wanted = ["", d.b || "", d.c || ""]; linked = true; scrolled = true; wantPlay = !!d.play;
+      if (loaded) choose();
+    });
     // switching back to this tab: write the selection to a/b/c again so a copied link opens it
     document.addEventListener("pwa:mode", function (e) {
       if (e.detail === "compare" && sel.task) { linked = true; syncUrl(); }

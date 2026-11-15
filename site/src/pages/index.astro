@@ -3,6 +3,9 @@
 import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Header from "../components/Header.astro";
+import Story from "../components/Story.astro";
+import Loop from "../components/Loop.astro";
+import Tour from "../components/Tour.astro";
 import Watch from "../components/Watch.astro";
 import Scores from "../components/Scores.astro";
 import Testing from "../components/Testing.astro";
@@ -15,12 +18,15 @@ import Runs from "../components/Runs.astro";
     <div class="view lead">
       <Header />
     </div>
-    <Watch />
     <Scores />
+    <Story />
+    <Watch />
+    <Loop />
     <Testing />
     <Runs />
   </main>
   <footer class="wrap" id="foot"></footer>
+  <Tour />
   <script>
     import "../scripts/app.js";
     import "../scripts/compare.js";
