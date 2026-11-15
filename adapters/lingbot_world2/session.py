@@ -30,6 +30,7 @@ Everything above the LingBotSession class is numpy-only and unit-tested
 """
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import re
@@ -245,7 +246,7 @@ class LingBotSession:
     """Stateful wrapper around a loaded wan.WanI2VCausal (causal_fast)."""
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
-                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None):
+                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -259,6 +260,8 @@ class LingBotSession:
         self.chunk_id = 0
         self.started = False
         self.reanchor_events = 0  # _anchor_y calls over the session's life (flag_stats reads deltas)
+        # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
+        self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self._free()
 
     def _free(self):
@@ -272,7 +275,7 @@ class LingBotSession:
 
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
-              reanchor: bool = False):
+              reanchor: bool = False, third_person: bool = False):
         import torch  # noqa: PLC0415
         import torchvision.transforms.functional as TF  # noqa: PLC0415
         from wan.utils.cam_utils import get_Ks_transformed  # noqa: PLC0415
@@ -333,6 +336,9 @@ class LingBotSession:
         self.gen.manual_seed(int(seed))
         self.track = PoseTrack()
         self.detector = ReturnDetector() if reanchor else None
+        self.third_person = bool(third_person)
+        if self.weight_mod is not None:
+            self.weight_mod.reset()
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -474,12 +480,16 @@ class LingBotSession:
             for i in self.detector.update(self.track.latents):
                 self._anchor_y(self.chunk_id * CHUNK + i)
 
-        new = []
-        with torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
+        new, modulated = [], False
+        with (self.weight_mod or contextlib.nullcontext()), torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
                 cid = self.chunk_id
+                rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
+                if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
+                    modulated = True
+                    self.weight_mod_chunks += 1
                 with torch.autocast("cuda", enabled=False):
-                    emb = self._plucker(rel[c * CHUNK:(c + 1) * CHUNK])
+                    emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
                                      generator=self.gen, device=pipe.device)
                 kwargs = {
@@ -514,6 +524,8 @@ class LingBotSession:
             mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")
             video = self._decode(lat)
             mark("step0.decode", f"({lat.shape[1]} latents)")
+        if modulated:
+            self.weight_mod_steps += 1
 
         frames = ((video.clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 3, 0).cpu().numpy()
         del video

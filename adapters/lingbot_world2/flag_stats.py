@@ -40,6 +40,10 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-if-slow-translation       if_slow=on, if_translation_frames (IF session frames whose W/S/A/D
                                       translation was halved)
 
+  --lingbot-weight-mod                weight_mod=on, weight_mod_steps (generate steps with any modulated latent
+                                      chunk: 0 or 1 per task in dataset mode), weight_mod_chunks (latent chunks
+                                      whose camera or text scale was not 1.0; stateless: 1 per modulated rollout)
+
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
 """
@@ -55,7 +59,8 @@ class FlagStats:
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
-                 if_subject: bool = False):
+                 if_subject: bool = False, weight_mod: bool = False):
+        self.weight_mod = bool(weight_mod)
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -75,7 +80,7 @@ class FlagStats:
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
-                       "if_subject_prompts": 0}
+                       "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -88,6 +93,7 @@ class FlagStats:
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
         self.if_subject_prompts = 0
+        self.weight_mod_steps = self.weight_mod_chunks = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -122,6 +128,11 @@ class FlagStats:
     def subject_prompt(self):
         """--lingbot-if-subject-director: one generate() call conditioned on the structured IF prompt."""
         self.if_subject_prompts += 1
+
+    def modulated(self, steps: int = 1, chunks: int = 1):
+        """--lingbot-weight-mod: generate steps with any modulated latent chunk, and modulated latent chunks."""
+        self.weight_mod_steps += int(steps)
+        self.weight_mod_chunks += int(chunks)
 
     def if_repeat_hint(self):
         self.if_repeat_checks += 1
@@ -190,6 +201,8 @@ class FlagStats:
             s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
         if self.if_subject:
             s.update(if_subject="on", if_subject_prompts=self.if_subject_prompts)
+        if self.weight_mod:
+            s.update(weight_mod="on", weight_mod_steps=self.weight_mod_steps, weight_mod_chunks=self.weight_mod_chunks)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -216,7 +229,9 @@ class FlagStats:
                    if self.if_horizon else "")
                 + "".join(f" {k}={v}" for k, v in self.director_summary(t).items())
                 + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else "")
-                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else ""))
+                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
+                + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
+                   if self.weight_mod else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -231,6 +246,8 @@ class FlagStats:
         t["gc_director_updates"] += self.gc_director_updates
         t["gc_eased_turns"] += self.gc_eased_turns
         t["if_subject_prompts"] += self.if_subject_prompts
+        t["weight_mod_steps"] += self.weight_mod_steps
+        t["weight_mod_chunks"] += self.weight_mod_chunks
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
