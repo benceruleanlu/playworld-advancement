@@ -51,6 +51,10 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-cond-schedule             cond_sched=on|skip, cond_sched_chunks, cond_sched_calls (session chunks and
                                       DiT forward calls whose early-step cam/text scales differed from 1.0)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
+  --lingbot-sink-key-scale            sink_scale=on (session reset of a task matching --lingbot-sink-scale-tasks,
+                                      sink > 0) | skip (stateless, sink 0 or task not matched),
+                                      sink_scaled_chunks (latent chunks whose denoising forwards ran with
+                                      scaled sink keys)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
                                       wait-only insight), scripted_planned (script + tail chunks),
                                       scripted_chunks (decisions answered from the script), scripted_end
@@ -74,7 +78,9 @@ class FlagStats:
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
-                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False):
+                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
+                 sink_scale: bool = False):
+        self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.measured_turn = bool(measured_turn)
@@ -103,7 +109,7 @@ class FlagStats:
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
                        "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
-                       "scripted_chunks": 0, "scripted_ends": 0}
+                       "scripted_chunks": 0, "scripted_ends": 0, "sink_scaled_chunks": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -120,6 +126,7 @@ class FlagStats:
         self.if_identity_prompts = 0
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
+        self.sink_scale_armed, self.sink_scaled_chunks = False, 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
@@ -182,6 +189,12 @@ class FlagStats:
 
     def completion_end(self):
         self.gc_completion_ends += 1
+
+    def sink_armed(self):
+        self.sink_scale_armed = True
+
+    def sink_scaled(self, chunks: int = 0):
+        self.sink_scaled_chunks += int(chunks)
 
     def cond_scheduled(self, chunks: int = 0, calls: int = 0):
         self.cond_sched_chunks += int(chunks)
@@ -266,6 +279,8 @@ class FlagStats:
                      measured_unreliable=m.get("unreliable", 0),
                      commanded_yaw=round(m.get("commanded_yaw", 0)), measured_yaw=round(m.get("measured_yaw", 0)),
                      commanded_tilt=round(m.get("commanded_tilt", 0)), measured_tilt=round(m.get("measured_tilt", 0)))
+        if self.sink_scale:
+            s.update(sink_scale="on" if self.sink_scale_armed else "skip", sink_scaled_chunks=self.sink_scaled_chunks)
         if self.scripted:
             s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
@@ -299,7 +314,8 @@ class FlagStats:
                 + (f" window={self.window}" if self.window else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
-                   if self.scripted else ""))
+                   if self.scripted else "")
+                + (f" sink_scaled_chunks={t['sink_scaled_chunks']}" if self.sink_scale else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -330,6 +346,7 @@ class FlagStats:
         t["if_horizon_ends"] += self.if_horizon_ends
         t["cond_sched_chunks"] += self.cond_sched_chunks
         t["cond_sched_calls"] += self.cond_sched_calls
+        t["sink_scaled_chunks"] += self.sink_scaled_chunks
         print(self.line(s), flush=True)
         return s
 

@@ -103,6 +103,14 @@ LINGBOT_LOCAL_ATTN_SIZE, defaults 6 / 18, the README causal-fast settings). Set 
 at every main() call (read at forward time), so pwa gen-arms reuses one pipe. Requires local >= sink + 4 (one
 latent chunk) unless local is -1 (full attention, then sink must be 0).
 
+Sink key scaling (off by default, session only): `--lingbot-sink-key-scale A` (0 < A <= 1, 1 = off;
+LINGBOT_SINK_KEY_SCALE) multiplies the cached self-attention keys of the sink tokens (the first --lingbot-sink-size
+latent frames) by A, which scales their attention logits by A, on the denoising forwards of each latent chunk with
+chunk index >= --lingbot-sink-scale-after K (default 8), in tasks matching --lingbot-sink-scale-tasks REGEX
+(default ".*"); the original keys are copied back before the chunk's clean KV write. Inert with sink 0 and on the
+stateless path. Acts in dataset mode and on wait-only insight tasks (per latent chunk inside one step). See
+sink_scale.py.
+
 IF identity cue (off by default): `--lingbot-if-identity-cue` or LINGBOT_IF_IDENTITY_CUE=1 appends a fixed sentence
 group about keeping each subject's identity (if_identity.CUE) to the model prompt of third-person IF tasks that have
 an image_caption; requires LINGBOT_PROMPT_MODE=auto (--lingbot-caption-prompt), so the IF goal is in the prompt.
@@ -158,6 +166,8 @@ Env:
   LINGBOT_IF_IDENTITY_CUE  1 = same as --lingbot-if-identity-cue
   LINGBOT_WEIGHT_MOD  1 = same as --lingbot-weight-mod (scale knobs above)
   LINGBOT_SINK_SIZE / LINGBOT_LOCAL_ATTN_SIZE   attention window (6 / 18)
+  LINGBOT_SINK_KEY_SCALE / LINGBOT_SINK_SCALE_AFTER / LINGBOT_SINK_SCALE_TASKS   same as --lingbot-sink-key-scale /
+                    --lingbot-sink-scale-after / --lingbot-sink-scale-tasks (1.0 = off / 8 / ".*")
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -227,6 +237,7 @@ from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
+from adapters.lingbot_world2 import sink_scale as SK  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 
@@ -342,6 +353,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
     window, argv = _window(argv, environ)
     flags.update(window)
+    flags["sink_scale"], argv = SK.parse(argv, environ)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     flags["player"], argv = agent_api.configure(argv, environ)
@@ -360,6 +372,7 @@ FAST = FS.FastFlags()
 CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
 STALL = W.Limits()
 COND_SCHED = CS.ScheduleConfig()
+SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -470,7 +483,8 @@ class LingBotWorld2Engine:
                                             horizon_frames=int(getattr(args, "max_total_frames", 961) or 961),
                                             stream_encode=FAST.fast_y, t5_cache=self.t5_cache,
                                             weight_mod=self.weight_mod,
-                                            **({"cond_sched": sched} if sched is not None else {}))
+                                            **({"cond_sched": sched} if sched is not None else {}),
+                                            **({"sink_scale": SINK_SCALE} if SINK_SCALE.enabled else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -481,6 +495,9 @@ class LingBotWorld2Engine:
                  else f", window local_attn={LOCAL_ATTN} sink={SINK}")
               + ((", cond-schedule ignored (stateless)" if STATELESS else f", {COND_SCHED.describe()}")
                  if COND_SCHED.enabled else "")
+              + ((", sink key scale ignored (stateless)" if STATELESS
+                  else ", sink key scale inert (sink 0)" if SINK == 0 else f", {SINK_SCALE.describe()}")
+                 if SINK_SCALE.enabled else "")
               + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
                  else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
@@ -592,6 +609,10 @@ class LingBotWorld2Engine:
             self.session.third_person = CS.is_third_person(prompts._current.get("task"), name)
             if reanchor:
                 STATS.armed()
+            if SINK_SCALE.enabled:  # only with the flag, so the no-flag reset path stays main's
+                self.session.sink_scale_on = SINK > 0 and SINK_SCALE.applies(name)
+                if self.session.sink_scale_on:
+                    STATS.sink_armed()
         self._configure_if_motion(name, keys)
         if cont and GC_DIRECTOR and name.startswith("GC"):
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
@@ -600,12 +621,15 @@ class LingBotWorld2Engine:
         modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks) if self.weight_mod is not None else None
         cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
         cs_calls = getattr(self.session, "cond_sched_calls", 0)
+        sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
         STATS.reanchored(self.session.reanchor_events - anchored)
         STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
                              getattr(self.session, "cond_sched_calls", 0) - cs_calls)
+        if SINK_SCALE.enabled:
+            STATS.sink_scaled(self.session.sink_scaled_chunks - sk_chunks)
         if self.weight_mod is not None:
             STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
@@ -669,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED
+    global IF_IDENTITY, COND_SCHED, SINK_SCALE
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -681,6 +705,7 @@ def main(argv: list[str] | None = None) -> int:
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
     COND_SCHED = flags["cond_sched"]
+    SINK_SCALE = flags["sink_scale"]
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
@@ -691,7 +716,8 @@ def main(argv: list[str] | None = None) -> int:
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
                                  measured_turn=flags["measured_turn"], cond_sched=cs_mode,
-                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"])
+                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
+                                 sink_scale=SINK_SCALE.enabled)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

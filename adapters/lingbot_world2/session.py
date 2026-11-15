@@ -23,7 +23,10 @@ no files. Differences from upstream, all deliberate:
     instead of for the whole horizon at reset (same encoder calls on the same inputs);
   * opt-in re-anchoring (reset(reanchor=True), off by default): when the commanded
     camera track returns to the start pose, that latent of `y` is set to the input
-    image again (ReturnDetector, _anchor_y).
+    image again (ReturnDetector, _anchor_y);
+  * opt-in sink key scaling (sink_scale=SinkScaleConfig, --lingbot-sink-key-scale, off by
+    default): the cached keys of the attention-sink tokens are scaled on a chunk's denoising
+    forwards and copied back before its KV write (_sink_scaled, sink_scale.py).
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -40,6 +43,7 @@ import numpy as np
 
 from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import poses as P
+from adapters.lingbot_world2 import sink_scale as SK
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
 FRAMES_PER_CHUNK = 4 * CHUNK    # pixel frames per chunk after the first latent
@@ -247,7 +251,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None):
+                 cond_sched=None, sink_scale=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -264,6 +268,8 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        # --lingbot-sink-key-scale: config (None = off), whether this rollout's task matched, chunks scaled
+        self.sink_scale, self.sink_scale_on, self.sink_scaled_chunks = sink_scale, False, 0
         self._free()
 
     def _free(self):
@@ -486,7 +492,7 @@ class LingBotSession:
 
         new, modulated = [], False
         with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
-                torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
+                contextlib.ExitStack() as sink, torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
                 cid, chunk_hit = self.chunk_id, False
                 rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
@@ -510,6 +516,8 @@ class LingBotSession:
                 }
                 ts = self.timesteps
                 for i in range(len(ts)):
+                    if i == 0:  # --lingbot-sink-key-scale: no-op unless it acts on this chunk
+                        sink.enter_context(self._sink_scaled(cid))
                     if self.weight_mod is not None:
                         self.weight_mod.denoise_step(i, len(ts))
                     if self.cond_sched is not None and self.cond_sched.set_step(rel_c, i, third_person=self.third_person):
@@ -525,6 +533,7 @@ class LingBotSession:
                     if i < len(ts) - 1:
                         noise = torch.randn(x0.shape, generator=self.gen, device=x0.device, dtype=x0.dtype)
                         latent = pipe.scheduler.add_noise(x0, noise, ts[i + 1])
+                sink.close()  # sink keys restored before the clean KV write
                 new.append(x0)
                 if self.weight_mod is not None:
                     self.weight_mod.end_chunk()  # the clean KV write uses the chunk's base scale
@@ -550,6 +559,24 @@ class LingBotSession:
             frames = np.concatenate([self._last_frame[None], frames])
         self._last_frame = frames[-1].copy()
         return frames
+
+    def _sink_scaled(self, cid: int):
+        """--lingbot-sink-key-scale: scale the sink keys of every block for this chunk's denoising forwards, then
+        copy the saved originals back (also on an exception). nullcontext when off or not active for cid."""
+        sink = int(getattr(self.pipe, "sink_size", 0) or 0)
+        if not (self.sink_scale_on and SK.active(self.sink_scale, cid, CHUNK, sink)):
+            return contextlib.nullcontext()
+        return self._sink_scale_ctx(SK.sink_tokens(sink, self.frame_seqlen))
+
+    @contextlib.contextmanager
+    def _sink_scale_ctx(self, n_tokens: int):
+        saved = []
+        try:
+            SK.scale_keys(self.kv, n_tokens, self.sink_scale.scale, saved)
+            self.sink_scaled_chunks += 1
+            yield
+        finally:
+            SK.restore_keys(self.kv, n_tokens, saved)
 
     def _decode(self, lat):
         """New latents -> new pixel frames [3, F, H, W] in [-1, 1]."""
