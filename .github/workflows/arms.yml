@@ -25,7 +25,7 @@ on:
         default: "GC005"
       split:
         type: choice
-        options: [dev, heldout, all]
+        options: [dev, dev2, dev48, heldout, all]
         default: dev
       runner:
         type: choice
