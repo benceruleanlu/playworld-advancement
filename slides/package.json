@@ -1,0 +1,17 @@
+{
+  "name": "playworld-advancement-slides",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "slidev",
+    "build": "slidev build --base /playworld-advancement/slides/",
+    "export": "slidev export"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@slidev/cli": "53.0.0",
+    "@slidev/theme-default": "0.25.0"
+  }
+}
