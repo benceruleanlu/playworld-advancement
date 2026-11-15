@@ -136,14 +136,17 @@ class PoseTrack:
         self.prev_latent = None      # absolute pose of the latest latent frame
         self.latents = None          # absolute poses of the last advance()'s latents (one per rel)
 
-    def advance(self, keys: list[str]) -> np.ndarray:
+    def advance(self, keys: list[str], ease_turns: bool = False) -> np.ndarray:
         first = self.prev_latent is None
         if (len(keys) + (4 if first else 0)) % FRAMES_PER_CHUNK:
             raise ValueError(f"{len(keys)} keys do not fill whole chunks (first={first})")
+        # Raised-cosine speed: half speed at edges, 1.5x mid-chunk; sum preserves total angle.
+        scales = 1 - 0.5 * np.cos(2 * np.pi * (np.arange(len(keys)) + 0.5) / len(keys)) if (
+            ease_turns and keys and len(set(keys)) == 1 and keys[0] in ("j", "l", "i", "k")) else None
         cur = self.last
         lat = [cur] if first else []  # latent 0 is pixel frame 0
         for i, k in enumerate(keys, 1):
-            cur = cur @ P.key_delta(k)
+            cur = cur @ (P.key_delta(k) if scales is None else P.key_delta(k, float(scales[i - 1])))
             if i % 4 == 0:
                 lat.append(cur)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
@@ -420,7 +423,7 @@ class LingBotSession:
         return emb.to(self.pipe.param_dtype)
 
     # -- step --------------------------------------------------------------
-    def step(self, keys: list[str]):
+    def step(self, keys: list[str], ease_turns: bool = False):
         """Generate len(keys) pixel frames (whole chunks) and return uint8 [F, H, W, 3]:
         first step 16n-3 frames from the input frame, later steps the previous last
         frame plus 16n new ones."""
@@ -429,7 +432,7 @@ class LingBotSession:
             raise RuntimeError("LingBotSession.step() before reset()")
         pipe = self.pipe
         first = self.chunk_id == 0
-        rel = self.track.advance(keys)
+        rel = self.track.advance(keys, ease_turns=ease_turns)
         n_chunks = len(rel) // CHUNK
         end_lat = (self.chunk_id + n_chunks) * CHUNK
         if end_lat > ROPE_LATENTS:

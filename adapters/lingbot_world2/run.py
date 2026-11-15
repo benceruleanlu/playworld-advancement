@@ -111,7 +111,7 @@ from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
-              "--lingbot-gc-completion-hint")
+              "--lingbot-gc-completion-hint", "--lingbot-gc-ease-turns")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -128,13 +128,17 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
         "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
+        "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    if flags["gc_ease_turns"] and flags["stateless"]:
+        raise SystemExit("--lingbot-gc-ease-turns requires session mode")
     flags["stall"], argv = W.parse(argv, environ)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
 # Set by main() from configure(); the engine reads them at call time.
+GC_EASE_TURNS = False  # --lingbot-gc-ease-turns / LINGBOT_GC_EASE_TURNS=1; session-only, off by default
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
@@ -306,7 +310,10 @@ class LingBotWorld2Engine:
                 STATS.armed()
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
-        frames = self.session.step(keys)
+        ease = (GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and keys
+                and len(set(keys)) == 1 and keys[0] in ("j", "l", "i", "k"))
+        frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
+        STATS.gc_eased_turns += bool(ease)
         STATS.reanchored(self.session.reanchor_events - anchored)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -362,14 +369,16 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL
+    global CPU_THREADS, STALL, GC_EASE_TURNS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
+    GC_EASE_TURNS = flags["gc_ease_turns"]
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
+                                 gc_ease_turns=GC_EASE_TURNS)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)

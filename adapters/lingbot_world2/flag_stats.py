@@ -34,17 +34,19 @@ from pathlib import Path
 
 class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
-                 return_stop: bool = False, gc_completion: bool = False):
+                 return_stop: bool = False, gc_completion: bool = False, gc_ease_turns: bool = False):
+        self.gc_ease_turns = bool(gc_ease_turns)
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
         self.gc_completion = bool(gc_completion)
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
-                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0}
+                       "gc_eased_turns": 0, "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
     def new_task(self):
+        self.gc_eased_turns = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -101,6 +103,8 @@ class FlagStats:
              "player_hint": "on" if self.player_hint else "off", "player_hints": self.player_hints}
         if self.return_stop:
             s.update(return_stop="on" if self.return_stop_armed else "skip", return_stops=self.return_stops)
+        if self.gc_ease_turns:
+            s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
         s.update(self.completion_summary(vars(self)))
         return s
 
@@ -114,12 +118,14 @@ class FlagStats:
                 f"caption_used={t['caption_used']} caption_fallback={t['caption_fallback']} "
                 f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}"
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
-                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items()))
+                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
+                + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
         t = self.totals
         t["tasks"] += 1
+        t["gc_eased_turns"] += self.gc_eased_turns
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events

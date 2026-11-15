@@ -63,7 +63,7 @@ def calibrate(dataset: bool, n_keys: int, action_frame_unit: int = 20) -> tuple[
     return YAW, PITCH
 
 
-def key_delta(key: str) -> np.ndarray:
+def key_delta(key: str, rotation_scale: float = 1.0) -> np.ndarray:
     """4x4 camera-frame delta for one pixel frame. '+' combines keys, e.g. 'w+j'."""
     d = np.eye(4)
     for k in key.lower().split("+"):
@@ -76,13 +76,13 @@ def key_delta(key: str) -> np.ndarray:
         elif k == "d":
             d[0, 3] += 1.0
         elif k == "j":  # look left
-            d[:3, :3] = d[:3, :3] @ _rot_y(-YAW)
+            d[:3, :3] = d[:3, :3] @ _rot_y(-YAW * rotation_scale)
         elif k == "l":  # look right
-            d[:3, :3] = d[:3, :3] @ _rot_y(YAW)
+            d[:3, :3] = d[:3, :3] @ _rot_y(YAW * rotation_scale)
         elif k == "i":  # look up
-            d[:3, :3] = d[:3, :3] @ _rot_x(PITCH)
+            d[:3, :3] = d[:3, :3] @ _rot_x(PITCH * rotation_scale)
         elif k == "k":  # look down
-            d[:3, :3] = d[:3, :3] @ _rot_x(-PITCH)
+            d[:3, :3] = d[:3, :3] @ _rot_x(-PITCH * rotation_scale)
         # anything else ("none") is a wait: identity
     return d
 
