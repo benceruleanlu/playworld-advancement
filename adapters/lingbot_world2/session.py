@@ -34,9 +34,10 @@ no files. Differences from upstream, all deliberate:
     default): the cached keys of the attention-sink tokens are scaled on a chunk's denoising
     forwards and copied back before its KV write (_sink_scaled, sink_scale.py).
   * opt-in pose-indexed memory (pose_mem=PoseMemoryConfig, --lingbot-pose-memory, off by default):
-    before a chunk whose commanded view matches an evicted, earlier-left chunk, that chunk's stored x0 is
-    recomputed by one clean forward into the sink slots after the anchor latents; the original sink is copied
-    back when nothing matches, and on an exception (_pose_mem_before, _mem_recompute, pose_memory.py).
+    before a chunk whose commanded view an evicted, earlier-left chunk covers better than the rolling window does
+    (PoseMemory.decide, also replayed by `python -m pwa.pose_mem_plan`), that chunk's stored x0 is recomputed by
+    one clean forward into the sink slots after the anchor latents; the original sink is copied back when nothing
+    matches, and on an exception (_pose_mem_before, _mem_recompute, pose_memory.py).
   * opt-in split sink key scaling (split_sink=SplitSinkConfig, --lingbot-split-sink, off by default):
     once the sink latents are written, a camera-rotation-compensated foreground mask splits sink tokens into
     foreground (fg_scale) and static background (bg_scale) during active chunks' denoising forwards, restoring
@@ -335,8 +336,9 @@ class LingBotSession:
         # --lingbot-pose-memory: config (None = off), whether this rollout's task matched (set by the engine after
         # reset), and counters over the session's life (flag_stats reads deltas; pm_peak_bytes is per rollout)
         self.pose_mem, self.pose_mem_on = pose_mem, False
+        self.pose_mem_name = ""   # call name of the rollout (set by the engine with the flag; picks `auto`)
         self.pm_stored = self.pm_installs = self.pm_restores = self.pm_latents = self.pm_forwards = 0
-        self.pm_chunks = self.pm_evicted = 0
+        self.pm_chunks = self.pm_evicted = self.pm_retimes = 0
         # --lingbot-split-sink: config (None = off), whether this rollout's task matched, counters (deltas)
         self.split_sink, self.split_sink_on = split_sink, False
         self.split_sink_chunks = self.split_sink_fg_tokens = 0
@@ -778,7 +780,7 @@ class LingBotSession:
             return None
         if self.pmem is None:
             self.pmem = PM.PoseMemory(self.pose_mem, int(getattr(self.pipe, "sink_size", 0) or 0),
-                                      int(self.pipe.local_attn_size))
+                                      int(self.pipe.local_attn_size), name=self.pose_mem_name)
         return self.pmem
 
     def _pm_span(self):
@@ -793,6 +795,8 @@ class LingBotSession:
             blk["k"][:, lo:hi] = k
             blk["v"][:, lo:hi] = v
         self._pm_installed = ()
+        if self.pmem is not None:
+            self.pmem.current = []
 
     @contextlib.contextmanager
     def _pose_mem_guard(self):
@@ -806,25 +810,16 @@ class LingBotSession:
             raise
 
     def _pose_mem_before(self, cid: int, latent_c2ws):
-        """Select memory for chunk cid from its commanded latent poses and install it in the sink slots, or put
-        the original sink back when nothing matches (fallback start)."""
+        """Select memory for chunk cid from its commanded latent poses (PoseMemory.decide) and install it in the
+        sink slots, re-time it, or put the original sink back when nothing matches (fallback start)."""
         pm, cfg = self.pmem, self.pose_mem
-        if cid * CHUNK < pm.sink:  # this rollout's first chunks are still writing the sink
+        d = pm.decide(latent_c2ws, cid, self._pm_installed)
+        if d.kind == "restore":
+            self._pm_restore()
+            self.pm_restores += 1
+            print(f"[lingbot] pose-mem: chunk {cid} restore start sink (no match)", flush=True)
             return
-        matches = pm.select(latent_c2ws, cid)
-        if matches is None:  # the newest sighting of this view is in the window: keep whatever is installed
-            return
-        slots = pm.slots(len(matches))
-        ropes = [pm.rope_latent(i, s, m.entry, cid, len(matches)) for i, (s, m) in enumerate(zip(slots, matches))]
-        # keyed on the RoPE times too: with time=recent they move with every chunk, so the memory is recomputed
-        ids = tuple((m.entry.cid, r) for m, r in zip(matches, ropes))
-        if ids == self._pm_installed:
-            return
-        if not ids:
-            if cfg.fallback == "start":
-                self._pm_restore()
-                self.pm_restores += 1
-                print(f"[lingbot] pose-mem: chunk {cid} restore start sink (no match)", flush=True)
+        if d.kind not in ("install", "retime"):
             return
         import torch  # noqa: PLC0415
         t0 = time.time()
@@ -832,21 +827,31 @@ class LingBotSession:
         if self._pm_snapshot is None:  # these slots are final once cid * CHUNK >= sink
             self._pm_snapshot = [(blk["k"][:, lo:hi].to("cpu", copy=True), blk["v"][:, lo:hi].to("cpu", copy=True))
                                  for blk in self.kv]
-        if len(matches) < cfg.chunks and self._pm_installed != ():  # unused slots hold the original sink
+        if len(d.matches) < cfg.chunks and self._pm_installed != ():  # unused slots hold the original sink
             self._pm_restore()
         self._pm_installed = None  # mid-install: the guard restores if a recompute raises
-        for s, r, m in zip(slots, ropes, matches):
+        for s, r, m in zip(d.slots, d.ropes, d.matches):
             self._mem_recompute(m.entry, s, r)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
-        self._pm_installed = ids
-        self.pm_installs += 1
-        self.pm_latents += CHUNK * len(matches)
+        self._pm_installed = d.ids
+        pm.current = list(d.matches)
+        if d.kind == "install":
+            self.pm_installs += 1
+            self.pm_latents += CHUNK * len(d.matches)
+        else:
+            self.pm_retimes += 1
         dt = time.time() - t0
-        for s, r, m in zip(slots, ropes, matches):
+        for s, r, m in zip(d.slots, d.ropes, d.matches):
+            if d.kind == "retime":
+                print(f"[lingbot] pose-mem: chunk {cid} keeps chunk {m.entry.cid} re-timed slots {s}-{s + CHUNK - 1} "
+                      f"rope={cfg.time}:{r} {dt:.2f}s", flush=True)
+                continue
             print(f"[lingbot] pose-mem: chunk {cid} <- chunk {m.entry.cid} (dyaw {m.dyaw:.1f} deg, dpitch "
-                  f"{m.dpitch:.1f} deg, dpos {m.dpos:.1f}, o={m.overlap:.2f}) slots {s}-{s + CHUNK - 1} "
-                  f"rope={cfg.time}:{r} {dt:.2f}s", flush=True)
+                  f"{m.dpitch:.1f} deg, dpos {m.dpos:.1f}, o={m.overlap:.2f}"
+                  + (f", window o={m.window:.2f}" if cfg.rule != "legacy" else "")
+                  + f") slots {s}-{s + CHUNK - 1} rope={cfg.time}:{r} {dt:.2f}s"
+                  + (f" [{m.note}]" if m.note else ""), flush=True)
 
     def _mem_recompute(self, entry, slot: int, rope_lat: int):
         """One clean t=0 forward of a stored chunk that writes its K/V into sink slots [slot, slot + CHUNK) of every
@@ -891,12 +896,8 @@ class LingBotSession:
         pm = self.pmem
         if self._pm_installed:
             self.pm_chunks += 1
-        pm.observe(latent_c2ws)
         host = x0.to("cpu", copy=True)
-        before = pm.evicted
-        pm.add(PM.Entry(cid, np.array(PM.centre(latent_c2ws)), host, np.array(rel_c),
-                        int(host.numel() * host.element_size())))
-        self.pm_evicted += pm.evicted - before
+        self.pm_evicted += pm.record(cid, latent_c2ws, host, np.array(rel_c), int(host.numel() * host.element_size()))
         self.pm_stored += 1
         snap = sum(int(k.numel() * k.element_size() + v.numel() * v.element_size())
                    for k, v in (self._pm_snapshot or ()))

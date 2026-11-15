@@ -1,14 +1,32 @@
 """Pose-indexed memory (opt-in, session only; numpy only, no torch import).
 
 `--lingbot-pose-memory` (LINGBOT_POSE_MEMORY=1) keeps a bank of every generated latent chunk of a rollout, keyed by
-its commanded camera pose (PoseTrack.latents, the intended track). Before a chunk is generated, the bank is
-searched for a chunk that (1) has left the KV cache (older than the rolling window and not part of the sink),
-(2) whose view the camera has left since (a later latent looked more than `leave_deg` away or moved more than
-`leave_trans` key units), and (3) whose view overlaps the upcoming chunk's (within `deg` degrees and `trans` key
-units). The most recent such sighting wins, so the scene state put back is the latest one seen, not frame 0.
-Its keys/values are recomputed (one clean t=0 forward of the stored x0 into the sink slots after the first
-`anchor` latents, session._mem_recompute) and stay there until the selection changes; when nothing matches the
-original sink is copied back (`fallback start`, default) or the last memory is kept (`fallback keep`).
+its commanded camera pose (PoseTrack.latents, the intended track). Before a chunk is generated the bank is searched
+(PoseMemory.decide, shared by the session and the dry-run planner `python -m pwa.pose_mem_plan`), the chosen chunk's
+keys/values are recomputed (one clean t=0 forward of the stored x0 into the sink slots after the first `anchor`
+latents, session._mem_recompute) and stay there until the selection changes; when nothing matches the original sink
+is copied back (`fallback start`, default) or the last memory is kept (`fallback keep`).
+
+Selection, `--lingbot-pose-mem-rule coverage` (default). For the upcoming chunk's centre view T:
+  * window coverage: the best overlap with T of any latent of the rolling window (the 8 latents the cache still
+    holds after the sink);
+  * a stored chunk matches when its best latent overlaps T by at least `deg` (and is within `trans` key units), it
+    has left the rolling window, and the camera has looked away from it since (some later latent more than
+    `leave_deg` away, or `leave_trans` units);
+  * it is eligible when it overlaps T strictly better than the window does: the window does not already hold that
+    view. Chunks that overlap the sink (the opening view) are candidates too unless `time sink`, where installing
+    them at their own sink positions would change almost nothing;
+  * pick: `best` overlap (ties to the newest), or `latest` sighting (newest first); `auto` (default) is `latest` for
+    Out-of-sight call names (OE*), whose rubric scores a reset to the opening as level 1, and `best` otherwise. With
+    `latest`, an opening-only choice is replaced by a later matching sighting whenever one exists.
+  Matched but not eligible (the window holds the view): the installed memory is kept, re-timed with `time recent`.
+`--lingbot-pose-mem-rule legacy` is the first version (pm14-fx-v1): centre poses only, sink chunks never candidates,
+and the newest overlapping sighting shadows older ones, so any smooth turn (18 degrees per chunk under turn-cal,
+less than `deg`) finds the previous, in-window chunk first and recalls nothing. The first GPU run (pm14-fx-v1/v2,
+30 rollouts) logged pose_mem_retrievals=0 on every task and produced byte-identical clips.
+
+`--lingbot-pose-mem-yaw-scale S` (1.0) multiplies the commanded yaw (unwrapped over the rollout) before any yaw
+comparison: the rendered image turned about 1.19x the commanded angle on GC031 (one measurement).
 
 Storage is option (b) of the feasibility study: only the clean latents x0 (16 x 4 x lat_h x lat_w fp32, about
 1.5 MB per chunk at 480p), on the host, capped by `max_mb` (oldest entries evicted first). Option (a), the
@@ -16,7 +34,8 @@ per-block K/V of each stored latent, is 1.2 GB per latent on 14B and is not impl
 
 View overlap between two poses: o = max(0, 1 - |dyaw| / HFOV) * max(0, 1 - |dpitch| / VFOV) with the field of
 view of the 480p intrinsics (79.2 x 51.0 degrees). `deg` and `leave_deg` are given as the yaw offset that
-gives the threshold overlap at equal pitch (32 degrees: o >= 0.6; 59 degrees: o < 0.25).
+gives the threshold overlap at equal pitch (32 degrees: o >= 0.6; 40 degrees, about half the field of view, so
+the stored view's centre has left the frame: o < 0.5).
 """
 from __future__ import annotations
 
@@ -35,8 +54,15 @@ HFOV = math.degrees(2 * math.atan(P.INTRINSICS_480P[2] / P.INTRINSICS_480P[0])) 
 VFOV = math.degrees(2 * math.atan(P.INTRINSICS_480P[3] / P.INTRINSICS_480P[1]))  # 51.0
 TIMES = ("sink", "recent", "orig")
 FALLBACKS = ("start", "keep")
-DEFAULTS = {"deg": 32.0, "trans": 4.0, "leave_deg": 59.0, "leave_trans": 8.0, "latents": 4, "anchor": 2,
-            "time": "sink", "fallback": "start", "tasks": "GC|OE", "max_mb": 512.0}
+RULES = ("coverage", "legacy")
+PICKS = ("auto", "best", "latest")
+DEFAULTS = {"deg": 32.0, "trans": 4.0, "leave_deg": 40.0, "leave_trans": 8.0, "latents": 4, "anchor": 2,
+            "time": "recent", "fallback": "start", "tasks": "GC|OE", "max_mb": 512.0, "rule": "coverage",
+            "pick": "auto", "yaw_scale": 1.0}
+# The first version's behaviour (pm14-fx-v1): pass these to get it back.
+LEGACY_ARGS = ("--lingbot-pose-mem-rule", "legacy", "--lingbot-pose-mem-time", "sink",
+               "--lingbot-pose-mem-leave-deg", "59")
+MEASURED_YAW_SCALE = 1.19  # rendered / commanded yaw, GC031 only
 _ARGS = {  # flag -> (field, env var)
     "--lingbot-pose-mem-deg": ("deg", "LINGBOT_POSE_MEM_DEG"),
     "--lingbot-pose-mem-trans": ("trans", "LINGBOT_POSE_MEM_TRANS"),
@@ -48,6 +74,9 @@ _ARGS = {  # flag -> (field, env var)
     "--lingbot-pose-mem-fallback": ("fallback", "LINGBOT_POSE_MEM_FALLBACK"),
     "--lingbot-pose-mem-tasks": ("tasks", "LINGBOT_POSE_MEM_TASKS"),
     "--lingbot-pose-mem-max-mb": ("max_mb", "LINGBOT_POSE_MEM_MAX_MB"),
+    "--lingbot-pose-mem-rule": ("rule", "LINGBOT_POSE_MEM_RULE"),
+    "--lingbot-pose-mem-pick": ("pick", "LINGBOT_POSE_MEM_PICK"),
+    "--lingbot-pose-mem-yaw-scale": ("yaw_scale", "LINGBOT_POSE_MEM_YAW_SCALE"),
 }
 
 
@@ -64,6 +93,9 @@ class PoseMemoryConfig:
     fallback: str = DEFAULTS["fallback"]
     tasks: str = DEFAULTS["tasks"]
     max_mb: float = DEFAULTS["max_mb"]
+    rule: str = DEFAULTS["rule"]
+    pick: str = DEFAULTS["pick"]
+    yaw_scale: float = DEFAULTS["yaw_scale"]
 
     @property
     def chunks(self) -> int:
@@ -78,6 +110,12 @@ class PoseMemoryConfig:
     def leave_overlap(self) -> float:
         return overlap_of(self.leave_deg, 0.0)
 
+    def pick_for(self, name: str) -> str:
+        """`auto`: latest sighting for Out-of-sight call names, best overlap otherwise."""
+        if self.pick != "auto":
+            return self.pick
+        return "latest" if (name or "").startswith("OE") else "best"
+
     def applies(self, name: str) -> bool:
         """True when this call name (e.g. 'OE047_chunk_01') matches --lingbot-pose-mem-tasks."""
         return self.enabled and re.match(self.tasks, name or "") is not None
@@ -85,7 +123,8 @@ class PoseMemoryConfig:
     def describe(self) -> str:
         return (f"pose memory {self.latents} latents after {self.anchor} anchor, match {self.deg:g} deg / "
                 f"{self.trans:g} units, leave {self.leave_deg:g} deg / {self.leave_trans:g} units, rope {self.time}, "
-                f"fallback {self.fallback}, cap {self.max_mb:g} MB, tasks {self.tasks!r}")
+                f"fallback {self.fallback}, cap {self.max_mb:g} MB, tasks {self.tasks!r}, rule {self.rule}, "
+                f"pick {self.pick}, yaw scale {self.yaw_scale:g}")
 
 
 def _take(argv: list[str]) -> tuple[dict, list[str]]:
@@ -125,7 +164,7 @@ def parse(argv: list[str], environ=os.environ) -> tuple[PoseMemoryConfig, list[s
     names = {f: arg for arg, (f, _) in _ARGS.items()}
     v = dict(DEFAULTS)
     for f, lo, hi in (("deg", 0.0, HFOV), ("leave_deg", 0.0, 360.0), ("trans", 0.0, 1e6), ("leave_trans", 0.0, 1e6),
-                      ("max_mb", 1.0, 1e6)):
+                      ("max_mb", 1.0, 1e6), ("yaw_scale", 0.25, 4.0)):
         if raw[f] is not None:
             v[f] = _num(names[f], raw[f], float, lo, hi)
     for f, lo in (("latents", CHUNK), ("anchor", 0)):
@@ -140,7 +179,7 @@ def parse(argv: list[str], environ=os.environ) -> tuple[PoseMemoryConfig, list[s
     if v["leave_deg"] <= v["deg"]:
         raise SystemExit(f"--lingbot-pose-mem-leave-deg ({v['leave_deg']:g}) must exceed --lingbot-pose-mem-deg "
                          f"({v['deg']:g}), or a view never counts as left")
-    for f, allowed in (("time", TIMES), ("fallback", FALLBACKS)):
+    for f, allowed in (("time", TIMES), ("fallback", FALLBACKS), ("rule", RULES), ("pick", PICKS)):
         if raw[f] is not None:
             if raw[f] not in allowed:
                 raise SystemExit(f"{names[f]} must be one of {allowed}, got {raw[f]!r}")
@@ -179,13 +218,34 @@ def overlap_of(dyaw: float, dpitch: float) -> float:
     return max(0.0, 1.0 - abs(dyaw) / HFOV) * max(0.0, 1.0 - abs(dpitch) / VFOV)
 
 
+def wrap180(deg: float) -> float:
+    return (deg + 180.0) % 360.0 - 180.0
+
+
 def pose_diff(a: np.ndarray, b: np.ndarray) -> tuple[float, float, float, float]:
     """(dyaw, dpitch, dpos, overlap) from pose a to pose b; dyaw wrapped to [-180, 180)."""
     ya, pa = view_angles(a)
     yb, pb = view_angles(b)
-    dyaw = (yb - ya + 180.0) % 360.0 - 180.0
+    dyaw = wrap180(yb - ya)
     dpitch = pb - pa
     dpos = float(np.linalg.norm(np.asarray(b, dtype=np.float64)[:3, 3] - np.asarray(a, dtype=np.float64)[:3, 3]))
+    return dyaw, dpitch, dpos, overlap_of(dyaw, dpitch)
+
+
+def view_of(c2w, prev_yaw: float | None = None) -> np.ndarray:
+    """[yaw, pitch, x, y, z] of a pose; yaw unwrapped to within 180 degrees of prev_yaw when given, so a track
+    that turns past 180 keeps counting (a 360 ends at 360, not 0)."""
+    yaw, pitch = view_angles(c2w)
+    if prev_yaw is not None:
+        yaw = prev_yaw + wrap180(yaw - prev_yaw)
+    return np.array([yaw, pitch, *np.asarray(c2w, dtype=np.float64)[:3, 3]])
+
+
+def view_diff(a: np.ndarray, b: np.ndarray, yaw_scale: float = 1.0) -> tuple[float, float, float, float]:
+    """pose_diff on views: the unwrapped commanded yaw difference times yaw_scale (the rendered turn), wrapped."""
+    dyaw = wrap180(yaw_scale * (b[0] - a[0]))
+    dpitch = float(b[1] - a[1])
+    dpos = float(np.linalg.norm(b[2:5] - a[2:5]))
     return dyaw, dpitch, dpos, overlap_of(dyaw, dpitch)
 
 
@@ -205,6 +265,14 @@ class Entry:
     rel: np.ndarray          # the chunk's normalised relative poses [4, 4, 4] (its camera input)
     nbytes: int = 0
     left: bool = False       # the camera has looked away from this view since it was generated
+    views: np.ndarray | None = None  # [n_latents, 5] view_of each latent (unwrapped yaw); None: the centre only
+
+    def latent_views(self) -> np.ndarray:
+        return self.views if self.views is not None else view_of(self.pose)[None]
+
+    def centre_view(self) -> np.ndarray:
+        v = self.latent_views()
+        return v[min(2, len(v) - 1)]
 
 
 @dataclass
@@ -214,6 +282,30 @@ class Match:
     dpitch: float
     dpos: float
     overlap: float
+    window: float = 0.0      # best overlap of the rolling window with the same view (coverage rule)
+    note: str = ""           # e.g. "opening re-timed", "later sighting preferred over the opening"
+
+
+@dataclass
+class Plan:
+    """What select() saw for one chunk (also printed by the dry-run planner)."""
+    matches: list | None     # None: the window holds the view (keep); []: nothing matches; else the chosen chunks
+    target: np.ndarray       # view_of the chunk's centre latent
+    window: float = 0.0      # best overlap of the rolling window with the target
+    matched: int = 0         # stored chunks that overlap the target (before the left/window/coverage tests)
+
+
+@dataclass
+class Decision:
+    """What the session does before chunk c: warmup (sink still being written), keep (leave whatever is installed,
+    possibly nothing), restore (copy the original sink back), install (a new selection) or retime (the same
+    chunks recomputed at a new RoPE time, coverage rule with time recent)."""
+    kind: str
+    plan: Plan | None = None
+    matches: list = field(default_factory=list)
+    slots: list = field(default_factory=list)
+    ropes: list = field(default_factory=list)
+    ids: tuple = ()
 
 
 @dataclass
@@ -223,6 +315,9 @@ class PoseMemory:
     local: int               # whole cache in latents (pipe.local_attn_size), sink included
     entries: list = field(default_factory=list)
     evicted: int = 0         # entries dropped by the cap
+    name: str = ""           # call name of the rollout (picks `auto`)
+    current: list = field(default_factory=list)  # matches installed now (set by the caller after an install)
+    _views: dict = field(default_factory=dict)   # chunk id -> view_of its latents, unwrapped along the rollout
 
     @property
     def window(self) -> int:
@@ -233,9 +328,38 @@ class PoseMemory:
     def nbytes(self) -> int:
         return sum(e.nbytes for e in self.entries)
 
+    @property
+    def pick(self) -> str:
+        return self.cfg.pick_for(self.name)
+
     def in_cache(self, j: int, c: int) -> bool:
         """True when chunk j still has latents in the cache (sink or rolling window) while chunk c is generated."""
         return j * CHUNK < self.sink or (j + 1) * CHUNK > c * CHUNK - self.window
+
+    def in_window(self, j: int, c: int) -> bool:
+        """True when chunk j still has latents in the rolling window (after the sink) while chunk c is generated."""
+        return (j + 1) * CHUNK > c * CHUNK - self.window
+
+    def opening(self, e: Entry) -> bool:
+        """The chunk overlaps the sink: part of the opening view that the sink holds at its original time."""
+        return e.cid * CHUNK < self.sink
+
+    def views(self, latent_c2ws, c: int | None = None) -> np.ndarray:
+        """view_of each latent of chunk c, yaw unwrapped from chunk c - 1's last latent (cached per chunk; c None:
+        not cached, unwrapped only within the chunk)."""
+        if c is not None and c in self._views:
+            return self._views[c]
+        prev = self._views.get(c - 1) if c is not None else None
+        y = None if prev is None else float(prev[-1][0])
+        out = []
+        for c2w in latent_c2ws:
+            v = view_of(c2w, y)
+            y = float(v[0])
+            out.append(v)
+        out = np.stack(out)
+        if c is not None:
+            self._views[c] = out
+        return out
 
     def add(self, entry: Entry) -> None:
         self.entries.append(entry)
@@ -244,21 +368,97 @@ class PoseMemory:
             self.entries.pop(0)
             self.evicted += 1
 
-    def observe(self, latent_c2ws) -> None:
+    def observe(self, latent_c2ws, c: int | None = None) -> None:
         """Mark stored views the camera has left: some latent here is far from the entry's pose."""
+        if self.cfg.rule == "legacy":
+            for e in self.entries:
+                if e.left:
+                    continue
+                for c2w in latent_c2ws:
+                    _, _, dpos, o = pose_diff(e.pose, c2w)
+                    if o < self.cfg.leave_overlap or dpos > self.cfg.leave_trans:
+                        e.left = True
+                        break
+            return
+        vs = self.views(latent_c2ws, c)
         for e in self.entries:
             if e.left:
                 continue
-            for c2w in latent_c2ws:
-                _, _, dpos, o = pose_diff(e.pose, c2w)
+            ev = e.centre_view()
+            for v in vs:
+                _, _, dpos, o = view_diff(ev, v, self.cfg.yaw_scale)
                 if o < self.cfg.leave_overlap or dpos > self.cfg.leave_trans:
                     e.left = True
                     break
 
+    def record(self, cid: int, latent_c2ws, x0=None, rel=None, nbytes: int = 0) -> int:
+        """After chunk cid: mark the views it left, then store it. Returns entries evicted by the cap."""
+        self.observe(latent_c2ws, cid)
+        before = self.evicted
+        views = None if self.cfg.rule == "legacy" else self.views(latent_c2ws, cid)
+        self.add(Entry(cid, np.array(centre(latent_c2ws)), x0, rel, int(nbytes), views=views))
+        self._views = {k: v for k, v in self._views.items() if k >= cid}  # only the last chunk is needed to unwrap
+        return self.evicted - before
+
     def select(self, latent_c2ws, c: int) -> list[Match] | None:
-        """Up to cfg.chunks matches for chunk c (poses latent_c2ws), most recent first: evicted, left, overlapping.
-        The newest overlapping non-sink sighting shadows older ones: if it is still in the rolling window or has
-        not been left, the window already holds the view and this returns None (recall nothing, keep the sink)."""
+        """Up to cfg.chunks matches for chunk c (poses latent_c2ws); None when the window already holds the view
+        (keep what is installed), [] when nothing matches. See the module docstring for the rules."""
+        return self.plan(latent_c2ws, c).matches
+
+    def plan(self, latent_c2ws, c: int) -> Plan:
+        if self.cfg.rule == "legacy":
+            return Plan(self._select_legacy(latent_c2ws, c), view_of(centre(latent_c2ws)))
+        cfg, s = self.cfg, self.cfg.yaw_scale
+        target = self.views(latent_c2ws, c)[min(2, len(latent_c2ws) - 1)]
+        lo = c * CHUNK - self.window
+        win = 0.0
+        for e in self.entries:  # the rolling window's latents: the best overlap the cache already has
+            if not self.in_window(e.cid, c) or e.cid >= c:
+                continue
+            for k, v in enumerate(e.latent_views()):
+                if e.views is not None and e.cid * CHUNK + k < lo:  # this latent was evicted already
+                    continue
+                _, _, dpos, o = view_diff(v, target, s)
+                if dpos <= cfg.trans:
+                    win = max(win, o)
+        matched, eligible = 0, []
+        for e in reversed(self.entries):  # newest first
+            if e.cid >= c or self.in_window(e.cid, c):
+                continue
+            if self.opening(e) and cfg.time == "sink":  # its own sink positions: almost a no-op
+                continue
+            best = None
+            for v in e.latent_views():
+                d = view_diff(v, target, s)
+                if d[2] <= cfg.trans and (best is None or d[3] > best[3]):
+                    best = d
+            if best is None or best[3] < cfg.match_overlap:
+                continue
+            matched += 1
+            if e.left:
+                eligible.append(Match(e, *best, window=win))
+        if not matched:
+            return Plan([], target, win, 0)
+        better = [m for m in eligible if m.overlap > win + 1e-9]
+        if self.pick == "latest":
+            chosen = better[:cfg.chunks]
+            later = [m for m in better if not self.opening(m.entry)]  # still must beat the window
+            if chosen and all(self.opening(m.entry) for m in chosen) and later:
+                chosen = later[:cfg.chunks]  # Out-of-sight: never only the opening when a later sighting exists
+                for m in chosen:
+                    m.note = "later sighting preferred over the opening"
+        else:
+            chosen = sorted(better, key=lambda m: (-round(m.overlap, 9), -m.entry.cid))[:cfg.chunks]
+        if not chosen:
+            return Plan(None, target, win, matched)
+        for m in chosen:
+            if self.opening(m.entry) and not m.note:
+                m.note = "opening re-timed" if cfg.time != "sink" else "opening"
+        return Plan(chosen, target, win, matched)
+
+    def _select_legacy(self, latent_c2ws, c: int) -> list[Match] | None:
+        """The first version: centre poses; the newest overlapping non-sink sighting shadows older ones: if it is
+        still in the rolling window or has not been left, this returns None (recall nothing, keep the sink)."""
         target = centre(latent_c2ws)
         out = []
         for e in reversed(self.entries):
@@ -274,16 +474,53 @@ class PoseMemory:
                 break
         return out
 
+    def decide(self, latent_c2ws, c: int, installed: tuple) -> Decision:
+        """What to do before chunk c given the (chunk id, rope latent) pairs installed now. The session acts on it;
+        the planner replays it. Neither changes `current` here: the caller sets it after acting."""
+        if c * CHUNK < self.sink:  # this rollout's first chunks are still writing the sink
+            return Decision("warmup")
+        plan = self.plan(latent_c2ws, c)
+        matches = plan.matches
+        retime = False
+        if matches is None:  # the window holds the view: keep what is installed
+            if self.cfg.rule == "legacy" or self.cfg.time != "recent" or not self.current:
+                return Decision("keep", plan)
+            # ...re-timed, so it stays just behind the window, while it still covers the view (else restore)
+            matches, retime = [m for m in self.current if self.covers(m.entry, plan.target)], True
+        if self.cfg.time != "sink":  # oldest chunk in the first slot, so the slot order matches the RoPE order
+            matches = sorted(matches, key=lambda m: m.entry.cid)
+        slots = self.slots(len(matches))
+        ropes = [self.rope_latent(i, sl, m.entry, c, len(matches)) for i, (sl, m) in enumerate(zip(slots, matches))]
+        # keyed on the RoPE times too: with time=recent they move with every chunk, so the memory is recomputed
+        ids = tuple((m.entry.cid, r) for m, r in zip(matches, ropes))
+        if ids == installed:
+            return Decision("keep", plan, matches, slots, ropes, ids)
+        if not ids:
+            return Decision("restore" if self.cfg.fallback == "start" else "keep", plan)
+        same = self.cfg.rule != "legacy" and tuple(i for i, _ in ids) == tuple(i for i, _ in installed)
+        return Decision("retime" if retime or same else "install", plan, matches, slots, ropes, ids)
+
+    def covers(self, e: Entry, target) -> bool:
+        """Whether a stored chunk's best latent still overlaps the target view by match_overlap (coverage rule)."""
+        if e.views is None:
+            return True
+        for v in e.latent_views():
+            _, _, dpos, o = view_diff(v, target, self.cfg.yaw_scale)
+            if dpos <= self.cfg.trans and o >= self.cfg.match_overlap:
+                return True
+        return False
+
     def slots(self, n: int) -> list[int]:
-        """First latent slot of each of n retrieved chunks, in retrieval order (most recent first)."""
+        """First latent slot of each of n retrieved chunks (time sink: retrieval order, most recent first; otherwise
+        oldest chunk first, so a later slot never holds an earlier RoPE time)."""
         return [self.cfg.anchor + i * CHUNK for i in range(n)]
 
     def rope_latent(self, slot_index: int, slot: int, entry: Entry, c: int, n: int) -> int:
         """RoPE time (latent index) the retrieved chunk is recomputed at. sink: its slot (the position pattern
-        of today's sink); recent: just behind the rolling window of chunk c, most recent nearest (recomputed every
+        of today's sink); recent: just behind the rolling window of chunk c, the last slot nearest (recomputed every
         chunk while installed, so it tracks the window); orig: when it was made."""
         if self.cfg.time == "sink":
             return slot
         if self.cfg.time == "orig":
             return entry.cid * CHUNK
-        return max(0, c * CHUNK - self.window - CHUNK * (slot_index + 1))
+        return max(0, c * CHUNK - self.window - CHUNK * (n - slot_index))

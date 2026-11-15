@@ -35,6 +35,10 @@ assert.deepEqual(parseArgs(["--lingbot-stall-abort", "900", "--lingbot-cond-text
   [{ flag: "--lingbot-stall-abort", value: "900" }, { flag: "--lingbot-cond-text", value: "1.0" }, { flag: "--lingbot-fast", value: null }]);
 assert.deepEqual(words(["--lingbot-cond-schedule", "--lingbot-cond-text=1.0"]), ["conditioning schedule (text boost off)"]);
 assert.deepEqual(words(["--lingbot-new-thing=3"]), ["--lingbot-new-thing 3"], "unknown flags show verbatim");
+assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-k=0.5"]),
+  ["turn calibration", "yaw servo (error share 0.5)"]);
+assert.deepEqual(words(["--lingbot-split-sink", "--lingbot-split-sink-fg-scale=0.15", "--lingbot-split-sink-fg-frac=0.3"]),
+  ["split sink scaling (fg scale 0.15, fg fraction 0.3)"]);
 
 const lab = (e) => RI.get(e) && RI.get(e).armLabel;
 const expect = {
