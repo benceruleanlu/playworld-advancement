@@ -67,6 +67,16 @@ reshapes per-frame yaw/pitch of a GC chunk that turns on one axis (one key of j/
 cosine (0.5x at the edges, 1.5x mid-chunk, mean 1), so the chunk ends at the same commanded pose;
 rejected with --lingbot-stateless. See session.is_pure_turn and PoseTrack.advance.
 
+IF subject director (off by default): `--lingbot-if-subject-director` or LINGBOT_IF_SUBJECT_DIRECTOR=1
+conditions third-person IF tasks on "Subject action: goal / Scene: caption / fixed cue" instead of the
+caption prompt; requires caption prompting (--lingbot-caption-prompt or LINGBOT_PROMPT_MODE=auto|caption).
+Its counter if_subject_prompts counts generate() calls (about 30 per closed-loop rollout), not T5 encodes
+(one per session reset). See if_subject.py.
+
+Model prompt composition, in order: caption prompt (prompts.model_prompt), insight director (insight
+tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
+replaces the prompt with its structured form). Each applies to one family, so at most one rewrites a task.
+
 decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
 return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
 IF repeat) + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
@@ -98,6 +108,7 @@ Env:
   LINGBOT_IF_SLOW_TRANSLATION  1 = same as --lingbot-if-slow-translation
   LINGBOT_GC_CHUNK_DIRECTOR  1 = same as --lingbot-gc-chunk-director
   LINGBOT_GC_EASE_TURNS  1 = same as --lingbot-gc-ease-turns
+  LINGBOT_IF_SUBJECT_DIRECTOR  1 = same as --lingbot-if-subject-director
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -155,6 +166,7 @@ from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import if_camera as IC  # noqa: E402
 from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
 from adapters.lingbot_world2 import if_repeat as IR  # noqa: E402
+from adapters.lingbot_world2 import if_subject as IFS  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
@@ -166,7 +178,8 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
-              "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns")
+              "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
+              "--lingbot-if-subject-director")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -194,12 +207,15 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
                    or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
         "gc_director": "--lingbot-gc-chunk-director" in argv or environ.get("LINGBOT_GC_CHUNK_DIRECTOR", "0") == "1",
         "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
+        "if_subject": "--lingbot-if-subject-director" in argv or environ.get("LINGBOT_IF_SUBJECT_DIRECTOR", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
     if flags["gc_director"] and (mode == "goal" or flags["stateless"]):
         raise SystemExit("--lingbot-gc-chunk-director requires caption prompting and session mode")
     if flags["gc_ease_turns"] and flags["stateless"]:
         raise SystemExit("--lingbot-gc-ease-turns requires session mode")
+    if flags["if_subject"] and mode == "goal":
+        raise SystemExit("--lingbot-if-subject-director requires caption prompting")
     flags["stall"], argv = W.parse(argv, environ)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
@@ -210,6 +226,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 # Set by main() from configure(); the engine reads them at call time.
 GC_DIRECTOR = False  # --lingbot-gc-chunk-director / LINGBOT_GC_CHUNK_DIRECTOR=1 (requires caption + session)
 GC_EASE_TURNS = False  # --lingbot-gc-ease-turns / LINGBOT_GC_EASE_TURNS=1; session-only, off by default
+IF_SUBJECT = False  # --lingbot-if-subject-director / LINGBOT_IF_SUBJECT_DIRECTOR=1, off by default
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = IF_HORIZON = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
@@ -330,6 +347,7 @@ class LingBotWorld2Engine:
               + (", IF slow translation on (gain 0.5)" if STATS.if_slow else "")
               + (", GC chunk director on" if GC_DIRECTOR else "")
               + (", GC ease turns on" if GC_EASE_TURNS else "")
+              + (", IF subject director on" if IF_SUBJECT else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
 
@@ -370,6 +388,13 @@ class LingBotWorld2Engine:
             directed = D.compose(prompt, name, action)
             STATS.gc_director_chunks += directed != prompt
             prompt = directed
+        if IF_SUBJECT:
+            directed = IFS.compose(prompts._current.get("task"), original_prompt, name)
+            if directed is not None:
+                prompt = directed
+                STATS.subject_prompt()
+                if (S.parse_chunk_name(name) or (name, 1))[1] == 1:
+                    print(f"[lingbot] {name}: IF subject director: {prompt!r}", flush=True)
         with W.watch(name, STALL):
             if self.session is None:
                 return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
@@ -467,12 +492,13 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS
+    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
+    IF_SUBJECT = flags["if_subject"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
@@ -480,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
-                                 gc_ease_turns=GC_EASE_TURNS)
+                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

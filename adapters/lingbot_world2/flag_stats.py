@@ -54,7 +54,8 @@ class FlagStats:
                  return_stop: bool = False, gc_completion: bool = False,
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
-                 gc_director: bool = False, gc_ease_turns: bool = False):
+                 gc_director: bool = False, gc_ease_turns: bool = False,
+                 if_subject: bool = False):
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -63,6 +64,7 @@ class FlagStats:
         self.if_slow = bool(if_slow)
         self.gc_director = bool(gc_director)
         self.gc_ease_turns = bool(gc_ease_turns)
+        self.if_subject = bool(if_subject)
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
@@ -72,7 +74,8 @@ class FlagStats:
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
-                       "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0}
+                       "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
+                       "if_subject_prompts": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -84,6 +87,7 @@ class FlagStats:
         self.if_translation_frames = 0
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
+        self.if_subject_prompts = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -114,6 +118,10 @@ class FlagStats:
 
     def director_prompt(self, used):
         self.insight_director_prompts += int(used)
+
+    def subject_prompt(self):
+        """--lingbot-if-subject-director: one generate() call conditioned on the structured IF prompt."""
+        self.if_subject_prompts += 1
 
     def if_repeat_hint(self):
         self.if_repeat_checks += 1
@@ -180,6 +188,8 @@ class FlagStats:
         s.update(self.director_summary(vars(self)))
         if self.gc_ease_turns:
             s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
+        if self.if_subject:
+            s.update(if_subject="on", if_subject_prompts=self.if_subject_prompts)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -205,7 +215,8 @@ class FlagStats:
                 + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
                    if self.if_horizon else "")
                 + "".join(f" {k}={v}" for k, v in self.director_summary(t).items())
-                + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else ""))
+                + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else "")
+                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -219,6 +230,7 @@ class FlagStats:
         t["gc_director_chunks"] += self.gc_director_chunks
         t["gc_director_updates"] += self.gc_director_updates
         t["gc_eased_turns"] += self.gc_eased_turns
+        t["if_subject_prompts"] += self.if_subject_prompts
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
