@@ -203,6 +203,60 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-if-subject-director", "--lingbot-weight-mod")
 
 
+def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
+    """`--name V` / `--name=V` out of argv: the last value given, and argv without the flag."""
+    out, rest, i = None, [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a == name:
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                raise SystemExit(f"{name} needs an integer value")
+            out, i = argv[i + 1], i + 2
+        elif a.startswith(name + "="):
+            out, i = a.split("=", 1)[1], i + 1
+        else:
+            rest.append(a)
+            i += 1
+    return out, rest
+
+
+def _window(argv: list[str], environ) -> tuple[dict, list[str]]:
+    """Attention window sizes: --lingbot-local-attn / --lingbot-sink-size (env LINGBOT_LOCAL_ATTN_SIZE /
+    LINGBOT_SINK_SIZE). Defaults are the README causal-fast settings (18 local, 6 sink). Checked here, before
+    any load: upstream's eviction needs local >= sink + one latent chunk, and ignores sink with full attention."""
+    local_v, argv = _take_value(argv, "--lingbot-local-attn")
+    sink_v, argv = _take_value(argv, "--lingbot-sink-size")
+    local_v = environ.get("LINGBOT_LOCAL_ATTN_SIZE") if local_v is None else local_v
+    sink_v = environ.get("LINGBOT_SINK_SIZE") if sink_v is None else sink_v
+    try:
+        local = LOCAL_ATTN_DEFAULT if local_v in (None, "") else int(local_v)
+        sink = SINK_DEFAULT if sink_v in (None, "") else int(sink_v)
+    except ValueError:
+        raise SystemExit(f"window sizes must be integers, got local={local_v!r} sink={sink_v!r}") from None
+    if sink < 0 or local == 0 or local < -1:
+        raise SystemExit(f"window sizes must be sink >= 0 and local >= 1 (or -1 for full), got local={local} sink={sink}")
+    if local == -1 and sink > 0:
+        raise SystemExit(f"--lingbot-sink-size {sink} has no effect with full attention (local -1); use sink 0")
+    if local != -1 and local < sink + P.LATENT_CHUNK:
+        raise SystemExit(f"--lingbot-local-attn {local} must be >= sink ({sink}) + {P.LATENT_CHUNK} (one latent chunk)")
+    return {"local_attn": local, "sink": sink}, argv
+
+
+def set_window(pipe, local_attn: int, sink: int) -> int:
+    """Set the KV window on a loaded pipe and every module that carries one (all read at forward time; the
+    session sizes its cache from pipe.local_attn_size at reset). Returns how many modules were set."""
+    pipe.local_attn_size, pipe.sink_size = local_attn, sink
+    n = 0
+    model = getattr(pipe, "model", None)
+    for m in (model.modules() if hasattr(model, "modules") else ()):
+        if hasattr(m, "local_attn_size") and hasattr(m, "sink_size"):
+            m.local_attn_size, m.sink_size = local_attn, sink
+            n += 1
+    if not n and (local_attn, sink) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT):
+        raise SystemExit("[lingbot] window: no module exposes local_attn_size / sink_size; upstream layout changed")
+    return n
+
+
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     """The --lingbot-* flags (or their env vars) in argv, and argv without them. Read once per main() call,
     so a process that runs several arms (pwa gen-arms) sees each arm's own flags."""
@@ -239,6 +293,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["if_subject"] and mode == "goal":
         raise SystemExit("--lingbot-if-subject-director requires caption prompting")
     flags["stall"], argv = W.parse(argv, environ)
+    window, argv = _window(argv, environ)
+    flags.update(window)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     flags["player"], argv = agent_api.configure(argv, environ)
@@ -258,9 +314,10 @@ STALL = W.Limits()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
-LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
+LOCAL_ATTN_DEFAULT, SINK_DEFAULT = 18, 6  # README settings for causal-fast (the pipe is loaded with these)
+LOCAL_ATTN, SINK = LOCAL_ATTN_DEFAULT, SINK_DEFAULT  # this call's window (--lingbot-local-attn / --lingbot-sink-size)
 DEFAULT_PROMPT = "A photo-realistic scene with rich details."
-_PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
+_PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and T5 placement (the window is set per call)
 
 
 def _print_cpu():
@@ -314,7 +371,7 @@ def load_pipe(environ=os.environ):
     FS.log("load.import_wan", time.time() - t0)
 
     cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
-    key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
+    key = (root, str(ckpt), str(assets), t5_cpu)
     if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
         print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
         _print_cpu()
@@ -327,7 +384,7 @@ def load_pipe(environ=os.environ):
             t0 = time.time()
             _PIPES[key] = wan.WanI2VCausal(
                 config=cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-                local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
+                local_attn_size=LOCAL_ATTN_DEFAULT, sink_size=SINK_DEFAULT, infer_mode="causal_fast",
                 assets_dir=str(assets) if assets else None)
             timer.rest(time.time() - t0)
         print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
@@ -347,6 +404,7 @@ class LingBotWorld2Engine:
         self.cfg, self.pipe, weights, t5_cpu = load_pipe()
         # upstream's in-memory embeddings are keyed by prompt only: drop them when the CPU T5 thread count changed
         FS.partition_t5_memory(self.pipe, CPU_THREADS if t5_cpu else "gpu")
+        set_window(self.pipe, LOCAL_ATTN, SINK)  # every call: an earlier arm in this process may have changed it
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         WM.detach_model(getattr(self.pipe, "model", None))  # an earlier arm's modulator in this process
         self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
@@ -364,6 +422,8 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
+              + ("" if (LOCAL_ATTN, SINK) == (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
+                 else f", window local_attn={LOCAL_ATTN} sink={SINK}")
               + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
                  else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
@@ -533,8 +593,12 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD
+    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
+    LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
+    window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
+    if window:
+        print(f"[lingbot] window: local_attn={LOCAL_ATTN} sink={SINK}", flush=True)
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
@@ -547,7 +611,8 @@ def main(argv: list[str] | None = None) -> int:
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
-                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD)
+                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD,
+                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "")
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

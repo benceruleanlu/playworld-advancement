@@ -44,6 +44,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       chunk: 0 or 1 per task in dataset mode), weight_mod_chunks (latent chunks
                                       whose camera or text scale was not 1.0; stateless: 1 per modulated rollout)
 
+  --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
+
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
 """
@@ -59,7 +61,8 @@ class FlagStats:
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
-                 if_subject: bool = False, weight_mod: bool = False):
+                 if_subject: bool = False, weight_mod: bool = False, window: str = ""):
+        self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
         self.weight_mod = bool(weight_mod)
         self.weight_mod_late = ""  # set by the engine: WeightModulator.late_schedule()
         self.if_horizon = bool(if_horizon)
@@ -206,6 +209,8 @@ class FlagStats:
             s.update(weight_mod="on", weight_mod_steps=self.weight_mod_steps, weight_mod_chunks=self.weight_mod_chunks)
             if self.weight_mod_late:  # LINGBOT_CAM_LATE_STEPS > 0 only, so #87-only arms keep their line
                 s.update(weight_mod_late=self.weight_mod_late)
+        if self.window:
+            s.update(window=self.window)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -234,7 +239,8 @@ class FlagStats:
                 + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else "")
                 + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
                 + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
-                   if self.weight_mod else ""))
+                   if self.weight_mod else "")
+                + (f" window={self.window}" if self.window else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
