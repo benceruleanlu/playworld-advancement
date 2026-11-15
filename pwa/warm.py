@@ -277,11 +277,11 @@ def existing_names(names: list[str]) -> list[str]:
 
 def cmd_run(a) -> int:
     from .arms import arm_names, parse_arms  # noqa: PLC0415
-    import modal  # noqa: PLC0415
 
     s = settings()
     argv = gen_arms_argv(a.exp, a.arms, a.runner, a.action_source, tasks=a.tasks, split=a.split,
                          num_shards=a.num_shards, notes=a.notes, extra=a.extra, resume=a.resume)
+    import modal  # noqa: PLC0415 - after the input checks, so bad input is reported without the Modal client
     names = arm_names(a.exp, len(parse_arms(a.arms)))
     taken = [] if a.resume else existing_names(names)
     if taken:

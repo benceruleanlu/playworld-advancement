@@ -109,7 +109,8 @@ def test_shard_argv_matches_modal_app():
             assert W.shard_argv(argv, shard, n) == ns["shard_argv"](argv, shard, n)
 
 
-def test_cli_parses_and_reports_bad_input(capsys):
+def test_cli_parses_and_reports_bad_input(capsys, monkeypatch):
+    monkeypatch.setitem(sys.modules, "modal", None)  # input checks must not need the Modal client (CI has none)
     assert W.main(["run", "--exp", "bad name", "--arms", "base", "--runner", "lingbot_world2"]) == 2
     assert "bad experiment name" in capsys.readouterr().err
     with pytest.raises(SystemExit):
