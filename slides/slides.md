@@ -29,14 +29,14 @@ One sentence version: we have a working harness, about a hundred logged runs and
 
 We changed how an open world model runs at inference time and built a harness to score it. Hackathon entry, November 2026. Site: benceruleanlu.github.io/playworld-advancement (results, Pairs, blind review page).
 
-The slides follow that order. Setup first: how the work was organised, one coordinating agent session with research agents sending proposals as pull requests (slide 2), GitHub as the state store and what the pattern cost (slide 3), and one proposal traced end to end (slide 4); then the system and what a task looks like (slide 5) and our approach (slide 6). Then the benchmark's published scores for context, our best official score, the judge noise and a seed-repeat pair, what the model remembers and what our flags changed, what stopped a full run, and where to look at the clips.
+The slides follow that order. Setup first: how the work was organised, one coordinating agent session with research agents sending proposals as pull requests, and GitHub as the state store (slide 2; its notes also cover what the pattern cost and trace one proposal end to end); then the system and what a task looks like (slide 3) and our approach (slide 4). Then the benchmark's published scores for context, our best official score, the judge noise and a seed-repeat pair, what the model remembers and what our flags changed, what stopped a full run, and where to look at the clips.
 
-Every number in this deck comes from AGENTS.md, README.md, results/experiments.csv or results/reports/ on main; the counts on slides 2 to 4 also come from the pull request and issue record and the commit history of main, as of PR #169. Each slide's notes name the source.
+Every number in this deck comes from AGENTS.md, README.md, results/experiments.csv or results/reports/ on main; the counts on slide 2 and in its notes also come from the pull request and issue record and the commit history of main, as of PR #169. Each slide's notes name the source.
 -->
 
 ---
 
-# One coordinating agent session ran the proposal flow: research agents sent each idea as a proposal pull request
+# One coordinating agent session ran the proposal flow, and GitHub held the project's state
 
 <div class="grid gap-6 mt-3" style="grid-template-columns: 1fr 190px;">
 <div class="dg">
@@ -105,7 +105,15 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 </div>
 </div>
 
-<div class="text-sm mt-2 muted">Outside this flow: the owner's session ran the yaw servo study (#125, slides 12 and 13); teammate Hcoder10 opened #162 and #163.</div>
+<div class="dg sstrip">
+  <span class="sk">State on GitHub</span>
+  <span class="chip"><b>Decisions</b> pull requests</span>
+  <span class="chip"><b>Log, reports</b> main</span>
+  <span class="chip"><b>Runs</b> Actions</span>
+  <span class="chip"><b>Clips</b> Releases</span>
+  <span class="chip"><b>Instructions</b> <code>AGENTS.md</code></span>
+  <span class="off">Off GitHub: raw rollouts, full review notes</span>
+</div>
 
 <style>
 .opq { fill: var(--slidev-theme-background, #fff); }
@@ -117,18 +125,25 @@ html.dark .opq { fill: #121212; }
 .lbl text.lab { text-anchor: start; font-size: 13px; }
 .nums { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
 .nums div { line-height: 1.25; }
+.sstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; font-size: 14px; }
+.sstrip .sk { font-weight: 700; margin-right: 2px; }
+.sstrip .chip { border: 1px solid currentColor; border-radius: 4px; padding: 2px 8px; white-space: nowrap; }
+.sstrip .chip b { font-weight: 700; color: #2f6fd6; margin-right: 3px; }
+html.dark .sstrip .chip b { color: #7fa8ee; }
+.sstrip .chip code { font-size: 1em; background: none; padding: 0; }
+.sstrip .off { opacity: 0.8; font-style: italic; }
 .nums .n { display: block; font-size: 34px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; color: #2f6fd6; }
 html.dark .nums .n { color: #7fa8ee; }
 </style>
 
 <!--
-This is how the proposal work was organised. It was not all of the project: the owner's own agent session ran the yaw servo study (#125, the lead on slides 12 and 13) in a separate Modal workspace and posted the replays that closed #114; #129 opens with "The project owner asked to 'fix pose memory'"; teammate Hcoder10 opened #162 (SANA-WM in the infra) and #163 (a loop-closure wrapper); jpoehnelt opened #1, #12 and #21. One coordinating agent session (a Claude Code session) ran the proposal flow: it gave each proposal to review agents, folded accepted proposals into main, closed or held the rest with a written reason, dispatched the experiment and arms workflow runs, and kept AGENTS.md and issue #9 current. AGENTS.md "Settled" gives it that role: "The coordinator session launches experiment runs, merges the integration branch when CI is green ... and freezes and launches the final run." The owner gave it standing authority to dispatch.
+This is how the proposal work was organised. It was not all of the project: the owner's own agent session ran the yaw servo study (#125, the lead on slides 10 and 11) in a separate Modal workspace and posted the replays that closed #114; #129 opens with "The project owner asked to 'fix pose memory'"; teammate Hcoder10 opened #162 (SANA-WM in the infra) and #163 (a loop-closure wrapper); jpoehnelt opened #1, #12 and #21. One coordinating agent session (a Claude Code session) ran the proposal flow: it gave each proposal to review agents, folded accepted proposals into main, closed or held the rest with a written reason, dispatched the experiment and arms workflow runs, and kept AGENTS.md and issue #9 current. AGENTS.md "Settled" gives it that role: "The coordinator session launches experiment runs, merges the integration branch when CI is green ... and freezes and launches the final run." The owner gave it standing authority to dispatch.
 
 The loop on the slide, as the pull request record shows it:
 - A research agent (a subagent of the coordinating session in most cases; the 36 proposal branches carry commit trailers from only two sessions, the coordinator's and one other) writes one idea as an off-by-default runner flag with unit tests, on a proposal/<idea> branch, and opens a PR whose body is the proposal: hypothesis, how it works, how it differs from earlier work, smoke recipe, kill criterion, risks, an Unverified list, tests (template from #80). Proposals state that flag-off output is byte-identical to main and refuse flag combinations it cannot support.
 - Review agents return merge, merge_with_fixes or reject. Their verdicts are recorded only in the coordinator's PR text ("Every review came back merge or merge_with_fixes", #90); they leave no GitHub reviews of their own. An automated code-review app also posted findings on proposal PRs, which the coordinator answered in comments and fix commits.
 - The coordinator merged a proposal directly, or folded several into a batch PR (#63, #90, #100, #104, #112) that merges each proposal branch with --no-ff, applies the review fixes, and closes the originals with "Landed via #N". Some it held and later merged ("On hold, no GPU slot", #132 and #133, merged at 07:05 and 07:07) or closed with measured reasons (#114, #117, #126).
-- Experiments are Actions runs of experiment.yml or arms.yml on Modal GPUs; arm 1 of each group is the control. The workflow writes the results row, the report and the clips back to GitHub (next slide).
+- Experiments are Actions runs of experiment.yml or arms.yml on Modal GPUs; arm 1 of each group is the control. The workflow writes the results row, the report and the clips back to GitHub (the strip under the diagram; full map below).
 - Findings go into AGENTS.md status and PR comments, and the next proposals cite them by commit-pinned link (#147 has a "Duplicate check" against earlier PRs).
 
 The first version was an hourly "autoresearch loop" in a fresh session, whose only memory was the ledger in issue #24. It could not dispatch GPU runs, so in its first hours its 4 ideas got 0 evaluations; AR-002 to AR-004 were later folded into the integration branch (#63), and the caption prompt and re-anchor ran in sp14-gc-v1. It was paused with a PAUSE line in #24 at 00:50 UTC Nov 15 "at the owner's direction", and the proposal PRs took over (research/autoresearch-loop.md).
@@ -137,46 +152,13 @@ Counts. 150 pull requests: #1 to #169 minus 19 issue numbers, first opened 19:22
 
 Who is who. 143 of the 150 PRs were opened under one shared bot login. Session links do not tell research agents apart: most proposal PR bodies carry none, and those that do (#103, #105, #108, #119, #123) carry the coordinator's. Main's commit messages carry 24 distinct session links, 35 across all branches, both lower bounds because squash merges drop branch trailers. #125 is the owner's servo PR; #131 carried its result to main.
 
-What the pattern cost (the next slide has the short list): sessions collided on the same files (#143 rewrote site/src/scripts/app.js and AGENTS.md asked others to hold site edits; #166 had to absorb #164); runs were launched before the path was checked (three sharded runs before the #62 fix; 30 pose-memory rollouts that could not fire, slide 4); every merged proposal is a dark flag, and none has decision-tier evidence; review threads were answered in comments but left unresolved; status PRs piled up.
--->
+What the pattern cost (sources under "What it cost" below): sessions collided on the same files (#143 rewrote site/src/scripts/app.js and AGENTS.md asked others to hold site edits; #166 had to absorb #164); runs were launched before the path was checked (three sharded runs before the #62 fix; 30 pose-memory rollouts that could not fire, traced below); every merged proposal is a dark flag, and none has decision-tier evidence; review threads were answered in comments but left unresolved; status PRs piled up.
 
----
+Credit for work outside this flow, as the slide line used to say: the owner's session ran the yaw servo study (#125, slides 10 and 11); teammate Hcoder10 opened #162 and #163.
 
-# GitHub held most of the project's state: decisions in pull requests, the log and evidence on main, runs in Actions
+STATE MAP (was a separate slide: "GitHub held most of the project's state: decisions in pull requests, the log and evidence on main, runs in Actions"). Where each kind of state lived: proposals, reviews, decisions in pull requests and their comments; plan of record and idea ledger in issues #9 and #24; instructions and status in AGENTS.md, via status PRs; experiment log in results/experiments.csv on main; per-run evidence in results/reports/ and Releases with clips; run state in Actions run titles and status commits; public view: the site reads main when viewed. Short cost list: sessions edited the same files at once; 30 rollouts ran before a flag could fire; 9 status PRs left open; one bot login for every agent. Off GitHub: raw rollouts (Modal volume, 14-day Actions artifacts); full review verdicts and agent briefs (session context).
 
-<div class="grid gap-6 mt-4" style="grid-template-columns: 1fr 250px;">
-<div class="dg smap">
-  <div class="k">Proposals, reviews, decisions</div><div class="arr">→</div><div class="v">pull requests and their comments</div>
-  <div class="k">Plan of record, idea ledger</div><div class="arr">→</div><div class="v">issues #9 and #24</div>
-  <div class="k">Instructions and status</div><div class="arr">→</div><div class="v"><code>AGENTS.md</code>, via status PRs</div>
-  <div class="k">Experiment log</div><div class="arr">→</div><div class="v"><code>results/experiments.csv</code> on main</div>
-  <div class="k">Per-run evidence</div><div class="arr">→</div><div class="v"><code>results/reports/</code>, Releases with clips</div>
-  <div class="k">Run state</div><div class="arr">→</div><div class="v">Actions run titles, status commits</div>
-  <div class="k">Public view</div><div class="arr">→</div><div class="v">the site reads main when viewed</div>
-</div>
-<div class="dg cost">
-  <b>What it cost</b>
-  <div>Sessions edited the same files at once</div>
-  <div>30 rollouts ran before a flag could fire</div>
-  <div>9 status PRs left open</div>
-  <div>One bot login for every agent</div>
-</div>
-</div>
-
-<div class="text-sm mt-3 muted">Off GitHub: raw rollouts (Modal volume, 14-day Actions artifacts); full review verdicts and agent briefs (session context).</div>
-
-<style>
-.smap { display: grid; grid-template-columns: 240px 24px 1fr; gap: 10px 6px; align-items: stretch; font-size: 16px; }
-.smap .k { border: 1px solid currentColor; border-radius: 4px; padding: 8px 10px; font-weight: 600; background: rgba(47, 111, 214, 0.16); }
-.smap .v { border: 1px solid currentColor; border-radius: 4px; padding: 8px 10px; }
-.smap code { font-size: 14px; }
-.cost { align-self: start; display: flex; flex-direction: column; gap: 14px; font-size: 15px; padding: 12px 14px; border: 1px dashed currentColor; border-radius: 4px; }
-.cost b { font-size: 16px; }
-.cost div { padding-left: 10px; border-left: 2px solid currentColor; }
-</style>
-
-<!--
-Most project state had a place on GitHub, and sessions read it from there; the exceptions are listed after this list and on the slide. Sources are origin/main unless noted.
+Most project state had a place on GitHub, and sessions read it from there; the exceptions are listed after this list; the slide's strip says "Off GitHub: raw rollouts, full review notes". Sources are origin/main unless noted.
 
 - Proposals, reviews and decisions: PR bodies, PR comment threads and closing comments ("Landed via #90 ... Closing as superseded. Unscored."; #114's closing reason). Hold notes listed fixes and a kill criterion (#132).
 - Plan of record: issue #9, "the single plan" (AGENTS.md "Plan of record"). Idea ledger: issue #24, one line per idea with an AR id, hypothesis, PR and status, and the PAUSE line. Out-of-sight research threads: #48 with sub-issues #49 to #53 and #58, closed as research records.
@@ -190,43 +172,13 @@ Not everything is on GitHub: raw rollouts sit in the Modal volume pwa-runs and i
 
 What it cost, with sources:
 - Collisions: #143 rewrote much of site/src/scripts/app.js while others held site edits; #166 had to merge main and move #164's review link; #167 avoided app.js to stay clear of #166; batch PRs #90 and #112 resolved conflicts with parallel PRs.
-- Unverified launches: pose memory (#123) ran in pm14-fx-v1 and v2, and all 30 pose-memory rollouts had 0 retrievals before #129 fixed it (slide 4). Three sharded runs were launched before the #62 fix.
+- Unverified launches: pose memory (#123) ran in pm14-fx-v1 and v2, and all 30 pose-memory rollouts had 0 retrievals before #129 fixed it (trace below). Three sharded runs were launched before the #62 fix.
 - Status PRs: 9 "Docs: status" PRs are open and unmerged (#149, #152 to #155, #158, #161, #167, #169); each new one says it replaces the earlier ones.
 - One login: 143 of 150 PRs were opened under the same bot account, so authorship is visible only through session links, and #90 lists #81 to #85 with no session link.
 - Also: none of the 33 proposals that reached main has decision-tier evidence for its flag, and issue #9 was not updated when the plan switched to fixed-action A/Bs (AGENTS.md).
--->
 
----
+POSE MEMORY TRACE (was a separate slide: "Pose memory went from proposal to dropped in 12 hours, and every step is a pull request or a run row"). Timeline, UTC Nov 15, run times are launches: 04:32 #123 merged (proposal: pose-indexed memory, off by default); 04:33 pm14-fx-v1, v2 (30 rollouts, 0 retrievals; 3 arms match control); 05:34 #129 merged (CPU replay finds the cause; new rule); 05:35 pm14-fx-v3 (arms with the fix; memory fires); 05:46 #134 closed (covered by #129; re-file one knob); 07:01 #144 merged (the re-filed knob); 16:27 #157 merged (dropped: +0.20 against a 0.34 bar). The last gap is 9 hours. pm14-fx-v3's +0.20 is from the proxy judge only.
 
-# Pose memory went from proposal to dropped in 12 hours, and every step is a pull request or a run row
-
-<div class="dg mt-6">
-<div class="ptl">
-  <div class="st fill"><span class="t">04:32</span><b>#123 merged</b>proposal: pose-indexed memory, off by default</div>
-  <div class="st"><span class="t">04:33</span><b>pm14-fx-v1, v2</b>30 rollouts, 0 retrievals; 3 arms match control</div>
-  <div class="st fill"><span class="t">05:34</span><b>#129 merged</b>CPU replay finds the cause; new rule</div>
-  <div class="st"><span class="t">05:35</span><b>pm14-fx-v3</b>arms with the fix; memory fires</div>
-  <div class="st dash"><span class="t">05:46</span><b>#134 closed</b>covered by #129; re-file one knob</div>
-  <div class="st fill"><span class="t">07:01</span><b>#144 merged</b>the re-filed knob</div>
-  <div class="st grey"><span class="t">16:27</span><b>#157 merged</b>dropped: +0.20 against a 0.34 bar</div>
-</div>
-<div class="small muted mt-3">Times in UTC, Nov 15; run times are launches. The last gap is 9 hours. pm14-fx-v3's +0.20 is from the proxy judge only.</div>
-</div>
-
-<style>
-.ptl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; position: relative; }
-.ptl { font-size: 15px; }
-.ptl::before { content: ''; position: absolute; left: 0; right: 0; top: 12px; border-top: 2px solid currentColor; opacity: 0.6; }
-.ptl .st { position: relative; margin: 34px 4px 0; padding: 14px 6px 10px; border: 1px solid currentColor; border-radius: 4px; text-align: center; min-height: 150px; background-clip: padding-box; }
-.ptl .st.fill { background: rgba(47, 111, 214, 0.16); }
-.ptl .st.grey { background: rgba(139, 139, 139, 0.2); }
-.ptl .st.dash { border-style: dashed; }
-.ptl .t { position: absolute; top: -22px; left: 50%; transform: translate(-50%, -50%); padding: 0 6px; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--slidev-theme-background, #fff); }
-html.dark .ptl .t { background: #121212; }
-.ptl .st b { display: block; font-size: 16px; margin-bottom: 6px; }
-</style>
-
-<!--
 One proposal traced end to end, every step with a PR number or a run row.
 
 - 04:32 UTC: #123 merged, pose-indexed memory that re-inserts past views into the attention sink, behind --lingbot-pose-memory, off by default.
@@ -239,7 +191,7 @@ One proposal traced end to end, every step with a PR number or a run row.
 
 The same pattern ran without a GPU run where measurements already answered the question: #114 was closed after the owner's session posted fixed-script replays in its thread (left turns rendered 1.19 to 1.30 times right turns, no transient after a reversal), pointing to #119's per-direction yaw gain.
 
-The 30 rollouts before the fix are also the cost listed on the previous slide: the flag was launched on GPUs before a CPU replay checked that it could fire.
+The 30 rollouts before the fix are also the "Unverified launches" cost listed above: the flag was launched on GPUs before a CPU replay checked that it could fire.
 -->
 
 ---
@@ -289,13 +241,13 @@ Model: LingBot-World v2 (Robbyant Team). 9 of the 101 logged runs used lingbot_w
 
 Clip length: up to 30 chunks, mean 29.7, about 60 s of video ("Run speed", Verified). A closed-loop step adds about 2 s (16n frames at 16 fps, 2 latent chunks by default; AGENTS.md "Adapters", session frame accounting).
 
-Judge: Gemini 3.1 Pro, the official judge, at upstream settings (frame rate, resolution and JPEG unchanged), 2 or 4 passes. 42 runs were Gemini-scored; 34 were generated but never Gemini-scored, and later ones have proxy scores from Luna (openai:gpt-6-luna), which are not comparable to the paper. Luna's noise and its agreement with Gemini are on slide 9; when Gemini scoring stopped is on slide 16.
+Judge: Gemini 3.1 Pro, the official judge, at upstream settings (frame rate, resolution and JPEG unchanged), 2 or 4 passes. 42 runs were Gemini-scored; 34 were generated but never Gemini-scored, and later ones have proxy scores from Luna (openai:gpt-6-luna), which are not comparable to the paper. Luna's noise and its agreement with Gemini are on slide 7; when Gemini scoring stopped is on slide 14.
 
 Compute: one H100 per shard on Modal, launched from GitHub Actions (experiment and arms workflows). Timings from "Run speed", measured on lb14-session-agent-dev-v1: model load 267 to 357 s once per family per shard, agent rollouts 522 to 610 s with the first chunk (insight 367 to 443 s), 142 min wall clock or about 18 min per task on an 8-task shard, including GPU queueing. A later flag (--lingbot-fast-dit, #79) cuts the 14B load to about 31 s.
 
 Actions. Sources: AGENTS.md "Rules" (dataset mode for A/B only), "Status against the timeline" ("Dataset actions and a scripted player are open loop"; since about 18:35 both arms of a pair see the same actions) and "Settled" (player gpt-6-luna for compared runs, the gpt-4.1-mini baseline is a diagnostic). results/experiments.csv on main has 105 rows; 4 are fake_runner pipeline tests. Of the other 101, action_source is dataset on 62 and agent on 39. Four of the 39 are the sp14-gc-v1 arms, the scripted player (#102), which replays a fixed plan with no AI player, so 35 had an AI player. Status: 42 scored, 34 generated, 15 cancelled, 7 failed, 3 predate the status column.
 
-Players: gpt-4.1-mini on the dev baseline (slide 8), gpt-6-luna in later closed-loop arms. The only Luna closed-loop arms with a Gemini score are on the 1.3B or capped at 10 chunks (rs13, gch13, smk14-arms-gc-v2); in gch13, 22 of 110 player decisions fell back. The full-length 14B closed-loop runs (clstk14-dev-v1, stksv14-cl-gc-v1) were generated only. Pass counts: the dev baseline was scored at 2 passes, the arm groups at 4.
+Players: gpt-4.1-mini on the dev baseline (slide 6), gpt-6-luna in later closed-loop arms. The only Luna closed-loop arms with a Gemini score are on the 1.3B or capped at 10 chunks (rs13, gch13, smk14-arms-gc-v2); in gch13, 22 of 110 player decisions fell back. The full-length 14B closed-loop runs (clstk14-dev-v1, stksv14-cl-gc-v1) were generated only. Pass counts: the dev baseline was scored at 2 passes, the arm groups at 4.
 -->
 
 ---
@@ -332,15 +284,15 @@ Flags, grouped by the first plan's workstreams:
 - Control and gates: turn calibration, yaw gain, yaw servo, re-anchor, IF slow translation, IF fixed camera.
 - Player prompts: return stop, player hint. Out-of-sight memory: sink size, attention window, sink key scale, pose memory.
 
-The four groups follow the workstreams of the first plan (AGENTS.md as scaffolded, commit 2d8b8c4); the plan of record in #66 replaced that section and later cut out-of-sight memory and sink work for the event ("Cut for this event"), but fixed-action runs on the sink and window went ahead anyway. The flags under each are documented in AGENTS.md "Adapters". Return stop and player hint change what the AI player is told, not the model (README.md), and were scored only on the 1.3B. The eval infrastructure (pwa CLI, experiment and arms workflows, per-run reports, results site, blind review page) is on slides 3, 5 and 17.
+The four groups follow the workstreams of the first plan (AGENTS.md as scaffolded, commit 2d8b8c4); the plan of record in #66 replaced that section and later cut out-of-sight memory and sink work for the event ("Cut for this event"), but fixed-action runs on the sink and window went ahead anyway. The flags under each are documented in AGENTS.md "Adapters". Return stop and player hint change what the AI player is told, not the model (README.md), and were scored only on the 1.3B. The eval infrastructure (pwa CLI, experiment and arms workflows, per-run reports, results site, blind review page) is on slides 2 (strip and notes), 3 and 15.
 
 Flag count: AGENTS.md "Status against the timeline" recorded 28 method flags at 22:25, and #115, #116, #121, #132, #133, #139, #144 and #147 added more since; those eight are merged and unscored. None has decision-tier evidence.
 
 What would count. The strip at the bottom is the rule set. Decision tier: closed loop, 14B, full length, all 6 dev tasks of a family, 2 seeds, official judge. Adoption: a task moves a full point, the gain repeats on both seeds, no gate is lost. Rules: AGENTS.md "Rules" and "Testing tiers and the adoption rule". Also in "Rules": a new experiment name for every run (pwa gen refuses an existing run directory because upstream --skip-done silently reuses old videos), heldout unscored until code freeze, and final numbers closed loop with Gemini 3.1 Pro over 2 or more passes.
 
-Practice, not a written rule: since about 18:35 model-side flags were compared with the same actions in both arms (dataset or scripted player) at the same seed. Generation is deterministic, so any difference between such arms is the flag or the judge. AGENTS.md calls these runs a change from the plan as written: they are open loop and cannot meet the decision tier. Some servo groups borrow controls from other groups (sks14, mem14, win14). The stack on slide 14 differs by six flags, not one.
+Practice, not a written rule: since about 18:35 model-side flags were compared with the same actions in both arms (dataset or scripted player) at the same seed. Generation is deterministic, so any difference between such arms is the flag or the judge. AGENTS.md calls these runs a change from the plan as written: they are open loop and cannot meet the decision tier. Some servo groups borrow controls from other groups (sks14, mem14, win14). The stack on slide 12 differs by six flags, not one.
 
-The rest of the deck reads results against these rules. Slide 9 shows why the judge spread sets the bar.
+The rest of the deck reads results against these rules. Slide 7 shows why the judge spread sets the bar.
 -->
 
 ---
@@ -379,7 +331,7 @@ Published scores from Ding et al., arXiv:2608.13552, for context.
 </style>
 
 <!--
-The reference scores are the PlayWorld paper's numbers on all 171 tasks, copied in AGENTS.md "Reference scores". None of our runs is on that footing, so our 1.64 is drawn apart from the axis (slide 8 has the run).
+The reference scores are the PlayWorld paper's numbers on all 171 tasks, copied in AGENTS.md "Reference scores". None of our runs is on that footing, so our 1.64 is drawn apart from the axis (slide 6 has the run).
 
 Full table (paper, full benchmark): GC, IF, insight, out-of-sight, overall.
 Genie 3: 2.74, 2.40, 1.51, 1.81, 2.12.
@@ -418,7 +370,7 @@ Not comparable to the paper: 24 of 171 tasks, with a task-sampling error of roug
 </div>
 
 <!--
-Source: results/experiments.csv row lb14-session-agent-dev-v1 (overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and the "Ours" row in AGENTS.md "Reference scores". Other Gemini-scored rows exist (the arm groups on slide 15), but they are fixed-action or six-task subsets, so this is the best closed-loop dev number.
+Source: results/experiments.csv row lb14-session-agent-dev-v1 (overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and the "Ours" row in AGENTS.md "Reference scores". Other Gemini-scored rows exist (the arm groups on slide 13), but they are fixed-action or six-task subsets, so this is the best closed-loop dev number.
 
 No run covers all 171 tasks, for the base model or any method. The paper's LingBot row (1.82) is all 171 tasks through its web demo.
 
@@ -481,7 +433,7 @@ This is the central finding. Sources: AGENTS.md "Status against the timeline", t
 
 Left: GC036 comes from pm14-fx-v1 arms 1 and 2, which were checked byte-identical. Gemini gave 2.65 when it passed the gate and 1.35 when it failed it. Single passes differ by up to 2 to 3 points.
 
-Right: a six-task family mean moves about 0.5 on the same videos, drawn as the band from -0.5 to +0.5. The dots are the sink key scale arms on out-of-sight (sks14-fx-v1, Gemini, one seed): control 2.10, arms 1.65, 1.33 and 1.25. Scale 0.7 (-0.45) is inside the band; the two arms that start at chunk 4 are below it (slide 15).
+Right: a six-task family mean moves about 0.5 on the same videos, drawn as the band from -0.5 to +0.5. The dots are the sink key scale arms on out-of-sight (sks14-fx-v1, Gemini, one seed): control 2.10, arms 1.65, 1.33 and 1.25. Scale 0.7 (-0.45) is inside the band; the two arms that start at chunk 4 are below it (slide 13).
 
 Luna (openai:gpt-6-luna, proxy judge): byte-identical clips give 0.50 per task on average and 0.62 on a five-task mean. It lets 97% of gate checks pass, where Gemini failed a gate on 23% of tasks. Rank correlation with Gemini: 0.62 on 21 clips (0.41 on out-of-sight). Luna's identical-clip numbers come from walking-only GC tasks, where the servo arm and the control are the same file.
 
@@ -503,7 +455,7 @@ The practical bar: about 0.5 for a six-task family mean under Gemini, about 0.6 
 <!--
 Both arms are the no-flag arms of stk14-fx-dev-v1: arm 1 at the default seed 0, arm 3 with --seed 1, the same runner arguments otherwise (results/experiments.csv notes for stk14-fx-dev-v1-a1 and -a3). Both replay the dataset's actions.
 
-Use "Play both from start" to run them together. Nothing but the seed differs, so the difference between the clips is what a second seed adds on top of the judge noise on the previous slide. This is why the adoption rule asks for a gain that repeats on both seeds (slide 6).
+Use "Play both from start" to run them together. Nothing but the seed differs, so the difference between the clips is what a second seed adds on top of the judge noise on the previous slide. This is why the adoption rule asks for a gain that repeats on both seeds (slide 4).
 
 These clips have no official score: stk14-fx-dev-v1 was generated after the Gemini credits ran out and has Luna proxy scores only. No claim about scores is made here, only that the two arms differ in seed.
 
@@ -557,7 +509,7 @@ Source: AGENTS.md "Adapters", the KV window bullet: local_attn_size 18, sink_siz
 
 AGENTS.md is explicit that this reach is the configuration, not a measurement. The GPU memory probe that would measure it is in PR #37, unmerged. The cache_model script counts how often dataset actions revisit an evicted view, on CPU.
 
-Two flags change this window: keep-first 10 and attention window 22. They are part of the stack on slide 14.
+Two flags change this window: keep-first 10 and attention window 22. They are part of the stack on slide 12.
 -->
 
 ---
@@ -599,7 +551,7 @@ Heading is measured by phase correlation, the same estimator the servo steers wi
 
 Sources: AGENTS.md "Status against the timeline", the yaw servo bullet. Under Luna the same-run servo deltas are -0.10 (fixed actions, 6 turning tasks) and +0.05 (closed loop, 4 turning tasks), inside Luna's noise.
 
-GC038 improved least, 96 to 49 degrees. Walking-only GC tasks give byte-identical clips with and without the servo, which is where Luna's identical-clip noise numbers on the judge slide (slide 9) came from.
+GC038 improved least, 96 to 49 degrees. Walking-only GC tasks give byte-identical clips with and without the servo, which is where Luna's identical-clip noise numbers on the judge slide (slide 7) came from.
 
 The servo does not support out-of-sight tasks yet. The clips are on the next slide.
 -->
@@ -668,7 +620,7 @@ The site's Pairs section loads either pair.
 </style>
 
 <!--
-This is a lead from small samples, not a result. The three pairs are stk14-fx-dev-v1 at seeds 0 and 1 (4 passes) and stk14-fx-dev2-v1 (2 passes). Source: AGENTS.md, the stack bullet under "Proxy judge findings". The bars are drawn on a 0 to 1.2 scale, shown by the axis; the dashed line is Luna's 0.6 bar from the judge slide (slide 9).
+This is a lead from small samples, not a result. The three pairs are stk14-fx-dev-v1 at seeds 0 and 1 (4 passes) and stk14-fx-dev2-v1 (2 passes). Source: AGENTS.md, the stack bullet under "Proxy judge findings". The bars are drawn on a 0 to 1.2 scale, shown by the axis; the dashed line is Luna's 0.6 bar from the judge slide (slide 7).
 
 Stack: turn calibration, caption prompt, insight director, IF slow translation, sink 10 (keep the first 10 latents, up from 6) and window 22 (up from 18). Against no flags, fixed actions, six out-of-sight tasks per pair, Luna: +1.02, +0.92, +0.98. Out-of-sight is the only family above Luna's 0.6 bar in all three pairs.
 
@@ -707,9 +659,9 @@ Gemini 3.1 Pro and one seed unless marked; the servo has no judge score. Nothing
 <!--
 Each method sits in one tier. Sources: AGENTS.md "Status against the timeline": the yaw servo bullet, the stack bullet, the sks14-fx-v1 and dec14-ins-v1 bullets, the win14-fx-v1 bullet, the "What the fixed-action results say so far" bullet, and the pose memory bullet.
 
-Measured: the yaw servo's end heading (slides 12 and 13); no judge score change.
+Measured: the yaw servo's end heading (slides 10 and 11); no judge score change.
 
-Leads from small samples: the stack, about +1 on out-of-sight under Luna (slide 14). Dropped as harmful or null (AGENTS.md, each on one seed and six tasks or fewer): sink key scale lowered out-of-sight: control 2.10; scaled arms 1.65, 1.33 and 1.25 (sks14-fx-v1, Gemini, one seed). Scale 0.7 (-0.45) is inside the six-task noise from the judge slide (slide 9); scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight, 3.00 to 1.50, on the two tasks it ran, OE001 and OE018 (dec14-ins-v1). Both sit in the "Dropped" tier with their numbers; they are drops on small samples, the same caution as the stack lead in the other direction.
+Leads from small samples: the stack, about +1 on out-of-sight under Luna (slide 12). Dropped as harmful or null (AGENTS.md, each on one seed and six tasks or fewer): sink key scale lowered out-of-sight: control 2.10; scaled arms 1.65, 1.33 and 1.25 (sks14-fx-v1, Gemini, one seed). Scale 0.7 (-0.45) is inside the six-task noise from the judge slide (slide 7); scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight, 3.00 to 1.50, on the two tasks it ran, OE001 and OE018 (dec14-ins-v1). Both sit in the "Dropped" tier with their numbers; they are drops on small samples, the same caution as the stack lead in the other direction.
 
 Did not repeat or inside the noise: turn calibration, the same comparison run twice on GC031, gave +1.95 and +0.35. Generation is deterministic, so that spread is a config difference or judge spread, not rollout noise. Caption prompt: 2 tasks up and 2 down by a full point in one run. Sink 10 with window 22 raised OE039 1.00 to 3.44 at seed 1, but 1.75 at seed 0, inside the controls (win14-fx-v1).
 
@@ -789,9 +741,9 @@ Results site: benceruleanlu.github.io/playworld-advancement. Every run, its scor
 
 Clips: github.com/benceruleanlu/playworld-advancement/releases/download/run-<EXP>/<TASK>.mp4, 480p, with a .jpg poster.
 
-Pairs in this deck: GC033, IF002, OE001 and OE039 in lb14-session-agent-dev-v1 (slide 5); IF002 seed 0 against seed 1 in stk14-fx-dev-v1 a1 against a3 (slide 10); GC033 and GC036 in svgc14-fx-v1 a1 against a2 (slide 13); OE039 and OE047 in stk14-fx-dev-v1 a1 against a2 (slide 14).
+Pairs in this deck: GC033, IF002, OE001 and OE039 in lb14-session-agent-dev-v1 (slide 3); IF002 seed 0 against seed 1 in stk14-fx-dev-v1 a1 against a3 (slide 8); GC033 and GC036 in svgc14-fx-v1 a1 against a2 (slide 11); OE039 and OE047 in stk14-fx-dev-v1 a1 against a2 (slide 12).
 
-Blind review page: benceruleanlu.github.io/playworld-advancement/review/. It hides which clip is control and which is treatment until you finish; it records a preference by eye, not a score. Given the judge noise on slide 9, looking at the clips is a fair check on any claim here. The review page (#164, site/src/pages/review.astro) shuffles sides per reviewer and reveals arms and a sign test only after "Finish and reveal". Clips load from release URLs that name the run, so blinding holds only if reviewers do not open developer tools.
+Blind review page: benceruleanlu.github.io/playworld-advancement/review/. It hides which clip is control and which is treatment until you finish; it records a preference by eye, not a score. Given the judge noise on slide 7, looking at the clips is a fair check on any claim here. The review page (#164, site/src/pages/review.astro) shuffles sides per reviewer and reveals arms and a sign test only after "Finish and reveal". Clips load from release URLs that name the run, so blinding holds only if reviewers do not open developer tools.
 
 Full status and caveats: AGENTS.md.
 -->
