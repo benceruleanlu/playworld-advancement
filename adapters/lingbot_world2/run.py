@@ -74,10 +74,12 @@ Its counter if_subject_prompts counts generate() calls (about 30 per closed-loop
 (one per session reset). See if_subject.py.
 
 Scripted player (off by default, closed loop only): `--lingbot-scripted-player` or LINGBOT_SCRIPTED_PLAYER=1
-answers every closed-loop decision from the task's dataset action, cut into chunks (upstream
-grouped_dataset_actions with poses.CHUNK_UNITS tokens per chunk), then WAIT for the dataset-mode tail and END;
-the LLM is never called. Outermost decide_action wrapper, so the player-side wrappers are not reached. For A/B
-of model-side flags only, not final numbers. Needs --action-source agent or refined. See scripted_player.py.
+answers every closed-loop decision from the task's dataset action, cut into chunks (upstream parse_segments;
+poses.CHUNK_UNITS rotation tokens or (chunk_frames - 1) / action_frame_unit translation tokens per chunk, rounded
+on each axis's running total), then WAIT for the dataset-mode tail and END; the LLM is never called. Angles match
+the dataset only with --lingbot-turn-cal. Outermost decide_action wrapper, so the player-side wrappers and player
+history endpoints are not reached. For A/B of model-side flags only, not final numbers. Needs --action-source
+agent or refined. See scripted_player.py.
 
 Model prompt composition, in order: caption prompt (prompts.model_prompt), insight director (insight
 tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
@@ -223,6 +225,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     }
     if flags["scripted"]:
         SP.check_action_source(argv)
+        SP.validate(environ)
     if flags["gc_director"] and (mode == "goal" or flags["stateless"]):
         raise SystemExit("--lingbot-gc-chunk-director requires caption prompting and session mode")
     if flags["gc_ease_turns"] and flags["stateless"]:
@@ -361,7 +364,8 @@ class LingBotWorld2Engine:
               + (", GC chunk director on" if GC_DIRECTOR else "")
               + (", GC ease turns on" if GC_EASE_TURNS else "")
               + (", IF subject director on" if IF_SUBJECT else "")
-              + (f", scripted player on ({SP.units()} tokens per chunk)" if STATS.scripted else "")
+              + (f", scripted player on ({SP.units():g} tokens per chunk"
+                 + ("" if TURN_CAL else ", angles uncalibrated: turn-cal off") + ")" if STATS.scripted else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
 
@@ -560,12 +564,13 @@ def main(argv: list[str] | None = None) -> int:
                                           on_event=STATS.if_horizon_event)
         print("[lingbot] IF horizon: on", flush=True)
     if flags["scripted"]:  # outermost: answers every decision, so no wrapper inside it and no LLM is reached
-        run_agent.decide_action = SP.wrap(run_agent.decide_action, run_agent.grouped_dataset_actions,
-                                          on_event=STATS.scripted_event)
+        run_agent.decide_action = SP.wrap(run_agent.decide_action, run_agent.parse_segments,
+                                          run_agent.VALID_ACTIONS, on_event=STATS.scripted_event)
         inert = [n for n, on in (("player hint", PLAYER_HINT), ("IF repeat check", flags["if_repeat"]),
                                  ("IF camera hint", flags["if_camera"]), ("GC completion hint", GC_COMPLETION),
-                                 ("return stop", RETURN_STOP), ("IF horizon", IF_HORIZON)) if on]
-        print(f"[lingbot] scripted player: on ({SP.units()} dataset tokens per chunk, then WAIT tail and END; "
+                                 ("return stop", RETURN_STOP), ("IF horizon", IF_HORIZON),
+                                 ("player history endpoints", flags["history_endpoints"])) if on]
+        print(f"[lingbot] scripted player: on ({SP.units():g} rotation tokens per chunk, then WAIT tail and END; "
               f"LLM player not called)" + (f"; not reached: {', '.join(inert)}" if inert else ""), flush=True)
     rc = run_agent.main()
     agent_api.finish(run_agent)
