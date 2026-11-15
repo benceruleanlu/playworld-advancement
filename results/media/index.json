@@ -1,6 +1,88 @@
 {
  "runs": [
   {
+   "exp": "stksv14-cl-gc-v1-a2",
+   "generated": "2026-11-15T07:29:02Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stksv14-cl-gc-v1-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "arm 2/2 of stksv14-cl-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo"
+   ]
+  },
+  {
+   "exp": "stksv14-cl-gc-v1-a1",
+   "generated": "2026-11-15T07:28:48Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stksv14-cl-gc-v1-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "arm 1/2 of stksv14-cl-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-sink-size 10 --lingbot-local-attn 22"
+   ]
+  },
+  {
+   "exp": "stksv14-fx-gc-v1-a2",
+   "generated": "2026-11-15T07:16:02Z",
+   "n_tasks": 12,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stksv14-fx-gc-v1-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 2/2 of stksv14-fx-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo"
+   ]
+  },
+  {
+   "exp": "stksv14-fx-gc-v1-a1",
+   "generated": "2026-11-15T07:15:42Z",
+   "n_tasks": 12,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stksv14-fx-gc-v1-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 1/2 of stksv14-fx-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-sink-size 10 --lingbot-local-attn 22"
+   ]
+  },
+  {
+   "exp": "svgc14-fx-v1-a3",
+   "generated": "2026-11-15T07:13:12Z",
+   "n_tasks": 12,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-svgc14-fx-v1-a3",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 3/3 of svgc14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-yaw-servo --lingbot-pose-memory"
+   ]
+  },
+  {
+   "exp": "svgc14-fx-v1-a2",
+   "generated": "2026-11-15T07:12:55Z",
+   "n_tasks": 12,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-svgc14-fx-v1-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 2/3 of svgc14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-yaw-servo"
+   ]
+  },
+  {
+   "exp": "svgc14-fx-v1-a1",
+   "generated": "2026-11-15T07:12:36Z",
+   "n_tasks": 12,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-svgc14-fx-v1-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 1/3 of svgc14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal"
+   ]
+  },
+  {
    "exp": "stk14-fx-dev2-v1-a2",
    "generated": "2026-11-15T06:59:06Z",
    "n_tasks": 24,

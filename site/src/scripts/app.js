@@ -92,6 +92,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       var o = {};
       head.forEach(function (h, j) { o[h] = (cells[j] === undefined ? "" : cells[j]); });
       if (!o.exp || !o.exp.trim()) return;
+      // a proxy or screening judge row (status proxy, or a judge column) is never a leaderboard score
+      if ((o.status || "").trim().toLowerCase() === "proxy" || (o.judge || "").trim()) return;
       var ts = Date.parse(o.timestamp);
       out.push({
         exp: o.exp.trim(), split: (o.split || "").trim(), t: isFinite(ts) ? ts : null, ts: o.timestamp || "",

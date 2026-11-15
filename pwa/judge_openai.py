@@ -298,14 +298,21 @@ class OpenAIJudgeClient:
 def judge_api() -> tuple[str, str]:
     """(base_url, api_key): JUDGE_API_URL / JUDGE_API_KEY, falling back to PLAYER_API_URL / PLAYER_API_KEY.
     The URL falls back only when the player provider is openai (PLAYER_API_PROVIDER unset counts as openai,
-    as in the workflow); otherwise set JUDGE_API_URL. Values are never logged."""
+    as in the workflow); otherwise set JUDGE_API_URL. The key falls back to PLAYER_API_KEY only when the URL is
+    the player's own (the fallback, or a JUDGE_API_URL equal to it), so the player key is never sent to another
+    host. Values are never logged."""
     e = os.environ
+    player_openai = (e.get("PLAYER_API_PROVIDER") or "openai").strip().lower() == "openai"
+    player_url = ((e.get("PLAYER_API_URL") or "").strip() or DEFAULT_URL) if player_openai else None
     url = (e.get("JUDGE_API_URL") or "").strip()
     if not url:
-        if (e.get("PLAYER_API_PROVIDER") or "openai").strip().lower() != "openai":
+        if not player_openai:
             raise ValueError("PLAYER_API_PROVIDER is not openai; set JUDGE_API_URL for an openai: screening judge")
-        url = (e.get("PLAYER_API_URL") or "").strip() or DEFAULT_URL
-    return url, (e.get("JUDGE_API_KEY") or "").strip() or (e.get("PLAYER_API_KEY") or "").strip()
+        url = player_url
+    key = (e.get("JUDGE_API_KEY") or "").strip()
+    if not key and player_url is not None and url.rstrip("/") == player_url.rstrip("/"):
+        key = (e.get("PLAYER_API_KEY") or "").strip()
+    return url, key
 
 
 def make_client(reasoning_effort: str | None = None):

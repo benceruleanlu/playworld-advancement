@@ -197,6 +197,8 @@ def test_exact_equivalence_to_main_when_pitch_is_zero(walk):
         assert np.allclose(r_on_2, r_off_2, atol=1e-13)
         assert np.allclose(on.latents, off.latents, atol=1e-13)
         assert np.allclose(on.intended_last, off.intended_last, atol=1e-13)
+        # --lingbot-split-sink reads the model track; the turntable path must fill it too
+        assert on.model_latents is not None and np.allclose(on.model_latents, off.model_latents, atol=1e-13)
     P.reset({})
 
 

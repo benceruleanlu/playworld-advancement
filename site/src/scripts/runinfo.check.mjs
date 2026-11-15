@@ -43,6 +43,8 @@ assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-
   ["turn calibration", "yaw servo (error share 0.5)"]);
 assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-tasks=^[GO][CE]\\d"]),
   ["turn calibration", "yaw servo (yaw servo tasks ^[GO][CE]\\d)"]);
+assert.deepEqual(words(["--lingbot-split-sink", "--lingbot-split-sink-fg-scale=0.15", "--lingbot-split-sink-fg-frac=0.3"]),
+  ["split sink scaling (fg scale 0.15, fg fraction 0.3)"]);
 assert.deepEqual(words(["--lingbot-pose-memory", "--lingbot-pose-mem-yaw-scale=1.19", "--lingbot-pose-mem-rule=coverage",
   "--lingbot-pose-mem-pick=latest", "--lingbot-pose-mem-rel=still"]),
   ["pose memory (yaw scale 1.19, rule coverage, pick latest, recall motion still)"]);

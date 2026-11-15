@@ -40,6 +40,10 @@ def test_cli_and_invalid_combinations():
     for flag in ("--lingbot-player-hint", "--lingbot-if-camera-hint", "--lingbot-measured-turn"):
         with pytest.raises(SystemExit, match="keys no longer move"):
             R.configure([FLAG, CAPTION, flag], {})
+    for args, env in (([FLAG, CAPTION, "--lingbot-if-settle"], {}),
+                      ([FLAG, CAPTION], {"LINGBOT_IF_SETTLE": "1"})):
+        with pytest.raises(SystemExit, match="are alternatives"):
+            R.configure(args, env)
 
 
 @pytest.mark.parametrize("chunked", [False, True])

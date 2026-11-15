@@ -8,7 +8,8 @@ import shutil
 import subprocess
 import sys
 
-from .core import DATA, FAMILIES, PLAYWORLD, ROOT, SANA_RUNNER, UPSTREAM_SANA_RUNNER
+from .core import DATA, FAMILIES, PLAYWORLD, ROOT, PwaError, SANA_RUNNER, UPSTREAM_SANA_RUNNER
+from .score import judge_backend
 
 # (name, needed_for) where needed_for is a set of actions that require it; others warn.
 KEYS = [("PLAYER_API_KEY", {"gen"}),
@@ -42,7 +43,13 @@ def checks(runner: str = "sana") -> list[dict]:
     prov0 = (os.environ.get("PLAYER_API_PROVIDER") or "upstream").lower()
     for key in ("PLAYER_API_URL", "PLAYER_MODEL"):  # agent_api fills these for openai/anthropic
         add(f"${key} set", os.environ.get(key) or prov0 in ("openai", "anthropic"), {"gen"}, f"set {key} in config/env.sh")
+    try:
+        backend = judge_backend()
+    except PwaError:
+        backend = "invalid"
     for key, needed in KEYS:
+        if key == "GEMINI_API_KEY" and backend == "gcp":
+            needed = set()  # the gcp backend calls the judge without it
         add(f"${key} set", os.environ.get(key), needed, f"set {key} in config/env.sh")
     prov = (os.environ.get("PLAYER_API_PROVIDER") or "upstream").lower()
     add(f"PLAYER_API_PROVIDER={prov} is known", prov in ("upstream", "openai", "anthropic"), {"gen"},
@@ -52,6 +59,10 @@ def checks(runner: str = "sana") -> list[dict]:
         "reasoning models can spend upstream's 128 max_completion_tokens on hidden reasoning and return "
         "empty; use gpt-4.1-mini or set PLAYER_MAX_COMPLETION_TOKENS")
     add(f"{SANA_RUNNER.relative_to(ROOT)}", SANA_RUNNER.is_file(), {"gen"} if runner == "sana" else set(), "restore adapters/")
+    add(f"judge backend: {backend}", backend != "invalid", {"score"}, "PWA_JUDGE_BACKEND must be aistudio or gcp")
+    if backend == "gcp" and not os.environ.get("GCP_GEMINI_API_KEY", "").strip():
+        add("$GOOGLE_CLOUD_PROJECT set (gcp judge via ADC)", os.environ.get("GOOGLE_CLOUD_PROJECT"), {"score"},
+            "set GCP_GEMINI_API_KEY, or GOOGLE_CLOUD_PROJECT and run gcloud auth application-default login")
     gm = os.environ.get("GEMINI_MODEL", "")
     add("GEMINI_MODEL is gemini-3.1-pro*", gm.startswith("gemini-3.1-pro"), set(),
         "leaderboard numbers need Gemini 3.1 Pro")
