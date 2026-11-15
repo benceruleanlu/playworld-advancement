@@ -4,7 +4,7 @@ Built for measuring the model directly (scripted camera trials, activations) wit
 adapters/lingbot_world2/workspace.py lists what a cell can use, camera_probe.py the camera measurements.
 
     modal run prefetch_lingbot.py --variant 14b      # once: weights into the pwa-weights Volume
-    PWA_EDITOR_VARIANT=14b modal deploy editor_app.py  # once, and again after changing adapters/, pwa/ or this file
+    PWA_EDITOR_VARIANT=14b modal deploy editor_app.py  # once; after changing code: modal app stop pwa-editor, then deploy
     python -m pwa.kernel status                      # first call cold-starts the GPU; later calls are warm
     python -m pwa.kernel exec cell.py                # or: -c "ws.status()", or a cell on stdin
     python -m pwa.kernel reset                       # fresh namespace
@@ -12,7 +12,11 @@ adapters/lingbot_world2/workspace.py lists what a cell can use, camera_probe.py 
 
 It runs in whichever Modal workspace this machine is logged in to, never through Actions, and mounts no secrets.
 The GPU is billed while a container is up: it scales to zero after PWA_EDITOR_IDLE seconds without a call
-(default 900), and the Python namespace is lost when it does. Redeploying also starts a fresh kernel.
+(default 900), and the Python namespace is lost when it does.
+
+A redeploy does NOT replace containers that are already up: they keep taking calls with the code they started
+with (seen 2026-11-14: three containers from two earlier deploys took the next three batches and their results were
+lost). After changing adapters/, pwa/ or this file run `modal app stop pwa-editor` first, then deploy.
 
 Set at deploy time: PWA_EDITOR_VARIANT (1.3b default, or 14b), PWA_MODAL_GPU (H100; the 14B peaks near 64 GiB,
 the 1.3B near 27), PWA_EDITOR_IDLE, PWA_EDITOR_CPU (8), PWA_EDITOR_MAX_CONTAINERS (1). The pipe is loaded by the
