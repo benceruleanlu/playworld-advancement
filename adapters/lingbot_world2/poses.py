@@ -68,8 +68,10 @@ def calibrate(dataset: bool, n_keys: int, action_frame_unit: int = 20) -> tuple[
     return YAW, PITCH
 
 
-def key_delta(key: str, translation_gain: float = 1.0, rotation_scale: float = 1.0) -> np.ndarray:
-    """4x4 camera-frame delta for one pixel frame. '+' combines keys, e.g. 'w+j'."""
+def key_delta(key: str, translation_gain: float = 1.0, rotation_scale: float = 1.0,
+              yaw_gain: tuple[float, float] | None = None) -> np.ndarray:
+    """4x4 camera-frame delta for one pixel frame. '+' combines keys, e.g. 'w+j'.
+    yaw_gain (left, right): --lingbot-yaw-gain, multiplies j / l rotation (None = off; yaw_gain.py)."""
     d = np.eye(4)
     for k in key.lower().split("+"):
         if k == "w":
@@ -81,9 +83,9 @@ def key_delta(key: str, translation_gain: float = 1.0, rotation_scale: float = 1
         elif k == "d":
             d[0, 3] += 1.0
         elif k == "j":  # look left
-            d[:3, :3] = d[:3, :3] @ _rot_y(-YAW * rotation_scale)
+            d[:3, :3] = d[:3, :3] @ _rot_y(-YAW * rotation_scale * (yaw_gain[0] if yaw_gain else 1.0))
         elif k == "l":  # look right
-            d[:3, :3] = d[:3, :3] @ _rot_y(YAW * rotation_scale)
+            d[:3, :3] = d[:3, :3] @ _rot_y(YAW * rotation_scale * (yaw_gain[1] if yaw_gain else 1.0))
         elif k == "i":  # look up
             d[:3, :3] = d[:3, :3] @ _rot_x(PITCH * rotation_scale)
         elif k == "k":  # look down
@@ -113,18 +115,18 @@ def frame_count(n_frames: int) -> int:
     return (lat - 1) * 4 + 1
 
 
-def build_poses(action: str, num_frames: int) -> np.ndarray:
+def build_poses(action: str, num_frames: int, yaw_gain: tuple[float, float] | None = None) -> np.ndarray:
     """float32 [F, 4, 4] camera-to-world poses; F = frame_count(num_frames).
 
     num_frames is the budget, as in the upstream harness (closed loop passes
     "w-29" with num_frames=29): deltas past it are dropped. Frames past the
-    action string repeat its last key so padding does not freeze the camera."""
+    action string repeat its last key so padding does not freeze the camera. yaw_gain: see key_delta."""
     keys = parse_action(action)
     total = frame_count(num_frames if num_frames > 0 else len(keys) + 1)
     keys += [keys[-1] if keys else "none"] * (total - 1 - len(keys))
     poses = [np.eye(4)]
     for k in keys[: total - 1]:
-        poses.append(poses[-1] @ key_delta(k))
+        poses.append(poses[-1] @ key_delta(k, yaw_gain=yaw_gain))
     return np.stack(poses).astype(np.float32)
 
 
