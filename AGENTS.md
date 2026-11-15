@@ -262,16 +262,17 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 
 ### Status against the timeline
 
-Sunday 00:05 Pacific (08:05 UTC). Update this when a step lands or fails.
+Sunday 00:10 Pacific (08:10 UTC). Update this when a step lands or fails.
 
 - Official judge: Gemini AI Studio prepaid credits ran out about 03:40 UTC Nov 15 (402 RESOURCE_EXHAUSTED). Scoring through Google Cloud is wired (#148, secret `GCP_GEMINI_API_KEY`); no live call has been made. The proxy judge merged in #146. Best official closed-loop score is unchanged: `lb14-session-agent-dev-v1` 1.64 +/- 0.13 (24 tasks, Gemini). Nothing is adopted on official scores.
-- Proxy judge findings. Every number in this and the next three bullets is PROXY JUDGE `openai:gpt-6-luna`, not comparable to the leaderboard, and read from run artifacts (the publishing bug fixed in #150). Luna rejects temperature, so it samples at the provider default.
+- Proxy judge findings. Every number in this bullet and the four under it is PROXY JUDGE `openai:gpt-6-luna`, not comparable to the leaderboard, and read from run artifacts (the publishing bug fixed in #150). Luna rejects temperature, so it samples at the provider default.
   - Luna as a judge: 97% of gated passes go through (Gemini failed a gate on 23% of tasks). 45% of scores are 4 or above (Gemini 9%); on GC, 83%. Rank correlation with Gemini is 0.62 on 21 clips scored by both (0.41 on out-of-sight), and Luna scores +0.89 higher on average. On byte-identical clips (walking-only GC tasks, servo vs control) per-task scores moved 0.50 on average and a 5-task mean moved 0.62. Practical bar: about 0.6 for a 6-task family mean, about 0.35 for 24 tasks.
   - Stack (turn calibration, caption prompt, insight director, IF slow translation, sink 10, window 22) vs no flags, fixed actions; `stk14-fx-dev-v1` (4 passes, seeds 0 and 1) and `stk14-fx-dev2-v1` (2 passes), deltas as dev s0, dev s1, dev2: overall +0.62, +0.27, +0.59; out-of-sight +1.02, +0.92, +0.98; insight +0.48, +0.58, +0.63; GC +0.59, -0.16, +0.30; IF +0.40, -0.25, +0.45 (seed 1 stack IF 2.56 with 4 of 6 gates). Only out-of-sight clears the identical-clip bar in all three. Not confirmed by Gemini.
   - Yaw servo on GC, judge-free (rendered heading by phase correlation, the estimator the servo steers with; end-of-clip similarity to frame 0 is the independent check). End-heading error in degrees: GC033 28 to 0.3, GC036 70 to 5.6, GC031 96 to 0, GC012 8 to 2, GC022 45 to 1 (stack run), GC038 96 to 49. End similarity: GC033 -0.09 to 0.52, GC036 0.07 to 0.63. It works on top of sink 10 / window 22, and walking-only GC tasks are byte-identical to control. Under Luna the same-run servo deltas are noise (-0.10 fixed actions, 6 turning tasks; +0.05 closed loop, 4 turning tasks). No Gemini score exists for any servo clip. Servo on out-of-sight: not supported.
   - Pose memory fires after #129 but shows no geometric gain, nothing under Luna (+0.20 against a bar of 0.34) and nothing on top of the servo. Dropped as a candidate.
 - `svgc14-fx-v1` is missing clips (GC035 in all three arms; GC002 and GC022 in the servo arms); cause not investigated.
 - Running: `clstk14-dev-v1`, closed loop, 24 dev tasks: base | stack + servo | stack + servo without IF slow translation.
+- #147 merged `--lingbot-if-fixed-camera` (third-person IF holds the camera fixed); unscored.
 - Candidate method for the 171-task closed-loop run: stack + servo. The bullets below are the 22:25 status and are kept for the record.
 
 - No decision-tier result exists, so no flag is adopted. Every scored arm so far is on the 1.3B (cut for decisions), capped at 10 chunks, or open loop with fixed actions, and all are at one seed.
