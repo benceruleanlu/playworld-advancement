@@ -83,7 +83,7 @@ def test_flag_validation_and_arm_reset(monkeypatch):
             R.configure(argv, {})
     monkeypatch.delenv("LINGBOT_GC_CHUNK_DIRECTOR", raising=False)
     monkeypatch.setattr(R, "import_run_agent", lambda **kw: SimpleNamespace(run_task=lambda *a: None, main=lambda: 0))
-    monkeypatch.setattr(R.agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(R.agent_api, "patch", lambda *a: "test")
     monkeypatch.setattr(sys, "argv", ["run.py"])
     assert R.main(["run.py", flag, "--lingbot-caption-prompt"]) == 0 and R.GC_DIRECTOR
     assert R.main(["run.py"]) == 0 and not R.GC_DIRECTOR and not R.STATS.gc_director
