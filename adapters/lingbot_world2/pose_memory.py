@@ -442,7 +442,7 @@ class PoseMemory:
         better = [m for m in eligible if m.overlap > win + 1e-9]
         if self.pick == "latest":
             chosen = better[:cfg.chunks]
-            later = [m for m in eligible if not self.opening(m.entry)]
+            later = [m for m in better if not self.opening(m.entry)]  # still must beat the window
             if chosen and all(self.opening(m.entry) for m in chosen) and later:
                 chosen = later[:cfg.chunks]  # Out-of-sight: never only the opening when a later sighting exists
                 for m in chosen:
@@ -485,7 +485,10 @@ class PoseMemory:
         if matches is None:  # the window holds the view: keep what is installed
             if self.cfg.rule == "legacy" or self.cfg.time != "recent" or not self.current:
                 return Decision("keep", plan)
-            matches, retime = list(self.current), True  # ...re-timed, so it stays just behind the window
+            # ...re-timed, so it stays just behind the window, while it still covers the view (else restore)
+            matches, retime = [m for m in self.current if self.covers(m.entry, plan.target)], True
+        if self.cfg.time != "sink":  # oldest chunk in the first slot, so the slot order matches the RoPE order
+            matches = sorted(matches, key=lambda m: m.entry.cid)
         slots = self.slots(len(matches))
         ropes = [self.rope_latent(i, sl, m.entry, c, len(matches)) for i, (sl, m) in enumerate(zip(slots, matches))]
         # keyed on the RoPE times too: with time=recent they move with every chunk, so the memory is recomputed
@@ -497,16 +500,27 @@ class PoseMemory:
         same = self.cfg.rule != "legacy" and tuple(i for i, _ in ids) == tuple(i for i, _ in installed)
         return Decision("retime" if retime or same else "install", plan, matches, slots, ropes, ids)
 
+    def covers(self, e: Entry, target) -> bool:
+        """Whether a stored chunk's best latent still overlaps the target view by match_overlap (coverage rule)."""
+        if e.views is None:
+            return True
+        for v in e.latent_views():
+            _, _, dpos, o = view_diff(v, target, self.cfg.yaw_scale)
+            if dpos <= self.cfg.trans and o >= self.cfg.match_overlap:
+                return True
+        return False
+
     def slots(self, n: int) -> list[int]:
-        """First latent slot of each of n retrieved chunks, in retrieval order (most recent first)."""
+        """First latent slot of each of n retrieved chunks (time sink: retrieval order, most recent first; otherwise
+        oldest chunk first, so a later slot never holds an earlier RoPE time)."""
         return [self.cfg.anchor + i * CHUNK for i in range(n)]
 
     def rope_latent(self, slot_index: int, slot: int, entry: Entry, c: int, n: int) -> int:
         """RoPE time (latent index) the retrieved chunk is recomputed at. sink: its slot (the position pattern
-        of today's sink); recent: just behind the rolling window of chunk c, most recent nearest (recomputed every
+        of today's sink); recent: just behind the rolling window of chunk c, the last slot nearest (recomputed every
         chunk while installed, so it tracks the window); orig: when it was made."""
         if self.cfg.time == "sink":
             return slot
         if self.cfg.time == "orig":
             return entry.cid * CHUNK
-        return max(0, c * CHUNK - self.window - CHUNK * (slot_index + 1))
+        return max(0, c * CHUNK - self.window - CHUNK * (n - slot_index))

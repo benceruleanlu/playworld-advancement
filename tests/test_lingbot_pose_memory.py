@@ -149,11 +149,12 @@ def test_bank_cap_evicts_oldest():
 
 
 def test_rope_times():
-    for time, want in (("sink", [2, 6]), ("orig", [40, 20]), ("recent", [20 * 4 - 8 - 4, 20 * 4 - 8 - 8])):
+    # decide() puts the oldest chunk first for orig and recent, so a later slot never holds an earlier time
+    for time, want in (("sink", [2, 6]), ("orig", [20, 40]), ("recent", None)):
         pm = PM.PoseMemory(PM.PoseMemoryConfig(True, latents=8, time=time), 10, 22)
         if time == "recent":
-            want = [20 * 4 - pm.window - 4, 20 * 4 - pm.window - 8]
-        es = [_entry(10, 0), _entry(5, 0)]
+            want = [20 * 4 - pm.window - 8, 20 * 4 - pm.window - 4]
+        es = [_entry(5, 0), _entry(10, 0)]
         assert [pm.rope_latent(i, s, e, 20, 2) for i, (s, e) in enumerate(zip(pm.slots(2), es))] == want
 
 
@@ -481,6 +482,11 @@ def test_two_chunk_memory_with_a_larger_sink(monkeypatch, capsys, quarter_turns)
     got = _retrievals(capsys.readouterr().out)
     assert got and all(c["outside_ok"] for c in calls if not c["live"])
     assert {c["slots"] for c in calls if not c["live"]} <= {(2, 6), (6, 10)}
+    # causal: whenever both slots are written for one chunk, the later slot (forward run second, attending the
+    # first) has the later RoPE time
+    rec = [c for c in calls if not c["live"]]
+    pairs = [(x, y) for x, y in zip(rec, rec[1:]) if x["slots"] == (2, 6) and y["slots"] == (6, 10)]
+    assert all(y["start"] > x["start"] for x, y in pairs)
 
 
 # ------------------------------------------------------------------ counters and arm isolation
@@ -632,8 +638,8 @@ def test_time_sink_skips_the_opening_and_pick_latest_prefers_later_sightings():
     yaws = _out_and_back()
     assert _installs(_replay(PM.PoseMemoryConfig(True, time="sink"), yaws)) == {7: [2]}  # opening = a no-op there
     oe = _replay(ON, yaws, name="OE900_full")  # auto -> latest for Out-of-sight call names
-    assert _installs(oe) == {7: [2], 10: [0]}
-    assert oe[9][0] == "retime" and oe[9][2] == ["later sighting preferred over the opening"]
+    # the later sighting replaces an opening-only pick only while it still beats the window (c09: it does not)
+    assert _installs(oe) == {7: [2], 9: [1], 10: [0]}
     assert _installs(_replay(PM.PoseMemoryConfig(True, pick="latest"), yaws)) == _installs(oe)
 
 
@@ -698,8 +704,9 @@ def test_planner_fires_on_the_six_return_tasks():
     assert all(got[t]["retrievals"] > 0 for t in SIX), {t: got[t]["retrievals"] for t in SIX}
     assert got["GC033"]["memories"] == [0, 1, 2] and got["GC033"]["first"] == 7
     assert got["GC031"]["first"] == 19  # yaw 351: the start view again, out of the window since chunk 2
-    # Out-of-sight: the 90-degree return recalls the later sighting (chunk 2) first; only the start is the opening
-    assert got["OE048"]["memories"] == [0, 2] and got["OE048"]["opening_only"] == 1
+    # Out-of-sight: the 90-degree return recalls the later sighting (chunk 2) first; chunks 1 and 0 (both in the
+    # sink) only once they beat the window
+    assert got["OE048"]["memories"] == [0, 1, 2] and got["OE048"]["opening_only"] == 2
     # the first version recalls nothing on any of them, as the 30 GPU rollouts of pm14-fx-v1/v2 logged
     legacy, _ = PM.parse([PM.FLAG, *PM.LEGACY_ARGS], environ={})
     assert all(PL.plan_task(PL.find_task(t, DATA), legacy)[1]["retrievals"] == 0 for t in SIX)
@@ -716,3 +723,20 @@ def test_planner_cli(capsys):
     assert "OE048_chunk_01" not in out and "| install <- " in out and out.splitlines()[-1].startswith("OE048 chunked:")
     with pytest.raises(SystemExit):
         PL.main(["GC033", "--lingbot-pose-mem-latents", "8"])  # sink 6 too small: refused as in the runner
+
+
+def test_retime_drops_a_kept_memory_that_no_longer_covers_the_view(monkeypatch):
+    """A re-time keeps the installed chunk only while one of its latents still matches the view; else restore."""
+    pm = PM.PoseMemory(ON, 6, 18)
+
+    def stored(cid, deg):
+        return PM.Entry(cid, _yaw_pose(deg), None, np.eye(4)[None].repeat(4, 0), 0,
+                        views=np.array([PM.view_of(_yaw_pose(deg))] * 4))
+
+    near, far = stored(2, 0.0), stored(3, -90.0)
+    monkeypatch.setattr(pm, "plan", lambda poses, c: PM.Plan(None, PM.view_of(_yaw_pose(0.0)), 1.0, 1))
+    pm.current = [PM.Match(near, 0, 0, 0, 1.0)]
+    d = pm.decide(None, 10, ((2, 0),))
+    assert d.kind == "retime" and [m.entry.cid for m in d.matches] == [2]
+    pm.current = [PM.Match(far, 0, 0, 0, 1.0)]
+    assert pm.decide(None, 10, ((3, 0),)).kind == "restore"
