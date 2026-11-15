@@ -43,7 +43,8 @@
    ],
    "reason": "相机仅在雕塑的前方和局部侧面进行了移动，没有执行完整的360度环绕轨迹。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC005.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC005.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC005.jpg",
+   "reason_en": "The camera only moved in front of and partially to the side of the sculpture, failing to execute a complete 360-degree orbiting trajectory."
   },
   {
    "task_id": "GC033",
@@ -54,7 +55,8 @@
    ],
    "reason": "视频成功展示了相机向左平移后返回的动作，橱窗内的关键物体在重新出现时保持了高度的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC033.jpg",
+   "reason_en": "The video successfully shows the camera panning left and returning, and the key objects inside the display window maintained high consistency upon reappearing."
   },
   {
    "task_id": "GC036",
@@ -65,7 +67,8 @@
    ],
    "reason": "视频中镜头连续左右平移，所有关键物体、纹理、颜色和相对位置均保持高度一致，无明显突变或噪点。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC036.jpg",
+   "reason_en": "In the video, the camera continuously pans left and right, with all key objects, textures, colors, and relative positions remaining highly consistent without obvious sudden changes or noise."
   }
  ]
 }

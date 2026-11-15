@@ -53,7 +53,8 @@
    ],
    "reason": "视频连贯展示男子走向宝塔并仰视，各要素一致性良好。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC016.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC016.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC016.jpg",
+   "reason_en": "The video coherently shows the man walking toward the pagoda and looking up, with good consistency across all elements."
   },
   {
    "task_id": "GC031",
@@ -64,7 +65,8 @@
    ],
    "reason": "镜头未能完成360度旋转，且没有回到初始的视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC031.jpg",
+   "reason_en": "The camera failed to complete a 360-degree rotation and did not return to the initial viewpoint."
   },
   {
    "task_id": "GC033",
@@ -86,7 +88,8 @@
    ],
    "reason": "摄像机仅向左平移，未能执行向右平移并返回中心的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC036.jpg",
+   "reason_en": "The camera only panned left and failed to execute the instruction to pan right and return to the center."
   },
   {
    "task_id": "GC038",
@@ -97,7 +100,8 @@
    ],
    "reason": "视频在镜头平移过程中发生了两次严重的硬重置，初始的木屋场景被石屋和蓝墙房间彻底替换，完全未能保持世界的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC038.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC038.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC038.jpg",
+   "reason_en": "The video suffered two severe hard resets during the camera pan; the initial wooden cabin scene was completely replaced by a stone house and a blue-walled room, completely failing to maintain world consistency."
   },
   {
    "task_id": "IF002",
@@ -119,7 +123,8 @@
    ],
    "reason": "轨迹基本符合，但场景和主体严重崩坏。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF010.jpg",
+   "reason_en": "The trajectory basically matches, but the scene and subject suffer severe breakdown."
   },
   {
    "task_id": "IF017",
@@ -130,7 +135,8 @@
    ],
    "reason": "男子未能完成走下悬崖并下落的完整物理过程。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF017.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF017.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF017.jpg",
+   "reason_en": "The man failed to complete the full physical process of walking off the cliff and falling."
   },
   {
    "task_id": "IF031",
@@ -141,7 +147,8 @@
    ],
    "reason": "男子成功向前行走并在接触大树时被合理阻挡停下，物理交互和身份保持良好。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF031.jpg",
+   "reason_en": "The man successfully walks forward and is reasonably blocked and stopped upon contacting the large tree, with good physical interaction and identity preservation."
   },
   {
    "task_id": "IF034",
@@ -152,7 +159,8 @@
    ],
    "reason": "视频在机械臂接触碗之前发生了硬重置，未能完成抓取动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF034.jpg",
+   "reason_en": "The video underwent a hard reset before the robotic arm contacted the bowl, failing to complete the grasping action."
   },
   {
    "task_id": "IF052",
@@ -163,7 +171,8 @@
    ],
    "reason": "主体完全没有执行要求的行走动作，仅是画面随镜头移动。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF052.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF052.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF052.jpg",
+   "reason_en": "The subject did not perform the requested walking action at all; the frame merely moved with the camera."
   },
   {
    "task_id": "OE001",
@@ -251,7 +260,8 @@
    ],
    "reason": "相机成功执行了360度旋转和后退，但狗在重新出现时呈现完全冻结的复制粘贴状态，缺乏任何合理的动作演变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE039.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE039.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE039.jpg",
+   "reason_en": "The camera successfully executed a 360-degree rotation and moved backward, but the dog appeared completely frozen in a copy-paste state when it re-entered the frame, lacking any reasonable motion progression."
   },
   {
    "task_id": "OE047",
@@ -262,7 +272,8 @@
    ],
    "reason": "镜头按提示完成了转动，但男子在镜头转回时位置重置到了扶梯底部，未能保持向上的运动进展。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE047.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE047.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE047.jpg",
+   "reason_en": "The camera completed the rotation as prompted, but the man's position reset to the bottom of the escalator when the camera turned back, failing to maintain his upward movement progress."
   },
   {
    "task_id": "OE048",
@@ -273,7 +284,8 @@
    ],
    "reason": "镜头执行了要求的左右转动，但返回后背景发生了严重的重置（瓷砖墙变为窗户），且杯中咖啡液位在隐藏期间没有任何累积上升，过程状态被不自然地冻结。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE048.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE048.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE048.jpg",
+   "reason_en": "The camera executed the requested left-and-right rotation, but upon returning, the background suffered a severe reset (the tiled wall turned into a window), and the coffee level in the cup did not rise at all while out of view, leaving the process state unnaturally frozen."
   },
   {
    "task_id": "OE058",
@@ -284,7 +296,8 @@
    ],
    "reason": "未执行向左转回初始视角的动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE058.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE058.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE058.jpg",
+   "reason_en": "Failed to execute the action of turning left back to the initial viewpoint."
   },
   {
    "task_id": "OE069",
@@ -295,7 +308,8 @@
    ],
    "reason": "视频成功执行了镜头的左右环顾动作，但整个场景（包括本应运行的自动扶梯）处于完全冻结状态，没有任何时间演进，导致演进质量得分为最低。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE069.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE069.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE069.jpg",
+   "reason_en": "The video successfully executed the camera's left-and-right looking motion, but the entire scene (including the escalator that should be running) was completely frozen with no temporal progression, resulting in the lowest progression quality score."
   }
  ]
 }

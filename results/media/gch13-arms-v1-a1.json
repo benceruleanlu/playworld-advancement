@@ -39,7 +39,8 @@
    ],
    "reason": "镜头向右旋转的速度较慢，未能在视频结束前完成360度旋转并回到初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC031.jpg",
+   "reason_en": "The camera rotates right too slowly and fails to complete a 360-degree rotation and return to the initial viewpoint before the video ends."
   },
   {
    "task_id": "GC033",
@@ -50,7 +51,8 @@
    ],
    "reason": "镜头没有在向左转90度后停止，也没有向右转回以重新看到初始的展示窗。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC033.jpg",
+   "reason_en": "The camera neither stops after rotating 90 degrees to the left nor turns back to the right to see the initial display window again."
   },
   {
    "task_id": "GC036",
@@ -61,7 +63,8 @@
    ],
    "reason": "视频中镜头始终向右平移，完全没有执行指令中要求的向左平移动作，轨迹与指令要求完全不符。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC036.jpg",
+   "reason_en": "The camera pans right throughout the video and never performs the leftward pan requested in the instruction, so the trajectory completely fails to match the instruction."
   }
  ]
 }

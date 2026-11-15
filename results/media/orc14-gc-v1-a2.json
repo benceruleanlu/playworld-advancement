@@ -51,7 +51,8 @@
    ],
    "reason": "视频较好地展现了男子走向宝塔并抬头仰望的过程，各物体的一致性和相对位置保持稳定，仅在后半段出现了一次合理的视角切换。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC016.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC016.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC016.jpg",
+   "reason_en": "The video depicts the process of the man walking toward the pagoda and looking up quite well, with the consistency and relative positions of objects remaining stable, and only one reasonable viewpoint cut occurring in the second half."
   },
   {
    "task_id": "GC031",
@@ -62,7 +63,8 @@
    ],
    "reason": "相机未能完成360度旋转，也没有回到初始的十字路口视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC031.jpg",
+   "reason_en": "The camera fails to complete a 360-degree rotation and does not return to the initial intersection view."
   },
   {
    "task_id": "GC033",
@@ -84,7 +86,8 @@
    ],
    "reason": "视频成功执行了平移操作，场景结构和颜色基本稳定，但招牌在重新进入视野时文字内容发生了明显改变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC036.jpg",
+   "reason_en": "The video successfully executes the panning operation, with scene structure and colors basically stable, but the text content on the sign changes noticeably when it re-enters the frame."
   },
   {
    "task_id": "GC038",
@@ -95,7 +98,8 @@
    ],
    "reason": "相机未能执行最后的向右转动以停在初始方向，而是持续向左平移并在最后向前移动，轨迹未完全完成。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC038.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC038.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-orc14-gc-v1-a2/GC038.jpg",
+   "reason_en": "The camera fails to execute the final right turn to stop at the initial orientation, instead continuing to pan left and moving forward at the end, leaving the trajectory incomplete."
   }
  ]
 }

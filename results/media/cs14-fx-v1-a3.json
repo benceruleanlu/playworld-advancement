@@ -45,7 +45,8 @@
    ],
    "reason": "镜头成功执行了向左旋转并转回的动作，初始橱窗内的关键物体在重新出现时基本保持了身份和位置的一致性，但招牌上的文本内容发生了退化。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/GC033.jpg",
+   "reason_en": "The camera successfully executes the action of rotating left and turning back; the key objects inside the initial display window largely maintain consistency in identity and position upon reappearing, though the text content on the sign degrades."
   },
   {
    "task_id": "IF010",
@@ -56,7 +57,8 @@
    ],
    "reason": "视频中机器狗严重变形为真狗，且工厂地面无端变为冰面，导致整体物理连贯性极差。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF010.jpg",
+   "reason_en": "In the video, the robotic dog severely morphs into a real dog, and the factory floor inexplicably turns into ice, resulting in extremely poor overall physical coherence."
   },
   {
    "task_id": "IF034",
@@ -67,7 +69,8 @@
    ],
    "reason": "由于硬重置，完整的抓取和抬起动作未能连贯展示。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF034.jpg",
+   "reason_en": "Due to a hard reset, the complete grasping and lifting actions are not coherently shown."
   },
   {
    "task_id": "OE001",
