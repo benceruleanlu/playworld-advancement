@@ -302,7 +302,9 @@ jobs:
                   echo "::warning title=calibration download failed::artifact $id: $(head -c 300 "$RUNNER_TEMP/gh.err" | tr '\n' ' ')"
                   continue
                 fi
-                if unzip -Z1 "$RUNNER_TEMP/official.zip" | grep -q '^eval/pass1/'; then
+                # list to a file, not a pipe into grep -q: an early grep exit would SIGPIPE unzip under pipefail
+                unzip -Z1 "$RUNNER_TEMP/official.zip" > "$RUNNER_TEMP/official.ls" || true
+                if grep -q '^eval/pass1/' "$RUNNER_TEMP/official.ls"; then
                   trap 'rm -rf "runs/$EXP/eval"' EXIT
                   unzip -qo "$RUNNER_TEMP/official.zip" 'eval/*' -d "runs/$EXP" && echo "official eval/ from artifact $id"
                   break
