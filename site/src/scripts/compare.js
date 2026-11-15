@@ -160,7 +160,6 @@
         if (e && !has(task, e)) notes.push("No clip of " + task + " from " + e + " yet (" + SLOTS[i] + "). It appears here once that run publishes its scenes.");
         return has(task, e) ? e : "";
       });
-      if (!slots.some(Boolean)) slots = defaultsFor(task);
     } else slots = task ? defaultsFor(task) : ["", "", ""];
     render(notes);
   }
@@ -220,10 +219,11 @@
     v.muted = true; v.loop = false;
     var endEl = el("div", { class: "cvend", hidden: "" });
     var media = el("div", { class: "media" }, [v, endEl]);
-    var s = { exp: c.exp, v: v, d: NaN, endEl: endEl, lenEl: null };
+    var s = { exp: c.exp, v: v, d: NaN, endEl: endEl, lenEl: null, failed: false };
     live.push(s);
     v.addEventListener("loadedmetadata", function () { if (isFinite(v.duration)) { s.d = v.duration; updateLens(); updateBar(); } });
-    v.addEventListener("error", function () { endEl.hidden = false; endEl.textContent = "Clip failed to load"; });
+    // a failed clip leaves the shared clock: it never holds playback for buffering and never sets the length
+    v.addEventListener("error", function () { s.failed = true; endEl.hidden = false; endEl.textContent = "Clip failed to load"; updateLens(); updateBar(); });
     if (!S.fpsKnown) probeFps(v);
 
     // score and which judge produced it
@@ -276,13 +276,14 @@
     return el("article", { class: "cvslot", "data-slot": SLOTS[i].toLowerCase() }, kids);
   }
   function maxDur() {
-    var d = 0; live.forEach(function (s) { if (isFinite(s.d) && s.d > d) d = s.d; });
+    var d = 0; live.forEach(function (s) { if (!s.failed && isFinite(s.d) && s.d > d) d = s.d; });
     return d;
   }
   function updateLens() {
     var D = maxDur();
     live.forEach(function (s) {
       if (!s.lenEl) return;
+      if (s.failed) { s.lenEl.textContent = "failed to load"; return; }
       if (!isFinite(s.d)) { s.lenEl.textContent = "loading"; return; }
       var txt = s.d.toFixed(1) + " s";
       if (s.cap > 0) txt += ", capped at " + s.cap + " chunks";
@@ -328,13 +329,14 @@
     if (!S.playing) return;
     var dts = Math.min(0.25, (now - S.last) / 1000); S.last = now;
     var D = maxDur();
-    var hold = live.some(function (s) { return isFinite(s.d) && S.t < s.d - END && s.v.readyState < 3; });
+    var hold = live.some(function (s) { return !s.failed && isFinite(s.d) && S.t < s.d - END && s.v.readyState < 3; });
     if (!hold) S.t += dts * S.rate;
     if (S.t >= D) {
       if (S.loop) { S.t = 0; live.forEach(function (s) { seekOne(s, 0); }); }
       else { S.t = D; pause(); updateBar(); return; }
     }
     live.forEach(function (s) {
+      if (s.failed) return;
       var on = isFinite(s.d) && S.t < s.d - END;
       if (on && !hold) {
         if (s.v.paused && !s.v.ended) { s.v.playbackRate = S.rate; var p = s.v.play(); if (p && p.catch) p.catch(noop); }
@@ -367,7 +369,7 @@
     pb.disabled = !D;
     live.forEach(function (s) {
       var ended = isFinite(s.d) && D - s.d > END && S.t >= s.d - END;
-      if (s.endEl.textContent === "Clip failed to load") return;
+      if (s.failed) return;
       s.endEl.hidden = !ended;
       if (ended) s.endEl.textContent = "Clip ended at " + fmtT(s.d);
     });
