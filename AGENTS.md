@@ -72,6 +72,12 @@ Typical loop: run one family of dev tasks per arm (`experiment` workflow, `tasks
 - Default is a persistent session (`adapters/lingbot_world2/session.py`, `reset/step`): the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache survive across agent steps. `<task>_chunk_<NN>` following chunk NN-1 of the same task continues; chunk 01, another task or `<task>_full` (dataset mode: reset plus one long step) resets. A/B baseline: `-- --lingbot-stateless` (Actions input `extra`) or `LINGBOT_SESSION=0`, a fresh upstream rollout per call. `LINGBOT_STREAM_DECODE=0` re-decodes all latents per step instead of streaming.
 - Session frame accounting: a request of F frames runs n = round((F-1)/16) latent chunks; the first step returns 16n-3 frames (input frame first), later steps the previous last frame plus 16n new ones, so the harness stitch is seamless (default 33 -> 29, then 33). The stateless path rounds up to 4n+1 frames with latent length a multiple of 4 (33 -> 45; `-- --chunk-frames 29` for exact chunks).
 - Translation normalisation: upstream divides by the max per-latent translation of the whole sequence, unknown in closed loop. The session divides by a fixed 4 (one latent of straight single-key motion) and clips norms above 1, which equals upstream whenever the fastest latent is straight single-key motion.
+- Start-up timing, always on (`adapters/lingbot_world2/fast_start.py`): `gen.log` gets one `[lingbot] timing <part> <s>s` line per load part (`load.import_wan`, `load.t5`, `load.vae`, `load.dit`, `load.dit_to_device_and_rest`, `load.total`) and, after every session reset, `reset.text_encode` (with `source=memory|disk|computed`), `reset.y_encode`, `reset.total`, then `step0.y_encode` (fast-y only), `step0.first_forward`, `step0.denoise_rest`, `step0.decode`, `step0.to_host` for the first step. Read these before changing the fast-start flags' defaults.
+- Fast-start flags, all off by default and unscored (Actions input `extra`; env in brackets). `--lingbot-fast` turns on the first three. Under `pwa gen-arms` they are read per arm like the other `--lingbot-*` flags: `--lingbot-fast-y` and the T5 disk cache follow each arm, while the load-time parts (read-ahead, meta-built and lazy T5) apply only to the arm that loads the pipe; arms that reuse it skip the load, and the loader patches are undone after the load.
+  - `--lingbot-fast-t5` (`LINGBOT_FAST_T5=1`): T5 prompt embeddings cached on the weights Volume (`$LINGBOT_WEIGHTS/t5_cache`, or `LINGBOT_T5_CACHE_DIR`), keyed by sha256 of the prompt plus the T5 checkpoint (name, size, hash of its first and last MiB), tokenizer files, text length, dtype, torch version and where T5 runs (CPU model and thread count, or GPU name). T5 is not loaded at start-up; it loads on the first miss. A hit returns the tensor T5 returned when the entry was written, moved to the GPU. Entries are written during a run and reach the Volume at the shard's `weights_vol.commit()`, so the second run of a prompt hits.
+  - `--lingbot-fast-load` (`LINGBOT_FAST_LOAD=1`): threads (`LINGBOT_READ_AHEAD_THREADS`, default 8) read the VAE and DiT files, plus T5 unless `--lingbot-fast-t5` is on, into the page cache while the pipeline loads; T5 is built on the meta device and its state dict loaded with `mmap=True, assign=True`, skipping upstream's fp32 random init of ~5.7B parameters (same parameter values; falls back to the upstream loader on any error).
+  - `--lingbot-fast-y` (`LINGBOT_FAST_Y=1`, session mode): the image conditioning `y` is encoded only up to the latents the rollout has reached, keeping the VAE encoder's causal cache across steps, instead of the whole horizon (248 latents, 989 frames for `--max-total-frames 961`) at every reset. Same encoder calls on the same inputs; only the pointwise `conv1` runs per extension, so values can differ only by cuDNN kernel choice for a different tensor length.
+  - `--lingbot-t5-gpu`: T5 on the GPU (upstream's default; same as `LINGBOT_T5_CPU=0`). Changes the text embeddings at bf16 rounding level versus the CPU path, so it is a separate arm, not part of `--lingbot-fast`. Adds about 11 GB of VRAM, held for the rest of the process.
 - Weights live in the `pwa-weights` Volume under `/weights/lingbot` (`modal run prefetch_lingbot.py --variant 14b|1.3b`; the workflow does this). Outside the workflow set `PWA_RUNNER=<runner>` when calling `modal run modal_app.py` so the LingBot image is selected.
 - License: CC BY-NC-SA 4.0 (non-commercial, share-alike). Code is cloned into the image at a pinned commit, not vendored.
 
@@ -140,6 +146,7 @@ Unverified (check and update):
 - Concurrent H100 containers on our quota. Until it is read, size requests to about 10 GPUs in flight; the starting-model 171 run uses 8 shards so dev arms are not starved.
 - Per-chunk player time and chunk counts with `gpt-6-luna` (longer replies, maybe earlier END). Read them from the `lb14-luna-*` runs.
 - Whether a shard with no tasks exits before loading the model.
+- Where the ~290 s load and the ~85 s first-chunk overhead go. From the code (estimate): the first chunk pays T5 on the CPU for each new prompt (a 512-token umt5-xxl pass; OE064's 30.6 s first chunk fits a prompt already in the in-memory cache) and the VAE encode of `y` for the full 989-frame horizon; the load is about 40 GB read from the Volume (DiT 28 GB, T5 11 GB) plus T5's fp32 random init. Read the `[lingbot] timing` lines of the next 14B run, then try `--lingbot-fast`.
 - Why `lb14-turncal-dev-v1` (busiest shard 4 tasks) and `lb14-session-dev-v1` (8 tasks) were still generating after 94 and 126 min at 23:40 UTC on 2026-11-14; probably the same queueing, not checked.
 - One family per dispatch at one task per GPU: estimated about 15 min of generation per arm (one load plus one rollout), not yet timed end to end. A one-task dispatch took about 14.5 min end to end in the loop study (not re-checked).
 - `arms` workflow: that arm 2..N skip the ~280 s load (gen.log says `reusing ... loaded earlier`) and how much of the ~103 s first chunk is warm-up that a later arm also skips. Never run on a GPU yet.
@@ -154,7 +161,7 @@ Levers, biggest first: one family per dispatch for dev arms; shared baselines (e
 | lb14-session-agent-gc005-v1 | lingbot_world2 | 1 | 1 | H100 | <=16 min | <=16 (incl. load) | closed loop; upper bound, gen start to job end incl. scoring |
 | lb14-session-agent-dev-v1 | lingbot_world2 | 24 | 4 | H100 | 142 min | ~18 wall clock incl. queueing; ~9.5 per agent rollout on the GPU | closed loop, gpt-4.1-mini player; every agent task ran 28 to 30 chunks |
 
-Capped smoke tier (`max_chunks`, unverified until its first run): from the one-task timing above (model load ~280 s, first chunk ~103 s, then ~11 s per chunk), `max_chunks=4` is about 280 + 103 + 3x11 = ~7 min of GPU time per shard, and `stage=gen-only` drops scoring; the Actions setup, prefetch and the Modal image start are on top and not measured separately.
+Capped smoke tier: `smk-gc-hint-c10-v1` (14B, 3 GC tasks on 3 GPUs, 10 chunks via `extra=--num-chunks 10`, one screening pass) took 11 min 11 s end to end, with a 289 s model load, a 97 s first chunk and about 11 s per later chunk (figures as recorded on the site's Iteration speed block in #71; not recomputed here). The `max_chunks` input itself is unverified until `smk13-gc-*-c10-v2` land. Estimate for `max_chunks=4`: about 280 + 103 + 3x11 = ~7 min of GPU time per shard, and `stage=gen-only` drops scoring; the Actions setup, prefetch and the Modal image start are on top and not measured separately. #70 moved the FFmpeg install to the background and merged the setup pip installs; the saving is not measured.
 
 ### Results site
 
@@ -179,7 +186,7 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 - Model: LingBot-World v2 14B, persistent session. The starting model is the same runner with every method flag off.
 - Player: `gpt-6-luna` for every compared run (#61, the workflow's `player_model` default). The gpt-4.1-mini baseline is a diagnostic only.
 - Official judge: Gemini 3.1 Pro at upstream settings, for every reported number.
-- Screening judge: `gemini-4-hydrogen` (`--judge-model`), for dev loops only, kept in its own eval folder and never written to `results/experiments.csv`. Used only if a calibration on the 24 baseline videos shows it agrees with the official judge.
+- Screening judge: `gemini-4-hydrogen` (`--judge-model`), for dev loops only, kept in its own eval folder and never written to `results/experiments.csv`. Used only if a calibration on the 24 baseline videos shows it agrees with the official judge. Calibration so far (thinking `low`, 2 passes, `results/reports/lb14-session-agent-dev-v1.gemini-4-hydrogen-think-low.md`): it does not agree. On the same videos it is more lenient: it passes 6/6 GC and 6/6 out-of-sight gates where the official judge passes 4/6 and 4/6, and its overall mean is higher (read the report for its numbers; they are not set beside official scores here, per the rule above). Keep it out of adoption decisions until task-level agreement is read; a thinking `high` run is in progress.
 - The dataset `image_caption` may be used as model input, and this is disclosed. Upstream's Genie 3 player sends it to Genie 3.
 - The coordinator session launches experiment runs, merges the integration branch when CI is green (`method/candidate-v1`, merged as #63 with every flag off), and freezes and launches the final run.
 
@@ -187,7 +194,7 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 
 | When | What |
 |---|---|
-| Saturday 16:50 | Player check with `gpt-6-luna` on the 6 out-of-sight and 6 GC dev tasks, read from action logs: reversals, return to start, early END. Caption prompt on the 6 insight tasks (`lb14-cap-ins-s42`). |
+| Saturday 16:50 | Player check with `gpt-6-luna` on the 6 out-of-sight and 6 GC dev tasks, read from action logs: reversals, return to start, early END. Caption prompt on the 6 insight tasks (`lb14-cap-ins-s42`). Not done: see "Status against the timeline". |
 | After the player check | Starting-model run on all 171 tasks, generation only, 8 shards. Scored at freeze. |
 | To about 19:00 | Integration branch: caption prompt (#32), GC re-anchor (#46), player hint (#59), each behind an off-by-default flag with per-task counters. Screening-judge option and its calibration. |
 | 19:00 to 22:30 | Second seeds for whatever moved; caption guard runs on the camera families; re-anchor. |
@@ -196,6 +203,16 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 | To 10:30 | Scoring, refills, second seeds if GPUs allow. Numbers freeze at 10:30. |
 | Overnight | Rigour: failure taxonomy per family, horizon curve from scored rollout prefixes, judge-noise table, failure gallery. |
 | 10:30 to 13:45 | Video, description, submit. |
+
+### Status against the timeline
+
+Saturday 17:20 Pacific. Update this when a step lands or fails.
+
+- The first-wave runs all ended in Modal generation with a bare `RemoteError` or incomplete rollouts, before scoring: `lb14-luna-gc-s42`, `lb14-luna-oos-s42`, `lb14-cap-ins-s42` and `cand1-smoke-gc-v1` (issue #9). The cause is not identified. Check the Modal app events and the `pwa-runs` volume for finished videos before rerunning an arm.
+- So there is no `gpt-6-luna` player check on 14B yet, and the starting-model 171 run, which waits on it, has not been launched.
+- The player check moved to capped smoke runs (10 chunks, GC005, GC033, GC036). On 14B the hint arm `smk-gc-hint-c10-v1` (turn calibration plus player hint) generated 3/3 videos, and its no-flags control `smk-gc-base-c10-v1` was cancelled in generation, so the 14B arm is unpaired. The 1.3B pair finished: `smk13-gc-hint-c10-v1` and `smk13-gc-base-c10-v1`. The screening judge (one pass) prefers the hint arm on both models (reports in `results/reports/`). That is directional only: the judge is the lenient one above, the arm turns on two flags at once, and the 1.3B hint arm logged three fallback actions with no player API errors (issue #6), so check the raw player replies before calling it closed loop. No action log from these runs has been read for reversals, returns or early END.
+- `smk13-gc-base-c10-v2` and `smk13-gc-hint-c10-v2` are the first runs of the `max_chunks` input and of clip publishing for unscored runs (#69). Until one lands, `results/media/` does not exist on main and the site's Scenes section is empty.
+- Open PRs, none merged: return stop (#75, a new method flag), Compare clips player on the site (#74), warm Modal containers (#73), start-up timing and fast-start flags (#72, timing run `smk-gc-fast-c10-v1`), multi-arm dispatch (#67), memory probe (#37).
 
 ### Testing tiers and the adoption rule
 

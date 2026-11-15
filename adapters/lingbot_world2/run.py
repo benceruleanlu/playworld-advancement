@@ -44,10 +44,23 @@ Env:
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
+Start-up (fast_start.py): `[lingbot] timing <part> <s>s` lines for each load component and for the
+reset and first step of every rollout, always on. Opt-in, all off by default:
+  --lingbot-fast-t5    (LINGBOT_FAST_T5=1)   prompt-embedding cache on the weights volume; T5 loads
+                       only on a cache miss. Cache dir: LINGBOT_T5_CACHE_DIR (default $LINGBOT_WEIGHTS/t5_cache)
+  --lingbot-fast-load  (LINGBOT_FAST_LOAD=1) parallel read-ahead of the checkpoint files during the
+                       load (LINGBOT_READ_AHEAD_THREADS, default 8); T5 built on meta + mmap state dict
+  --lingbot-fast-y     (LINGBOT_FAST_Y=1)    session mode: stream-encode `y` as the rollout advances
+  --lingbot-fast       (LINGBOT_FAST=1)      all three
+  --lingbot-t5-gpu     T5 on the GPU (same as LINGBOT_T5_CPU=0; changes embeddings at bf16 rounding level)
+
 In-process use (pwa gen-arms): main(argv) can be called several times in one process. Each call re-reads
 the flags and env, resets poses' turn rates, the flag counters and prompts' current task, and imports a
 fresh upstream run_agent (so no patch stacks); only the loaded pipe (_PIPES, keyed by checkpoint, T5
 placement and KV window) is shared, and each call's engine builds its own session.
+The fast-start flags are per call too: --lingbot-fast-y / --lingbot-fast-t5's disk cache follow each call's
+flags, while the load-time parts (read-ahead, meta T5, lazy T5) only apply to the call that loads the pipe;
+the loader patches are undone after that load, so they never stack.
 
 Flag counters (flag_stats.py): after each task one greppable line, e.g.
   [lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30
@@ -61,6 +74,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
@@ -82,13 +96,15 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "prompt_mode": mode,
         "reanchor": "--lingbot-reanchor" in argv or environ.get("LINGBOT_REANCHOR", "0") == "1",
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
+        "fast": FS.parse_flags(argv, environ),
     }
-    return flags, [a for a in argv if a not in _FLAG_ARGS]
+    return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
 # Set by main() from configure(); the engine reads them at call time.
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = False
 PROMPT_MODE = "goal"
+FAST = FS.FastFlags()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -98,8 +114,9 @@ _PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
 
 
 def load_pipe(environ=os.environ):
-    """(config, pipe) for the checkpoint the env selects, loading it on first use in this process. Shared by
-    every engine in the process (pwa gen-arms) and called ahead of time by warm_app.py's @modal.enter."""
+    """(config, pipe, weights dir, t5_cpu) for the checkpoint the env selects, loading the pipe on first use in
+    this process with the current fast-start flags (FAST). Shared by every engine in the process (pwa gen-arms)
+    and called ahead of time by warm_app.py's @modal.enter."""
     root = environ.get("LINGBOT_ROOT", "/opt/lingbot")
     weights = Path(environ.get("LINGBOT_WEIGHTS", "/weights/lingbot"))
     variant = environ.get("LINGBOT_VARIANT", "14b").lower()
@@ -111,25 +128,35 @@ def load_pipe(environ=os.environ):
     for p in (Path(root) / "wan", ckpt, *( [assets] if assets else [])):
         if not p.exists():
             raise SystemExit(f"[lingbot] missing {p}; set LINGBOT_ROOT / LINGBOT_WEIGHTS or run prefetch_lingbot.py")
-    t5_cpu = environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1"
+    t5_cpu = environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1" and not FAST.t5_gpu
 
+    t0 = time.time()
     if root not in sys.path:
         sys.path.insert(0, root)
     import wan  # noqa: PLC0415
+    import wan.image2video as i2v  # noqa: PLC0415
     from wan.configs import WAN_CONFIGS  # noqa: PLC0415
+    FS.log("load.import_wan", time.time() - t0)
 
     cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
     key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
     if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
-        t0 = time.time()
-        _PIPES[key] = wan.WanI2VCausal(
-            config=cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-            local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
-            assets_dir=str(assets) if assets else None)
+        print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
+        with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load) as timer:
+            if FAST.fast_load:
+                FS.read_ahead(FS.checkpoint_files(cfg, ckpt, assets, include_t5=not FAST.t5_cache),
+                              threads=int(environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
+            t0 = time.time()
+            _PIPES[key] = wan.WanI2VCausal(
+                config=cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
+                local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
+                assets_dir=str(assets) if assets else None)
+            timer.rest(time.time() - t0)
         print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
     else:
-        print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu})", flush=True)
-    return cfg, _PIPES[key]
+        print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
+              f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
+    return cfg, _PIPES[key], weights, t5_cpu
 
 
 class LingBotWorld2Engine:
@@ -137,11 +164,13 @@ class LingBotWorld2Engine:
 
     def __init__(self, args):
         self.args = args
-        self.cfg, self.pipe = load_pipe()
+        self.cfg, self.pipe, weights, t5_cpu = load_pipe()
+        self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
-                                            horizon_frames=int(getattr(args, "max_total_frames", 961) or 961))
+                                            horizon_frames=int(getattr(args, "max_total_frames", 961) or 961),
+                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache)
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -150,6 +179,19 @@ class LingBotWorld2Engine:
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + (", player hint on" if PLAYER_HINT else ""),
               flush=True)
+
+    def _t5_cache(self, weights, t5_cpu):
+        """--lingbot-fast-t5: disk cache keyed by prompt + everything that decides T5's output bits."""
+        import torch  # noqa: PLC0415
+        enc = self.pipe.text_encoder
+        ident = FS.t5_identity(
+            enc.checkpoint_path, enc.tokenizer_path, enc.text_len, enc.dtype,
+            device_kind="cpu" if t5_cpu else "cuda",
+            device_name=FS.cpu_model() if t5_cpu else torch.cuda.get_device_name(self.pipe.device),
+            torch_version=torch.__version__, num_threads=torch.get_num_threads() if t5_cpu else None)
+        root = Path(os.environ.get("LINGBOT_T5_CACHE_DIR", str(weights / "t5_cache")))
+        print(f"[lingbot] t5 cache: {root} identity {ident}", flush=True)
+        return FS.EmbeddingCache(root, ident)
 
     def _calibrate(self, name, n_keys):
         """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
@@ -227,6 +269,7 @@ class LingBotWorld2Engine:
         np.save(action_dir / "poses.npy", c2ws)
         np.save(action_dir / "intrinsics.npy", P.intrinsics(len(c2ws)))
 
+        S.encode_prompt(self.pipe, prompt or DEFAULT_PROMPT, self.t5_cache)  # fills pipe._t5_cache as upstream would
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
         video = self.pipe.generate(
@@ -247,10 +290,10 @@ def main(argv: list[str] | None = None) -> int:
     """One run_agent invocation. argv is run_agent's (argv[0] is the script). Every call re-reads the flags,
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
-    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, STATS
+    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, STATS, FAST
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
-    REANCHOR, PLAYER_HINT = flags["reanchor"], flags["player_hint"]
+    REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
     P.reset()
     prompts.reset()
