@@ -38,16 +38,29 @@ END on visual completion. Counts hints and END replies; never forces an action.
 
 IF horizon (off by default): `--lingbot-if-horizon` or LINGBOT_IF_HORIZON=1 ends a closed-loop IF
 rollout after a chunk budget sized from the length of its dataset action; see if_horizon.py.
-IF camera hint (off by default): --lingbot-if-camera-hint / LINGBOT_IF_CAMERA_HINT=1.
-Reminds third-person IF players that keys command the camera, not the subject.
-Player history endpoints (off by default): --lingbot-player-history-endpoints /
-LINGBOT_PLAYER_HISTORY_ENDPOINTS=1 keeps only endpoints from older player chunks.
-Insight director (off by default): --lingbot-insight-director / LINGBOT_INSIGHT_DIRECTOR=1.
-Scene caption + original goal + fixed activity-continuation text on insight tasks only.
-IF repeat check (off by default): --lingbot-if-repeat-check / LINGBOT_IF_REPEAT_CHECK=1.
-After four identical IF actions, ask the player to recheck visible goal progress.
-IF slow translation (off by default, session only): --lingbot-if-slow-translation /
-LINGBOT_IF_SLOW_TRANSLATION=1 halves IF per-frame camera translation before normalization.
+
+IF camera hint (off by default): `--lingbot-if-camera-hint` or LINGBOT_IF_CAMERA_HINT=1 reminds
+third-person IF players that keys command the camera, not the subject; see if_camera.py.
+
+Player history endpoints (off by default): `--lingbot-player-history-endpoints` or
+LINGBOT_PLAYER_HISTORY_ENDPOINTS=1 keeps only the first and last sampled frame of each older chunk in
+the player's input (the latest chunk keeps all eight); see player_history.py.
+
+Insight director (off by default): `--lingbot-insight-director` or LINGBOT_INSIGHT_DIRECTOR=1 conditions
+the model on the scene caption plus a fixed activity-continuation cue on insight tasks only (implies the
+caption on those tasks, even without --lingbot-caption-prompt); see prompts.directed_insight.
+
+IF repeat check (off by default): `--lingbot-if-repeat-check` or LINGBOT_IF_REPEAT_CHECK=1: after four
+identical IF actions, the player is asked to recheck visible goal progress; see if_repeat.py.
+
+IF slow translation (off by default, session only): `--lingbot-if-slow-translation` or
+LINGBOT_IF_SLOW_TRANSLATION=1 halves IF per-frame camera translation before normalisation (and in the
+player hint's replay); rejected with --lingbot-stateless.
+
+decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
+return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
+IF repeat) + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
+replies never reach the hints or their counters.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -68,6 +81,11 @@ Env:
   LINGBOT_GC_COMPLETION_HINT  1 = same as --lingbot-gc-completion-hint
   LINGBOT_IF_HORIZON  1 = same as --lingbot-if-horizon
   LINGBOT_IF_HORIZON_MULT / LINGBOT_IF_HORIZON_MIN   budget = MULT x the dataset action's frames (2), at least MIN chunks (6)
+  LINGBOT_IF_CAMERA_HINT  1 = same as --lingbot-if-camera-hint
+  LINGBOT_PLAYER_HISTORY_ENDPOINTS  1 = same as --lingbot-player-history-endpoints
+  LINGBOT_INSIGHT_DIRECTOR  1 = same as --lingbot-insight-director
+  LINGBOT_IF_REPEAT_CHECK  1 = same as --lingbot-if-repeat-check
+  LINGBOT_IF_SLOW_TRANSLATION  1 = same as --lingbot-if-slow-translation
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -118,21 +136,21 @@ from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
-from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
 from adapters.lingbot_world2 import if_camera as IC  # noqa: E402
-from adapters.lingbot_world2 import player_history as PH  # noqa: E402
+from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
 from adapters.lingbot_world2 import if_repeat as IR  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
+from adapters.lingbot_world2 import player_history as PH  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
-_FLAG_ARGS = ("--lingbot-if-camera-hint", "--lingbot-player-history-endpoints", "--lingbot-stateless",
-              "--lingbot-insight-director", "--lingbot-if-repeat-check", "--lingbot-if-slow-translation",
-              "--lingbot-turn-cal", "--lingbot-caption-prompt",
+_FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
-              "--lingbot-gc-completion-hint", "--lingbot-if-horizon")
+              "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
+              "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
+              "--lingbot-if-slow-translation")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -150,7 +168,6 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
         "if_horizon": "--lingbot-if-horizon" in argv or environ.get("LINGBOT_IF_HORIZON", "0") == "1",
-        "fast": FS.parse_flags(argv, environ),
         "if_camera": "--lingbot-if-camera-hint" in argv or environ.get("LINGBOT_IF_CAMERA_HINT", "0") == "1",
         "history_endpoints": "--lingbot-player-history-endpoints" in argv
                              or environ.get("LINGBOT_PLAYER_HISTORY_ENDPOINTS", "0") == "1",
@@ -159,6 +176,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "if_repeat": "--lingbot-if-repeat-check" in argv or environ.get("LINGBOT_IF_REPEAT_CHECK", "0") == "1",
         "if_slow": "--lingbot-if-slow-translation" in argv
                    or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
+        "fast": FS.parse_flags(argv, environ),
     }
     flags["stall"], argv = W.parse(argv, environ)
     if flags["if_slow"] and flags["stateless"]:
@@ -280,6 +298,11 @@ class LingBotWorld2Engine:
               + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else "")
               + (", IF horizon on" if IF_HORIZON else "")
+              + (", IF camera hint on" if STATS.if_camera else "")
+              + (", player history endpoints on" if STATS.history_endpoints else "")
+              + (", insight director on" if STATS.insight_director else "")
+              + (", IF repeat check on" if STATS.if_repeat else "")
+              + (", IF slow translation on (gain 0.5)" if STATS.if_slow else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
 
@@ -303,16 +326,17 @@ class LingBotWorld2Engine:
                         int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
-        original_goal = prompt
         if PROMPT_MODE != "goal":
             goal, prompt = prompt, prompts.model_prompt(prompt, name, PROMPT_MODE)
             STATS.caption(prompt != goal)
             if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
                 print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
                       f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
-        if STATS.insight_director:
-            directed = prompts.directed_insight(original_goal, prompt, name)
+        if STATS.insight_director:  # insight tasks: caption + fixed cue (adds the caption even in goal mode)
+            directed = prompts.directed_insight(prompt, name)
             STATS.director_prompt(directed != prompt)
+            if directed != prompt and (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
+                print(f"[lingbot] {name}: insight director: {directed[:120]!r}", flush=True)
             prompt = directed
         with W.watch(name, STALL):
             if self.session is None:
@@ -434,24 +458,27 @@ def main(argv: list[str] | None = None) -> int:
     if flags["history_endpoints"]:
         PH.install(run_agent, STATS.history_removed)
         print("[lingbot] player history endpoints: on", flush=True)
+    # decide_action wrappers, innermost first (see the module docstring): each prompt hint appends to the goal
+    # the inner ones see, so the player reads goal + [GC completion | IF camera + IF repeat] + player hint.
+    # Player hint is innermost: the pose summary always ends the goal text.
     if PLAYER_HINT:
-        run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
-                                         session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
+        run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                         turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
         print("[lingbot] player hint: on", flush=True)
+    if flags["if_repeat"]:  # conditional IF reminder, after the fixed IF camera reminder
+        run_agent.decide_action = IR.wrap(run_agent.decide_action, STATS.if_repeat_hint)
+        print("[lingbot] IF repeat check: on", flush=True)
     if flags["if_camera"]:
         run_agent.decide_action = IC.wrap(run_agent.decide_action, STATS.if_camera_hint)
         print("[lingbot] IF camera hint: on", flush=True)
-    if flags["if_repeat"]:
-        run_agent.decide_action = IR.wrap(run_agent.decide_action, STATS.if_repeat_hint)
-        print("[lingbot] IF repeat check: on", flush=True)
-    if GC_COMPLETION:
+    if GC_COMPLETION:  # GC only, so it never shares a goal with the two IF reminders
         run_agent.decide_action = C.wrap(run_agent.decide_action, STATS.completion_hint, STATS.completion_end)
         print("[lingbot] GC completion hint: on", flush=True)
-    if RETURN_STOP:  # outermost: a stopped step never reaches the player (or the hint)
+    if RETURN_STOP:  # outside the hints: a stopped step never reaches the player (or the hints' counters)
         run_agent.decide_action = RS.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
                                           turn_cal=TURN_CAL, on_event=STATS.return_stop_event)
         print("[lingbot] return stop: on", flush=True)
-    if IF_HORIZON:  # IF tasks only; the player is told the budget as its step limit
+    if IF_HORIZON:  # outermost, IF only: its END is not counted by any hint; the player is told the budget
         run_agent.decide_action = IH.wrap(run_agent.decide_action, run_agent.parse_segments,
                                           on_event=STATS.if_horizon_event)
         print("[lingbot] IF horizon: on", flush=True)

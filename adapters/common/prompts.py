@@ -66,8 +66,11 @@ INSIGHT_DIRECTION = (
 )
 
 
-def directed_insight(goal: str, model_text: str, name: str) -> str:
-    """Fixed direction for insight only; use scene input, never evaluation-policy fields.
+def directed_insight(model_text: str, name: str) -> str:
+    """Insight tasks only: the scene caption plus INSIGHT_DIRECTION. Reads only task_id,
+    sub_category and image_caption, never evaluation-policy fields. The goal is not added:
+    on insight tasks it is the player's "wait and observe", so the arm differs from
+    --lingbot-caption-prompt by the cue alone.
 
     The session encodes this once at reset, not as a per-chunk text/cache update.
     A missing caption or unmatched task leaves the existing model text untouched.
@@ -80,4 +83,4 @@ def directed_insight(goal: str, model_text: str, name: str) -> str:
     caption = " ".join(str(task.get("image_caption") or "").split())
     if not caption:
         return model_text
-    return f"{caption}\nTask: {goal.strip()}\n{INSIGHT_DIRECTION}"
+    return f"{caption}\n{INSIGHT_DIRECTION}"

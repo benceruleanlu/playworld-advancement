@@ -8,7 +8,9 @@ After each task's generation run.py prints one line, then one run total after ma
 Values:
   turn_cal       1 | 0
   caption        off (flag off) | used (every call got the caption) | fallback (at least one call
-                 got the goal instead: no caption, or the task record did not match) | none (no call)
+                 got the goal instead: no caption, or the task record did not match) | none (no call) |
+                 director (no --lingbot-caption-prompt, but --lingbot-insight-director gave the model the
+                 caption on this task)
   reanchor       off (flag off) | on (armed for this task) | skip (flag on, but stateless or not a
                  LINGBOT_REANCHOR_TASKS name)
   reanchor_events   latents re-anchored to the input image
@@ -27,6 +29,16 @@ Only with --lingbot-if-horizon the line also ends with:
   if_horizon         on (an IF task the player was asked about) | skip (not IF, or no player)
   if_horizon_chunks  the task's chunk budget (0 when skipped)
   if_horizon_ends    1 when the wrapper ended the rollout at the budget, 0 when the player ended it earlier
+
+Each of these flags adds its fields only when it is on (the total line adds the count):
+  --lingbot-if-camera-hint            if_camera=on, if_camera_hints (third-person IF decisions that got the reminder)
+  --lingbot-player-history-endpoints  history_endpoints=on, player_frames_removed (older-chunk samples dropped
+                                      from the player's input, across decisions)
+  --lingbot-insight-director          insight_director=on, insight_director_prompts (generate calls whose model
+                                      prompt got the caption + cue; insight tasks only)
+  --lingbot-if-repeat-check           if_repeat=on, if_repeat_checks (IF decisions that got the repeat reminder)
+  --lingbot-if-slow-translation       if_slow=on, if_translation_frames (IF session frames whose W/S/A/D
+                                      translation was halved)
 
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
@@ -90,14 +102,18 @@ class FlagStats:
 
     def if_camera_hint(self):
         self.if_camera_hints += 1
+
     def history_removed(self, n):
-        self.player_frames_removed += n
+        self.player_frames_removed += int(n)
+
     def director_prompt(self, used):
         self.insight_director_prompts += int(used)
+
     def if_repeat_hint(self):
         self.if_repeat_checks += 1
+
     def if_scaled(self, n):
-        self.if_translation_frames += n
+        self.if_translation_frames += int(n)
 
     def hint(self):
         self.player_hints += 1
@@ -130,7 +146,7 @@ class FlagStats:
 
     def summary(self, task_id) -> dict:
         if self.prompt_mode == "goal":
-            caption = "off"
+            caption = "director" if self.insight_director and self.insight_director_prompts else "off"
         elif self.caption_fallback:
             caption = "fallback"
         else:

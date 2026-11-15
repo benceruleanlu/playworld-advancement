@@ -26,19 +26,20 @@ def test_scope_and_only_input_fields(category):
     task = {"task_id": "OE035", "sub_category": category, "image_caption": " Workers  lift a frame. ",
             "questions": [{"question": "DO NOT SEND"}], "oe_dynamicity_policy": "DO NOT SEND"}
     record(task)
-    actual = prompts.directed_insight("wait and observe", "existing model text", "OE035_chunk_01")
+    actual = prompts.directed_insight("existing model text", "OE035_chunk_01")
     if category == "insight evolution":
-        assert actual == "Workers lift a frame.\nTask: wait and observe\n" + prompts.INSIGHT_DIRECTION
+        # the cue alone on top of the caption: no "Task: <goal>" line (the goal is the player's "wait and observe")
+        assert actual == "Workers lift a frame.\n" + prompts.INSIGHT_DIRECTION
     else:
         assert actual == "existing model text"
     assert "DO NOT SEND" not in actual and task["image_caption"].startswith(" ")
-    assert prompts.directed_insight("goal", "existing", "OE034_chunk_01") == "existing"
+    assert prompts.directed_insight("existing", "OE034_chunk_01") == "existing"
 
 
 def test_missing_caption_and_task_are_noops():
-    assert prompts.directed_insight("goal", "existing", "OE001_chunk_01") == "existing"
+    assert prompts.directed_insight("existing", "OE001_chunk_01") == "existing"
     record({"task_id": "OE001", "sub_category": "insight evolution"})
-    assert prompts.directed_insight("goal", "existing", "OE001_full") == "existing"
+    assert prompts.directed_insight("existing", "OE001_full") == "existing"
 
 
 @pytest.mark.parametrize("session", [False, True])
@@ -56,7 +57,10 @@ def test_engine_gets_fixed_text_and_counts(monkeypatch, enabled, mode, session):
         assert engine.generate("image.jpg", "wait and observe", "none-33", ".", name, 33) == "video.mp4"
     assert calls[0][1] == calls[1][1]
     assert (prompts.INSIGHT_DIRECTION in calls[0][1]) == enabled
-    assert "wait and observe" in calls[0][1]
+    if enabled:
+        assert calls[0][1] == "Workers lift a frame.\n" + prompts.INSIGHT_DIRECTION
+    else:
+        assert calls[0][1] == "wait and observe"
     summary = stats.finish_task("OE035")
     assert summary.get("insight_director_prompts", 0) == (2 if enabled else 0)
     stats.new_task()
