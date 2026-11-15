@@ -52,13 +52,15 @@
   // ended without a result: failed, cancelled, or a stale running row. Hidden by default.
   function isEnded(r) { return isLive(r) && (r.status === "failed" || r.status === "cancelled" || isStale(r)); }
   function isOpen(r) { return r.action_source === "dataset"; }
-  function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
+  // scripted player (--lingbot-scripted-player): closed-loop harness but moves replayed from the dataset, no AI player; A/B only
+  function isScripted(r) { return /scripted player/i.test(r.notes || ""); }
+  function isClosed(r) { return (r.action_source === "agent" || r.action_source === "refined") && !isScripted(r); }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
   // capped smoke tier, a behaviour check only: each rollout was cut to fewer agent chunks than the official 30 (csv max_chunks, or for rows from
   // before that column an smk-/smkNN- name or notes saying capped smoke); never comparable to a real score
   function isCapped(r) { return (typeof r.max_chunks === "number" && r.max_chunks > 0) || /^smk\d*-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
   // real run too small to estimate a score: fewer than a dev split of tasks, or a single verifier pass
-  function isSmoke(r) { return !isTest(r) && (isCapped(r) || (r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
+  function isSmoke(r) { return !isTest(r) && (isCapped(r) || isScripted(r) || (r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   function fmtTime(t) {
@@ -211,6 +213,7 @@
       text: isStale(r) ? "! no result, stale" : r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status + ", no result" }));
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
     if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "The moves were replayed from the dataset instead of chosen by the AI player. Fine for quick tests, never for final scores.", text: "replayed moves, test only" }));
+    else if (isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "The scripted player replayed the dataset moves chunk by chunk; no AI player chose them. For A/B of model-side changes only, never a final score.", text: "scripted moves, test only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", title: "An AI player chose every move while the world was being generated (closed loop).", text: "AI played" }));
     if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run from branch " + r.branch + ". The code behind this score is not merged into main yet.", text: "code not merged" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
@@ -218,7 +221,7 @@
       ? "Each rollout was cut to " + r.max_chunks + " agent chunks instead of 30. A fast smoke check, never comparable to a real score."
       : "Capped smoke run: rollouts stop early, on a few chosen tasks. A behaviour check only, not comparable with official scores.",
       text: typeof r.max_chunks === "number" && r.max_chunks > 0 ? "capped smoke, " + r.max_chunks + " chunks" : "capped smoke" }));
-    else if (isSmoke(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: a quick check that the pipeline works, too small to estimate a score.", text: "tiny test run" }));
+    else if (isSmoke(r) && !isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: a quick check that the pipeline works, too small to estimate a score.", text: "tiny test run" }));
     return b;
   }
   function sortVal(r, k) {
@@ -1267,7 +1270,7 @@
   // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
   function shareData() {
     window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
-      isCapped: isCapped, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
+      isCapped: isCapped, isScripted: isScripted, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
     document.dispatchEvent(new CustomEvent("pwa:data"));
   }
 })();
