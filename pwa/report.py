@@ -74,12 +74,18 @@ def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = N
         vals = [r["value"] for r in rows]
         reasons = [pass_reason(exp, t["task_id"], k, judge) for k in passes]
         i = representative(vals, reasons, m)
+        # a pass that failed (gate, IF/OE check, error) keeps its own reason next to the representative one, so a
+        # failure status is never shown with only a passing pass's comment
+        j = next((n for n, r in enumerate(rows) if r["status"] != "ok" and reasons[n]), None)
+        j = None if j == i else j
         tasks[t["task_id"]] = {"family": t["family"], "mean": m, "std": s,
                                "statuses": [r["status"] for r in rows], "values": vals,
                                # per-pass task values (the ones the mean is taken over) and the reason of the pass
                                # closest to the mean, so the comment shown matches the score shown
                                "pass_scores": vals, "reason": reasons[i] if i is not None else "",
-                               "reason_pass": passes[i] if i is not None else None}
+                               "reason_pass": passes[i] if i is not None else None,
+                               "fail_reason": reasons[j] if j is not None else "",
+                               "fail_pass": passes[j] if j is not None else None}
     return {"exp": exp, "generated": now(), "passes": passes, "strict": strict, "n_tasks": len(sel),
             "n_missing": len(sel) - len(present), "families": fams, "overall": om, "overall_std": os_,
             "overall_per_pass": overall_vals, "per_pass": {str(k): {kk: v for kk, v in p.items() if kk != "tasks"}
@@ -227,9 +233,22 @@ def reason_md(r: dict) -> str:
     original alone."""
     orig, en = r.get("reason") or "", r.get("reason_en") or ""
     if not en:
-        return _md_cell(orig)
-    esc = lambda x: _md_cell(html.escape(x, quote=False))  # noqa: E731  (inside HTML tags)
-    return f"{esc(en)}<details><summary>judge's original</summary>{esc(orig)}</details>"
+        out = _md_cell(orig)
+    else:
+        out = f"{_md_esc(en)}<details><summary>judge's original</summary>{_md_esc(orig)}</details>"
+    if r.get("fail_reason"):
+        # the failing pass's own reason, when the representative pass is a different one
+        st = ", ".join(s for s in r.get("status") or [] if s != "ok") or "failed"
+        fen = r.get("fail_reason_en") or ""
+        body = (f"{_md_esc(fen)}<details><summary>judge's original</summary>{_md_esc(r['fail_reason'])}</details>"
+                if fen else _md_esc(r["fail_reason"]))
+        out += f"<br>pass {r.get('fail_pass')} {_md_esc(st)}: {body}"
+    return out
+
+
+def _md_esc(x: str) -> str:
+    """A markdown table cell that sits inside HTML tags."""
+    return _md_cell(html.escape(x, quote=False))
 
 
 def render_failures_md(rows: list[dict]) -> str:
@@ -239,7 +258,7 @@ def render_failures_md(rows: list[dict]) -> str:
     for r in rows:
         out.append(f"| {r['task_id']} | {r['family']} | {_md2(r['mean'])} | {passes_cell(r.get('pass_scores'))} "
                    f"| {_md_cell(', '.join(r['status']))} | {reason_md(r)} |")
-    if any(r.get("reason_en") for r in rows):
+    if any(r.get("reason_en") or r.get("fail_reason_en") for r in rows):
         out += ["", "> Reasons are machine-translated into English for display after scoring; the judge's original "
                 "text (under each) is authoritative."]
     return "\n".join(out) + "\n"
@@ -468,11 +487,13 @@ def add_english(exp: str, rows: list[dict], judge: Judge | None = None) -> None:
     raises and never changes a score or the original reason."""
     from . import translate
     try:
-        translate.fill(rows, translations_path(exp, judge))
+        for field in translate.FIELDS:
+            translate.fill(rows, translations_path(exp, judge), field=field)
     except Exception as e:  # noqa: BLE001
         log(f"[pwa] translate: skipped ({type(e).__name__})")
         for r in rows:
-            r.setdefault("reason_en", "")
+            for field in translate.FIELDS:
+                r.setdefault(field + "_en", "")
 
 
 def failures(exp: str, sel: list[dict], all_tasks: bool = False, judge: Judge | None = None,
@@ -494,7 +515,8 @@ def failures(exp: str, sel: list[dict], all_tasks: bool = False, judge: Judge | 
             continue
         status = sorted(set(bad)) or (["score_1.0"] if low else ["ok"])
         out.append({"task_id": tid, "family": t["family"], "mean": tr["mean"], "status": status,
-                    "pass_scores": tr["pass_scores"], "reason": tr["reason"], "reason_pass": tr["reason_pass"]})
+                    "pass_scores": tr["pass_scores"], "reason": tr["reason"], "reason_pass": tr["reason_pass"],
+                    "fail_reason": tr["fail_reason"], "fail_pass": tr["fail_pass"]})
     if english and out:
         add_english(exp, out, judge)
     return out

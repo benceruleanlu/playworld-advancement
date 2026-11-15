@@ -29,23 +29,33 @@
   }
   // The judge's reason: the English display copy (translated after scoring) with a toggle for the judge's original,
   // which is authoritative; the original alone, marked untranslated, when no copy exists.
+  // A failing pass (gate, IF/OE check, error) that is not the representative one keeps its own reason under it.
   function judgeComment(t, open) {
     if (!t.reason) return null;
     var attrs = open ? { open: "" } : null;
+    var failSt = (t.status || []).filter(function (s) { return s !== "ok"; }).join(", ") || "failed";
+    var failHead = t.fail_reason ? "Pass " + (t.fail_pass === null || t.fail_pass === undefined ? "?" : t.fail_pass) + " (" + failSt + "): " : "";
     if (t.reason_en) {
-      var orig = el("p", { class: "jorig", text: t.reason });
-      orig.hidden = true;
+      var origs = [el("p", { class: "jorig", text: t.reason })];
+      var kids = [el("summary", { text: "Judge's comment (translated from the judge's original)" }), el("p", { text: t.reason_en })];
+      if (t.fail_reason) {
+        kids.push(el("p", { class: "jfail", text: failHead + (t.fail_reason_en || t.fail_reason) }));
+        if (t.fail_reason_en) origs.push(el("p", { class: "jorig", text: failHead + t.fail_reason }));
+      }
+      origs.forEach(function (o) { o.hidden = true; });
       var btn = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
       btn.addEventListener("click", function () {
-        orig.hidden = !orig.hidden;
-        btn.textContent = orig.hidden ? "show original" : "hide original";
-        btn.setAttribute("aria-expanded", orig.hidden ? "false" : "true");
+        var hide = !origs[0].hidden;
+        origs.forEach(function (o) { o.hidden = hide; });
+        btn.textContent = hide ? "show original" : "hide original";
+        btn.setAttribute("aria-expanded", hide ? "false" : "true");
       });
-      return el("details", attrs, [el("summary", { text: "Judge's comment (translated from the judge's original)" }),
-        el("p", { text: t.reason_en }), btn, orig]);
+      return el("details", attrs, kids.concat([btn]).concat(origs));
     }
-    return el("details", attrs, [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason }),
-      el("p", { class: "jnote", text: "judge's own words, untranslated" })]);
+    var plain = [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })];
+    if (t.fail_reason) plain.push(el("p", { class: "jfail", text: failHead + t.fail_reason }));
+    plain.push(el("p", { class: "jnote", text: "judge's own words, untranslated" }));
+    return el("details", attrs, plain);
   }
   function passesText(t) {
     var ps = t.pass_scores || [];

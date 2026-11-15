@@ -14,15 +14,21 @@ ZH = ["主体静止不动", "镜头没有回到起点", "场景保持一致"]
 
 class Fake:
     """(model, prompt) -> JSON array reply; records each call's input strings."""
-    def __init__(self, fail=False, reply=None):
-        self.calls, self.fail, self.reply = [], fail, reply
+    def __init__(self, fail=False, reply=None, reverse=False):
+        self.calls, self.fail, self.reply, self.reverse = [], fail, reply, reverse
 
     def __call__(self, model, prompt):
-        items = json.loads(prompt[len(translate.PROMPT):])
+        objs = json.loads(prompt[len(translate.PROMPT):])
+        items = [o["text"] for o in objs]
         self.calls.append((model, items))
         if self.fail:
             raise OSError("network down")
-        return self.reply if self.reply is not None else json.dumps([f"EN<{x}>" for x in items], ensure_ascii=False)
+        if self.reply is not None:
+            return self.reply
+        out = [{"id": o["id"], "en": f"EN<{o['text']}>"} for o in objs]
+        if self.reverse:  # right count, right ids, reversed order: must still map by id
+            out = out[::-1]
+        return json.dumps(out, ensure_ascii=False)
 
 
 @pytest.fixture(autouse=True)
@@ -73,11 +79,19 @@ def test_model_env_override(monkeypatch):
     assert fake.calls[0][0] == "small-model"
 
 
-@pytest.mark.parametrize("fake", [Fake(fail=True), Fake(reply="not json"), Fake(reply='["only one"]')])
+@pytest.mark.parametrize("fake", [Fake(fail=True), Fake(reply="not json"), Fake(reply='["only one"]'),
+                                  Fake(reply='["a", "b", "c"]'),  # bare strings: not matched by id
+                                  Fake(reply='[{"id": 0, "en": "a"}, {"id": 0, "en": "b"}, {"id": 2, "en": "c"}]'),
+                                  Fake(reply='[{"id": 0, "en": "a"}, {"id": 1, "en": "b"}]')])
 def test_errors_give_no_translation(tmp_path, fake):
     cache = tmp_path / "t.json"
     assert translate.translate(ZH, cache, fake) == {}
     assert not cache.exists()
+
+
+def test_reordered_reply_maps_by_id():
+    # right count and ids in reverse order: each source keeps its own translation
+    assert translate.translate(["甲", "乙"], None, Fake(reverse=True)) == {"甲": "EN<甲>", "乙": "EN<乙>"}
 
 
 def test_no_key_no_call():
@@ -174,18 +188,30 @@ def test_translate_media_fills_in_place(tmp_path):
     assert json.loads((tmp_path / "index.json").read_text()) == {"runs": []}
     # all manifests, failing client: nothing changes, no error
     snap = {p.name: p.read_text() for p in tmp_path.iterdir()}
-    translate.translate_media(tmp_path, None, Fake(fail=True))
+    stats = {}
+    translate.translate_media(tmp_path, None, Fake(fail=True), stats=stats)
     assert {p.name: p.read_text() for p in tmp_path.iterdir()} == snap
+    assert stats == {"pending": 1, "untranslated": 1}  # only c's reason is still pending
 
 
-def test_translate_media_cli_without_key_is_a_no_op(tmp_path):
+def test_translate_media_fills_fail_reason(tmp_path):
+    _manifest(tmp_path / "a.json", [{"task_id": "GC005", "reason": ZH[0], "fail_reason": ZH[1], "fail_pass": 1}])
+    stats = {}
+    assert translate.translate_media(tmp_path, None, Fake(), stats=stats) == {"a": 2}
+    t = json.loads((tmp_path / "a.json").read_text())["tasks"][0]
+    assert t["reason_en"] == f"EN<{ZH[0]}>" and t["fail_reason_en"] == f"EN<{ZH[1]}>"
+    assert stats == {"pending": 2, "untranslated": 0}
+
+
+def test_translate_media_cli_without_key_changes_nothing_and_fails(tmp_path):
     _manifest(tmp_path / "a.json", [{"task_id": "GC005", "reason": ZH[0]}])
     before = (tmp_path / "a.json").read_text()
     env = {k: v for k, v in __import__("os").environ.items() if k != "GEMINI_API_KEY"}
     r = subprocess.run([sys.executable, "-m", "pwa.cli", "translate-media", "--dir", str(tmp_path), "--exps", "all",
                         "--json"], cwd=ROOT, env=env, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
+    assert r.returncode == 1, r.stderr  # a backfill that translated nothing fails
     assert json.loads(r.stdout) == {"a": 0} and (tmp_path / "a.json").read_text() == before
+    assert "1 of 1 reason(s) left untranslated" in r.stderr
 
 
 def test_media_manifest_carries_pass_scores_and_reason_en(tmp_path, monkeypatch):

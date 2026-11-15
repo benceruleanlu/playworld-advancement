@@ -137,10 +137,14 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
             video, poster = base_url + f"{tid}.mp4", base_url + f"{tid}.jpg"
         status = r.get("status") or (["not scored"] if video else ["missing"])
         # reason: from the pass closest to the task's mean; reason_en: its English display copy (translated after
-        # scoring, '' when untranslated); pass_scores: the per-pass task values the mean is taken over
+        # scoring, '' when untranslated); fail_reason: a failing pass's own reason when it is not the
+        # representative one; pass_scores: the per-pass task values the mean is taken over
         tasks.append({"task_id": tid, "family": t["family"], "mean": r.get("mean") if scored else None, "status": status,
                       "pass_scores": r.get("pass_scores") or [] if scored else [],
                       "reason": r.get("reason", "") if scored else "", "reason_en": r.get("reason_en", "") if scored else "",
+                      "fail_reason": r.get("fail_reason", "") if scored else "",
+                      "fail_pass": r.get("fail_pass") if scored else None,
+                      "fail_reason_en": r.get("fail_reason_en", "") if scored else "",
                       "video": video, "poster": poster})
     if scored:
         add_english(exp, tasks)

@@ -185,6 +185,7 @@ tr.skrow td { padding: 9px; border-bottom: 1px solid var(--grid); }
 .scene details .jnote, .cvslot details .jnote { font-style: italic; }
 .jtoggle { font: inherit; font-size: 12px; color: var(--link); background: transparent; border: 0; padding: 4px 0 0; cursor: pointer; text-decoration: underline; }
 .jorig[hidden] { display: none; }
+.jorig::before { content: "Original: "; font-weight: 600; }
 .scnote { font-size: 12px; color: var(--ink2); margin: 10px 0 0; max-width: 90ch; }
 .scene .sclink { font-size: 12px; }
 .sclabels { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }

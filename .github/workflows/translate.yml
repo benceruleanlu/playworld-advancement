@@ -46,6 +46,8 @@ jobs:
           # the cache keeps a push retry from calling the API again for strings already translated
           .github/scripts/push_results.sh "results: English judge comments ($EXPS_IN)" '
             pwa translate-media --dir "$MAIN_DIR/results/media" --exps "$EXPS_IN" \
-              --cache "$RUNNER_TEMP/translations.json" | tee -a "$GITHUB_STEP_SUMMARY"
+              --cache "$RUNNER_TEMP/translations.json" > "$RUNNER_TEMP/translate.txt"
             other=$(git -C "$MAIN_DIR" status --porcelain -- results | grep -v " results/media/" || true)
             [[ -z "$other" ]] || { echo "unexpected change outside results/media: $other" >&2; exit 1; }'
+          # written once, after the push loop, so a push retry does not repeat the lines
+          cat "$RUNNER_TEMP/translate.txt" >> "$GITHUB_STEP_SUMMARY"

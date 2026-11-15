@@ -24,10 +24,10 @@ from .core import log
 
 DEFAULT_MODEL = "gemini-4-hydrogen"
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-BATCH = 100  # strings per call; a full 171-task run is two calls
-PROMPT = ("Translate each string in the JSON array below into plain English. They are a video judge's comments "
-          "on generated video clips. Keep task ids, numbers and scores as they are. Return only a JSON array of "
-          "strings with exactly one English string per input, in the same order.\n\n")
+BATCH = 25  # strings per call; a bad reply loses at most one batch
+PROMPT = ("Translate the \"text\" of each object in the JSON array below into plain English. They are a video "
+          "judge's comments on generated video clips. Keep task ids, numbers and scores as they are. Return only a "
+          "JSON array of objects {\"id\": <same id>, \"en\": <English>}, exactly one per input object.\n\n")
 
 Client = Callable[[str, str], str]  # (model, prompt) -> response text
 
@@ -68,14 +68,26 @@ def default_client() -> Client | None:
     return gemini_client(k) if k and enabled() else None
 
 
+def request(chunk: list[str]) -> str:
+    """The prompt for one batch: each source string carries an id, so the reply is matched by id, not order."""
+    return PROMPT + json.dumps([{"id": n, "text": t} for n, t in enumerate(chunk)], ensure_ascii=False)
+
+
 def _parse(reply: str, n: int) -> list[str]:
+    """English strings in input order. Raises unless the reply has exactly the ids 0..n-1, once each, so a
+    reordered, merged or split reply never attaches one task's translation to another."""
     s = reply.strip()
     if s.startswith("```"):
         s = s.strip("`").removeprefix("json").strip()
     out = json.loads(s)
-    if not isinstance(out, list) or len(out) != n or not all(isinstance(x, str) for x in out):
-        raise ValueError(f"expected a JSON array of {n} strings")
-    return [x.strip() for x in out]
+    if not isinstance(out, list) or not all(
+            isinstance(o, dict) and type(o.get("id")) is int and isinstance(o.get("en"), str) for o in out):
+        raise ValueError("expected a JSON array of {id, en} objects")
+    ids = [o["id"] for o in out]
+    if sorted(ids) != list(range(n)):
+        raise ValueError(f"expected ids 0..{n - 1} once each")
+    by_id = {o["id"]: o["en"].strip() for o in out}
+    return [by_id[i] for i in range(n)]
 
 
 def load_cache(path: Path | None) -> dict:
@@ -120,7 +132,7 @@ def translate(texts: Iterable[str], cache_path: Path | None = None, client: Clie
     for i in range(0, len(todo), BATCH):
         chunk = todo[i:i + BATCH]
         try:
-            en = _parse(client(mid, PROMPT + json.dumps(chunk, ensure_ascii=False)), len(chunk))
+            en = _parse(client(mid, request(chunk)), len(chunk))
         except Exception as e:  # noqa: BLE001  (display only: any failure leaves the original text)
             log(f"[pwa] translate: {len(chunk)} reason(s) left untranslated ({type(e).__name__})")
             continue
@@ -151,10 +163,14 @@ def fill(rows: list[dict], cache_path: Path | None = None, client: Client | None
     return n
 
 
+FIELDS = ("reason", "fail_reason")  # each gets an English copy in FIELD_en
+
+
 def translate_media(media_dir: Path, exps: list[str] | None = None, client: Client | None = None,
-                    cache_path: Path | None = None) -> dict:
-    """Fill missing reason_en fields in media_dir/EXP.json manifests in place (all, or just exps). Only the
-    reason_en fields change; every other byte of meaning stays. Returns {exp: n_added}."""
+                    cache_path: Path | None = None, stats: dict | None = None) -> dict:
+    """Fill missing reason_en / fail_reason_en fields in media_dir/EXP.json manifests in place (all, or just exps).
+    Only those fields change; every other byte of meaning stays. Returns {exp: n_added}. When stats is given it
+    gets "pending" (strings that needed a translation) and "untranslated" (of those, how many got none)."""
     media_dir = Path(media_dir)
     names = sorted(p for p in media_dir.glob("*.json") if p.name != "index.json")
     if exps:
@@ -171,16 +187,19 @@ def translate_media(media_dir: Path, exps: list[str] | None = None, client: Clie
         tasks = man.get("tasks") if isinstance(man, dict) else None
         if isinstance(tasks, list):
             mans[p] = (man, [t for t in tasks if isinstance(t, dict)])
-    pending = [t["reason"] for _, rows in mans.values() for t in rows
-               if needs_translation(t.get("reason") or "") and not t.get("reason_en")]
-    tr = translate(pending, cache_path, client) if pending else {}  # one batched call across every manifest
+    pending = list(dict.fromkeys(t[f] for _, rows in mans.values() for t in rows for f in FIELDS
+                                 if needs_translation(t.get(f) or "") and not t.get(f + "_en")))
+    tr = translate(pending, cache_path, client) if pending else {}  # batched calls across every manifest
+    if stats is not None:
+        stats.update(pending=len(pending), untranslated=sum(1 for x in pending if x not in tr))
     done = {}
     for p, (man, rows) in mans.items():
         n = 0
         for t in rows:
-            if not t.get("reason_en") and tr.get(t.get("reason") or ""):
-                t["reason_en"] = tr[t["reason"]]
-                n += 1
+            for f in FIELDS:
+                if not t.get(f + "_en") and tr.get(t.get(f) or ""):
+                    t[f + "_en"] = tr[t[f]]
+                    n += 1
         if n:
             tmp = p.with_name(p.name + ".tmp")
             tmp.write_text(json.dumps(man, indent=1, ensure_ascii=False) + "\n")

@@ -434,8 +434,14 @@ def dispatch(a) -> int:  # noqa: C901
         if not d.is_dir():
             raise PwaError(f"{d} is not a directory")
         exps = [x.strip() for x in a.exps.split(",") if x.strip() and x.strip() != "all"]
-        done = translate.translate_media(d, exps or None, cache_path=Path(a.cache) if a.cache else None)
+        stats: dict = {}
+        done = translate.translate_media(d, exps or None, cache_path=Path(a.cache) if a.cache else None, stats=stats)
         emit(done, a.json, "\n".join(f"{k}\t{v} reason(s) translated" for k, v in done.items()) or "(no manifests)")
+        if stats.get("untranslated"):
+            log(f"[pwa] translate-media: {stats['untranslated']} of {stats['pending']} reason(s) left untranslated")
+        # a backfill that translated nothing it was asked to is a failure (report and media never fail on this)
+        if stats.get("pending") and stats.get("untranslated") == stats["pending"]:
+            return 1
         return 0
 
     if a.cmd == "failures":
