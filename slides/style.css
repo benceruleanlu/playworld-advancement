@@ -1,0 +1,6 @@
+/* Deck-wide sizes: sentence-length titles and dense tables need to fit 980x552. */
+.slidev-layout h1 { font-size: 1.9rem; line-height: 1.2; margin-bottom: 0.6rem; }
+.slidev-layout table { font-size: 0.8rem; }
+.slidev-layout th, .slidev-layout td { padding: 0.25rem 0.5rem; }
+.slidev-layout.cover h1 { font-size: 2.6rem; line-height: 1.15; }
+.slidev-layout.cover p { opacity: 0.9; }
