@@ -69,7 +69,7 @@ def test_flag_defaults_and_per_arm_reset(monkeypatch):
         R.configure([flag, "--lingbot-stateless"], {})
     monkeypatch.delenv("LINGBOT_GC_EASE_TURNS", raising=False)
     monkeypatch.setattr(R, "import_run_agent", lambda **kw: SimpleNamespace(run_task=lambda *a: None, main=lambda: 0))
-    monkeypatch.setattr(R.agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(R.agent_api, "patch", lambda *a: "test")
     monkeypatch.setattr(sys, "argv", ["run.py"])
     assert R.main(["run.py", flag]) == 0 and R.GC_EASE_TURNS
     assert R.main(["run.py"]) == 0 and not R.GC_EASE_TURNS and not R.STATS.gc_ease_turns
