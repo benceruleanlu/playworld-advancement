@@ -308,7 +308,7 @@ import * as RunInfo from "./runinfo.js";
     return best;
   }
   // runs whose AI player differs from every run compared since
-  var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "Older AI player than every run compared since, so this is a diagnostic, not the starting-model number." };
+  var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "Older AI player than later runs. Diagnostic only." };
   function renderStatus() {
     var box = $("status"), fin = bestFinal(), shown = fin || bestClosed();
     box.className = "scorecard card" + (fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD) ? " ok" : "");
@@ -326,16 +326,16 @@ import * as RunInfo from "./runinfo.js";
       if (shown.n_missing || shown.n_dropped) badge("bad", "tasks unscored"); else if (shown.n_missing === 0 && shown.n_dropped === 0) badge("ok", "every task scored");
       if (shown.branch && shown.branch !== "main") badge("warn", "code not merged");
       box.appendChild(b);
-      box.appendChild(el("p", { class: "vs" }, [el("b", { text: shown.exp }), document.createTextNode(shown.notes ? ": " + shown.notes : "")]));
+      box.appendChild(el("p", { class: "vs" }, [el("code", { class: "rawid", text: shown.exp })]));
       if (PLAYER_NOTE[shown.exp]) box.appendChild(el("p", { class: "vs", text: PLAYER_NOTE[shown.exp] }));
     } else box.appendChild(el("p", { class: "vs", text: "No run big enough to estimate a score yet (24 or more tasks, 2 or more judge passes)." }));
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
-    box.appendChild(el("p", { class: "vs", text: "Paper, all 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
+    box.appendChild(el("p", { class: "vs", text: "Paper, 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
   }
   function renderFull() {
     var full = realRows().filter(function (r) { return isFull(r) && r.overall !== null; });
     var most = 0; realRows().forEach(function (r) { if (r.overall !== null && r.n_tasks > most) most = r.n_tasks; });
-    $("full").textContent = full.length ? "" : "No full-benchmark score exists yet: every scored run so far covers at most " + most + " of the " + FULL_TASKS + " tasks, so none compares directly with the paper rows.";
+    $("full").textContent = full.length ? "" : "No " + FULL_TASKS + "-task score yet. Scored runs cover at most " + most + " tasks, so none compares directly with the paper rows.";
     $("full").hidden = !!full.length;
   }
   function renderRuler() {
@@ -403,10 +403,10 @@ import * as RunInfo from "./runinfo.js";
   /* ---------- story content (edit here as work lands) ---------- */
   var PR = "https://github.com/" + REPO + "/pull/";
   var FAMINFO = {
-    gc: { name: "Geometry consistency", q: "layout holds as the camera moves" },
-    if: { name: "Interaction fidelity", q: "each action does what was asked" },
-    insight: { name: "Insight evolution", q: "an on-screen process keeps going" },
-    outsight: { name: "Out-of-sight evolution", q: "hidden things change sensibly" }
+    gc: { name: "Geometry consistency", q: "layout holds as the camera moves", ask: "Move the camera away and back. Is the place still the same place?" },
+    if: { name: "Interaction fidelity", q: "each action does what was asked", ask: "Press a key. Does the subject do what was asked, with real contact?" },
+    insight: { name: "Insight evolution", q: "an on-screen process keeps going", ask: "Wait and watch. Does a process on screen keep going sensibly?" },
+    outsight: { name: "Out-of-sight evolution", q: "hidden things change sensibly", ask: "Look away, then back. Did the hidden part of the world move on sensibly?" }
   };
   // group: now (model-side A/B) | parked (player-side, tried) | cand (merged or proposed, unscored)
   // arms: [label, exp] pairs read from results/experiments.csv; the first is the control. cells: per-task readout from results/reports/.
@@ -528,49 +528,48 @@ import * as RunInfo from "./runinfo.js";
   // kind "note": text and a scene only. watch: { task, b: control, c: treatment } for the compare player; scene: [exp, task].
   // say: the one line the tour bar shows. Every number in body or say must be in results/ or research/.
   var STORY = [
-    { id: "player", kind: "note", kicker: "Starting point", title: "With an AI player, the player decides most camera tasks",
-      body: "In our 24-task baseline the player reversed direction 9 to 17 times on every out-of-sight task and 25 times on GC036. On 4 of 6 out-of-sight tasks the camera never came back to the start view, so there was nothing for the judge to grade. We therefore test model-side changes with fixed action scripts, and keep the AI player for final scores.",
-      say: "The baseline player turned left and right for the whole rollout. Model-side tests use fixed moves instead.",
-      scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch the baseline player on GC036",
+    { id: "player", kind: "note", title: "The AI player decides most camera tasks",
+      body: "In the 24-task baseline the AI player reversed direction 9 to 17 times per out-of-sight task and 25 times on GC036. On 4 of 6 out-of-sight tasks the camera never returned, so the judge had nothing to grade. Model-side tests therefore use fixed moves.",
+      say: "The baseline player turned left and right for the whole rollout.",
+      scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch GC036",
       links: [["baseline census", BLOB + "research/baseline-census.md"]] },
-    { id: "noise", kind: "repeat", kicker: "Noise floor", title: "The same settings, scored three times, do not give the same score",
-      body: "Three control arms ran the same flags and the same fixed action scripts. Generation is deterministic, so the judge saw the same video each time, and the per-task means over four passes still differ. So a task counts as moved only at a full point, and a change is adopted only if the gain repeats on a second seed.",
-      say: "Three identical controls disagree. That sets the bar: a full point, twice.",
+    { id: "noise", kind: "repeat", title: "Same video, three scorings, different scores",
+      body: "Three controls with identical settings produce the same video. Their 4-pass means still differ, so a task counts as moved only at a full point, repeated on a second seed.",
+      say: "Identical controls disagree. The bar is a full point, twice.",
       runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
-      watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" }, watchLabel: "Watch two identical controls on OE047" },
-    { id: "turncal", kicker: "Camera", title: "Given correct moves, calibrated turns lifted two GC tasks by more than a point",
-      body: "The task prompts name angles (a turn key is 22.5 degrees) but the model's default rate turns 34. With dataset moves replayed and the rate calibrated, GC031 and GC036 moved up. In the separate 24-task A/B the same two tasks moved by 0.35 and 0.80, under the bar, so this is not adopted.",
-      say: "Calibrated turns: two tasks up on one run, under the bar on the second.",
+      watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" } },
+    { id: "turncal", title: "Calibrated turns lifted two GC tasks, once",
+      body: "Task prompts name 22.5 degrees per turn key; the model's default turns 34. With the rate calibrated, GC031 and GC036 gained more than a point. On a second run they gained 0.35 and 0.80. Not adopted.",
+      say: "Two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", kind: "repeat", kicker: "A test that did not run", title: "Our pose memory never fired in its first run, and its score still moved",
-      body: "Pose memory re-inserts an earlier view into the model's attention when the camera comes back to it. In the first run it never inserted anything and no frame changed, so the memory arm is the control scored again. One task still moved 1.3 points and failed a gate. There is no pose-memory result yet; a fixed version is being rerun.",
-      say: "Our own memory mechanism never fired. The flag counters caught it; the scores alone would have looked like an effect.",
-      runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Mean of the official judge's passes per task. The memory arm changed no frame, so both columns score the same video.",
+    { id: "memory", kind: "repeat", title: "Pose memory never fired, and the score still moved",
+      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and no frame changed, yet GC036 moved 1.3 points and failed a gate. A fixed version is being rerun.",
+      say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
+      runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
-    { id: "sink", kicker: "Negative result", title: "Damping attention to the opening frames made out-of-sight worse",
-      body: "Hypothesis: the pinned opening frames pull the scene back to its first state when the camera returns, which the rubric scores lowest. Turning their attention down lowered out-of-sight in all three arms. That fits the opposite reading: a return to the start view is served by those frames. Dropped.",
-      say: "A hypothesis that failed: every arm scored lower than control.",
+    { id: "sink", title: "Turning down the opening frames made out-of-sight worse",
+      body: "We expected the pinned opening frames to reset the scene when the camera returns. Turning their attention down lowered every arm, so returns appear to depend on them. Dropped.",
+      say: "A hypothesis that failed. Every arm scored below control.",
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
       watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
-    { id: "insight", kicker: "Insight", title: "Does the scene caption wake up a static scene?", pending: true,
-      body: "Insight tasks tell the player to wait and observe, and the model receives that sentence as its text prompt. In the baseline, four of six insight rollouts were flagged static. This A/B gives the model the task's scene caption instead, with and without a fixed activity cue.",
-      say: "Insight: the model was being prompted with \"wait and observe\". This A/B swaps in the scene caption.",
+    { id: "insight", title: "Does the scene caption wake up a static scene?", pending: true,
+      body: "Insight tasks prompt the model with \"wait and observe\", and four of six baseline rollouts were flagged static. This A/B prompts with the scene caption instead.",
+      say: "The model was being prompted with \"wait and observe\".",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
-      watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } }
-    ,{ id: "window", kicker: "Second seed", title: "Does a larger attention cache help the camera come back?", pending: true,
-      body: "On the first seed, three arms with a larger cache scored OE039 between 3.0 and 3.1, against 1.25 to 2.0 for three controls, and two of the three lost more than a point on OE048. This run repeats the control and the larger cache on a second seed, which is what the adoption rule asks for.",
-      say: "One lead is being repeated on a second seed right now.",
+      watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
+    { id: "window", title: "Does a larger attention cache help the camera come back?", pending: true,
+      body: "On seed 0, three larger-cache arms scored OE039 at 3.0 to 3.1 against 1.25 to 2.0 for three controls, and two of them lost more than a point on OE048. This run repeats it on seed 1.",
+      say: "One lead, being repeated on a second seed.",
       ctl: "win14-fx-v1-a3", arms: [["larger cache", "win14-fx-v1-a4", "sink 10, cache 22, seed 1"]],
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
-    { id: "open", kind: "note", kicker: "Still open", title: "What this page cannot show yet",
-      body: "Reported as it stands, not as we hoped.",
-      say: "What is missing: a full 171-task score, and any change that repeats on two seeds.",
-      points: ["No score on all 171 tasks exists, for the starting model or for a method, so nothing here compares directly with the paper rows.",
-        "Every A/B above is one seed with fixed actions (open loop). None meets the adoption rule, which needs the AI player and two seeds.",
-        "Dropped as harmful or null: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads still standing: the caption prompt on insight, re-anchoring on GC (weak), pose memory (needs its rerun)."],
-      links: [["status in AGENTS.md", BLOB + "AGENTS.md#status-against-the-timeline"]] }
+    { id: "open", kind: "note", title: "Still open",
+      say: "No 171-task score yet, and nothing has repeated on two seeds.",
+      points: ["No 171-task score, for the starting model or for a method.",
+        "Every A/B here is one seed with fixed moves. Adoption needs the AI player and two seeds.",
+        "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
+        "Leads: caption prompt on insight, re-anchoring on GC (weak), pose memory (rerun pending)."],
+      links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
   var ADOPTED = [];
@@ -655,7 +654,7 @@ import * as RunInfo from "./runinfo.js";
         el("span", { class: t.down ? "bad" : "", text: t.down + " down" }), document.createTextNode(" of " + t.n + " task" + (t.n === 1 ? "" : "s"))]));
     });
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: "Mean of the official judge's passes per task. ▲ ▼ mark a move of a full point against control. Click a number to watch that pair." };
+      cap: "Judge's mean per task. ▲ ▼ a full point against control. Click a number to watch." };
   }
   // the same settings run several times: tasks at least two runs judged, and the spread between them
   function repeatEvidence(s) {
@@ -679,9 +678,9 @@ import * as RunInfo from "./runinfo.js";
       tb.appendChild(tr);
     });
     var sum = el("ul", { class: "tally" }, [el("li", null, [document.createTextNode("Largest spread "), el("b", { text: fmt(worst.sp) }),
-      document.createTextNode(" on " + worst.k + "; " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
+      document.createTextNode(" on " + worst.k + ". " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: s.cap || "Mean of the official judge's passes per task, for runs with identical settings." };
+      cap: s.cap || "Judge's mean per task. Identical settings in every column." };
   }
   function storyState(s) {
     if (s.kind === "note") return "ok";
@@ -703,12 +702,11 @@ import * as RunInfo from "./runinfo.js";
       var ev = st !== "ok" ? null : s.kind === "repeat" ? repeatEvidence(s) : s.kind === "note" ? null : abEvidence(s);
       var n = storyShown.length + 1;
       var text = el("div", { class: "st-text" }, [
-        el("p", { class: "st-kick" }, [el("span", { class: "st-n", text: String(n) }), document.createTextNode(s.kicker)]),
-        el("h3", { text: s.title }), el("p", { class: "st-body", text: s.body })]);
+        el("h3", null, [el("span", { class: "st-n", text: String(n) }), document.createTextNode(s.title)]), s.body ? el("p", { class: "st-body", text: s.body }) : null]);
       if (s.points) text.appendChild(el("ul", { class: "st-points" }, s.points.map(function (t) { return el("li", { text: t }); })));
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
-        var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task + " side by side" });
+        var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task });
         wb.addEventListener("click", function () { watch(s.watch); }); acts.appendChild(wb);
       }
       if (s.scene && MANS[s.scene[0]]) {
@@ -720,7 +718,7 @@ import * as RunInfo from "./runinfo.js";
       var side = el("div", { class: "st-ev" });
       if (ev) {
         side.appendChild(ev.table); side.appendChild(ev.sum);
-        side.appendChild(el("p", { class: "st-cap", text: ev.cap + (ev.gate ? " ✕ failed a gate in at least one pass." : "") }));
+        side.appendChild(el("p", { class: "st-cap", text: ev.cap + (ev.gate ? " ✕ gate failed in a pass." : "") }));
         var bd = el("div", { class: "badges" });
         var exps = s.kind === "repeat" ? s.runs.map(function (r) { return r[1]; }) : [s.ctl].concat(s.arms.map(function (a) { return a[1]; }));
         var rows = exps.map(rowByExp).filter(Boolean);
@@ -731,7 +729,7 @@ import * as RunInfo from "./runinfo.js";
         side.appendChild(bd);
       } else if (s.kind !== "note") {
         side.appendChild(el("p", { class: "st-pend" }, [el("span", { class: "badge " + (st === "running" ? "warn" : ""), text: st === "running" ? "running now" : st === "generated" ? "generated, not scored yet" : "loading scores" }),
-          document.createTextNode(" The per-task scores appear here when the official judge has scored every arm.")]));
+          document.createTextNode(" Scores appear here when the judge has scored every arm.")]));
       } else if (s.scene) {
         var t0 = MANS[s.scene[0]] && (MANS[s.scene[0]].tasks || []).filter(function (t) { return t.task_id === s.scene[1]; })[0];
         if (t0 && t0.poster) {
@@ -754,10 +752,10 @@ import * as RunInfo from "./runinfo.js";
     if (!shown) { p.hidden = true; return; }
     p.hidden = false;
     var beat = fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD);
-    p.appendChild(el("b", { text: fin ? (beat ? "Answer: yes. " : "Answer: no. ") : "Answer so far: not yet. " }));
-    p.appendChild(document.createTextNode(fin ? "Final score " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks against Genie 3's " + fmt(TARGET) + "."
-      : "Our best official score is " + fmt(shown.overall) + " on " + shown.n_tasks + " of " + FULL_TASKS + " tasks; Genie 3 scores " + fmt(TARGET) + " on all of them. " +
-        (ADOPTED.length ? "Adopted so far: " + ADOPTED.join(", ") + "." : "No change has yet repeated a full-point gain on two seeds, so none is adopted.")));
+    p.appendChild(el("b", { text: fin ? (beat ? "Yes. " : "No. ") : "Not yet. " }));
+    p.appendChild(document.createTextNode(fin ? "Final score " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks. Genie 3: " + fmt(TARGET) + "."
+      : "Best official score " + fmt(shown.overall) + " on " + shown.n_tasks + " of " + FULL_TASKS + " tasks. Genie 3: " + fmt(TARGET) + ". " +
+        (ADOPTED.length ? "Adopted: " + ADOPTED.join(", ") + "." : "No change adopted.")));
   }
   function renderGlance() {
     var ul = $("glance"); if (!ul) return; clear(ul);
@@ -774,13 +772,144 @@ import * as RunInfo from "./runinfo.js";
     });
   }
 
+
+  /* ---------- gallery: per family, the highest- and lowest-scored rollout with the judge's comment ---------- */
+  // pool: officially scored, uncapped rollouts of the 14B runner that have a clip and a judge comment
+  function clipPool() {
+    var out = [];
+    Object.keys(MANS).forEach(function (exp) {
+      var m = MANS[exp], row = rowByExp(exp);
+      if (!m || m.scored === false || m.runner !== "lingbot_world2" || (row && isCapped(row)) || m.max_chunks) return;
+      (m.tasks || []).forEach(function (t) {
+        if (cellVal(t) === null || !t.video || !/^https:/.test(t.video) || !(t.reason_en || t.reason)) return;
+        out.push({ t: t, man: m, exp: exp, row: row, mean: t.mean, gen: m.generated || "" });
+      });
+    });
+    return out;
+  }
+  function pickBest(list) {
+    return list.slice().sort(function (a, b) { return b.mean - a.mean || (a.gen < b.gen ? 1 : -1); })[0] || null;
+  }
+  // lowest mean; among ties the longest comment, which says most about what went wrong; never the same task as the best
+  function pickWorst(list, best) {
+    var l = list.filter(function (c) { return !best || c.t.task_id !== best.t.task_id; });
+    return l.sort(function (a, b) { return a.mean - b.mean || (b.t.reason_en || b.t.reason).length - (a.t.reason_en || a.t.reason).length; })[0] || null;
+  }
+  function driverBadge(row) {
+    if (!row) return null;
+    if (isOpen(row)) return el("span", { class: "badge warn", title: "Fixed action scripts from the dataset, no AI player. A/B only, never a final score.", text: "open loop" });
+    if (isScripted(row)) return el("span", { class: "badge warn", title: "Dataset moves replayed chunk by chunk, no AI player.", text: "scripted moves" });
+    return el("span", { class: "badge ok", text: "AI played" });
+  }
+  function clipCard(c, role) {
+    var t = c.t, media = el("div", { class: "media" });
+    media.appendChild(el("img", { src: t.poster || "", alt: "First frame of " + t.task_id, loading: "lazy" }));
+    var pb = el("button", { class: "play", type: "button", "aria-label": "Play " + t.task_id + ", " + role });
+    pb.addEventListener("click", function () {
+      var v = el("video", { controls: "", playsinline: "", loop: "", src: t.video, poster: t.poster || null, "aria-label": "Rollout of " + t.task_id });
+      v.muted = true; clear(media); media.appendChild(v);
+      var pr = v.play(); if (pr && pr.catch) pr.catch(function () {});
+      v.focus();
+    });
+    media.appendChild(pb);
+    var np = (t.pass_scores || []).length;
+    var head = el("div", { class: "gc-head" }, [el("span", { class: "cvlab " + (role === "highest" ? "good" : "bad"), text: role === "highest" ? "Highest" : "Lowest" }),
+      el("b", { text: t.task_id }), el("span", { class: "sc", title: passesText(t), text: fmt(t.mean) + " / 5" })]);
+    var quote = el("blockquote", { class: "gc-q", text: t.reason_en || t.reason });
+    var foot = el("div", { class: "badges" }, [driverBadge(c.row), np ? el("span", { class: "badge", text: np + " judge passes" }) : null,
+      (t.status || []).indexOf("gate_fail") >= 0 ? el("span", { class: "badge bad", title: "Failed a gate in at least one judge pass", text: "gate failed" }) : null]);
+    var link = el("a", { class: "sclink", href: sceneLink(c.exp, t.task_id), text: "Open in Scenes" });
+    link.addEventListener("click", function (e) { e.preventDefault(); openScene(c.exp, t.task_id); });
+    return el("article", { class: "scene gc" }, [head, media, quote, foot,
+      el("div", { class: "row" }, [el("code", { class: "rawid", text: c.exp }), link])]);
+  }
+  function renderGallery() {
+    var box = $("gal"); if (!box) return;
+    var pool = clipPool(); if (!pool.length) { if (scenesIdx) { clear(box); box.appendChild(el("p", { class: "callout", text: "No officially scored clips published yet." })); } return; }
+    clear(box);
+    var b = bestFinal() || bestClosed(), lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
+    FAMS.forEach(function (f) {
+      var k = f[0], list = pool.filter(function (c) { return c.t.family === k; });
+      var best = pickBest(list), worst = pickWorst(list, best);
+      var info = FAMINFO[k];
+      var scores = el("p", { class: "gf-scores" }, [document.createTextNode("Genie 3 "), el("b", { text: fmt(GENIE[k]) }), document.createTextNode(" · LingBot v2 "), el("b", { text: fmt(lb[k]) }),
+        document.createTextNode(b && b[k] !== null ? " · ours " : ""), b && b[k] !== null ? el("b", { text: fmt(b[k]) }) : null]);
+      var head = el("div", { class: "gf-head" }, [el("h3", { text: info.name }), el("p", { class: "gf-q", text: info.ask }), scores]);
+      var cards = el("div", { class: "gf-cards" });
+      if (best) cards.appendChild(clipCard(best, "highest"));
+      if (worst) cards.appendChild(clipCard(worst, "lowest"));
+      if (!best) cards.appendChild(el("p", { class: "callout", text: "Nothing to show for this family yet." }));
+      box.appendChild(el("div", { class: "gfam", id: "gallery-" + k }, [head, cards]));
+    });
+    $("gal-note").textContent = "Quotes are the official judge's comments, machine-translated. Chosen from " + pool.length + " scored 14B rollouts by pass mean; ties on the lowest go to the longest comment. Most use fixed moves.";
+    renderHeroClip(pool);
+  }
+  // header: the highest-scored rollout so far, looping muted; labelled as one rollout, never as the score
+  function renderHeroClip(pool) {
+    var fig = $("heroclip"); if (!fig) return;
+    var c = pickBest(pool); if (!c) { fig.hidden = true; return; }
+    if (fig.getAttribute("data-clip") === c.exp + "/" + c.t.task_id) return;
+    clear(fig); fig.hidden = false; fig.setAttribute("data-clip", c.exp + "/" + c.t.task_id);
+    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var v = el("video", { playsinline: "", loop: "", preload: calm ? "none" : "auto", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id });
+    v.muted = true; if (calm) v.setAttribute("controls", ""); else { v.autoplay = true; var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); }); }
+    fig.appendChild(v);
+    var cap = el("figcaption", null, [el("b", { text: c.t.task_id + ", scored " + fmt(c.mean) + " of 5." }),
+      document.createTextNode(" Our highest-scored rollout" + (c.row && !isClosed(c.row) ? ", fixed moves" : "") + ". ")]);
+    var a = el("a", { href: "#gallery", text: "What breaks" }); cap.appendChild(a);
+    fig.appendChild(cap);
+  }
+
+  /* ---------- timeline: every logged run by launch time ---------- */
+  function renderTimeline() {
+    var card = $("tl"), host = $("tl-chart"); if (!card || !host) return;
+    var rows = realRows().filter(function (r) { return r.t !== null; }).sort(function (a, b) { return a.t - b.t; });
+    if (rows.length < 3) { card.hidden = true; return; }
+    card.hidden = false; clear(host);
+    var W = Math.max(300, host.clientWidth || 900), R = W < 520 ? 3 : 4, step = R * 2 + 2, m = { l: 8, r: 8 };
+    var t0 = rows[0].t, t1 = rows[rows.length - 1].t, span = Math.max(1, t1 - t0);
+    var cols = Math.max(8, Math.floor((W - m.l - m.r) / step)), stacks = {}, maxStack = 0;
+    var pts = rows.map(function (r) {
+      var c = Math.min(cols - 1, Math.floor((r.t - t0) / span * (cols - 1) + 0.5)), k = stacks[c] = (stacks[c] || 0) + 1;
+      if (k > maxStack) maxStack = k;
+      return { r: r, c: c, k: k };
+    });
+    var top = 8, base = top + maxStack * step, H = base + 26;
+    var x = function (c) { return m.l + R + c * ((W - m.l - m.r - 2 * R) / (cols - 1)); };
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": rows.length + " runs by launch time" });
+    svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: base + 4, y2: base + 4, stroke: "var(--axis)" }));
+    var hour = 3600000, first = Math.ceil(t0 / hour) * hour, every = span / hour > 12 ? 3 : span / hour > 6 ? 2 : 1;
+    for (var h = first; h <= t1; h += hour * every) {
+      var hx = m.l + R + (h - t0) / span * (W - m.l - m.r - 2 * R);
+      svg.appendChild(sv("line", { x1: hx, x2: hx, y1: base + 4, y2: base + 8, stroke: "var(--axis)" }));
+      svg.appendChild(sv("text", { x: hx, y: base + 21, "text-anchor": "middle", text: pad2(new Date(h).getUTCHours()) + ":00" }));
+    }
+    var n = { scored: 0, generated: 0, running: 0, ended: 0 };
+    pts.forEach(function (p) {
+      var r = p.r, kind = r.overall !== null ? "scored" : isEnded(r) ? "ended" : r.status === "running" ? "running" : "generated";
+      n[kind]++;
+      var col = kind === "scored" ? "var(--s1)" : kind === "ended" ? "var(--bad)" : kind === "running" ? "var(--warn)" : "var(--ref)";
+      var dot = sv("circle", { cx: x(p.c), cy: base - (p.k - 1) * step - R, r: R, fill: kind === "scored" ? col : "var(--surface)", stroke: col, "stroke-width": 1.5 });
+      dot.appendChild(sv("title", { text: r.exp + " · " + fmtTime(r.t) + " UTC · " + (kind === "scored" ? "scored " + fmt(r.overall) + " on " + r.n_tasks + " tasks" : kind === "ended" ? (isStale(r) ? "no result" : r.status) : kind) }));
+      svg.appendChild(dot);
+    });
+    host.appendChild(svg);
+    var hrs = span / hour, cap = $("tl-cap"); clear(cap);
+    function key(col, fill, text) { return el("span", { class: "tl-key" }, [el("i", { style: "border-color:" + col + ";background:" + (fill ? col : "transparent") }), document.createTextNode(text)]); }
+    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). "));
+    cap.appendChild(key("var(--s1)", true, n.scored + " scored"));
+    cap.appendChild(key("var(--ref)", false, n.generated + " not scored"));
+    if (n.running) cap.appendChild(key("var(--warn)", false, n.running + " running"));
+    cap.appendChild(key("var(--bad)", false, n.ended + " failed or cancelled"));
+  }
+
   /* ---------- how a test runs ---------- */
   var LOOP = [
-    ["Flag", "Each change is a runner flag, off by default, with a counter in the log that shows whether it fired.", "adapters/lingbot_world2/", "adapters/lingbot_world2"],
-    ["Arms", "One job runs every arm on the same tasks and seed on Modal H100s; the model loads once per container.", "arms workflow", ".github/workflows/arms.yml"],
-    ["Judge", "PlayWorld's own verifier, Gemini 3.1 Pro at the benchmark's settings, four passes per clip.", "pwa score", "pwa/score.py"],
-    ["Decide", "A task moves only at a full point on its pass mean. A change is adopted only if the gain repeats on a second seed and no gate breaks.", "plan of record", "AGENTS.md#plan-of-record"],
-    ["Publish", "The row, the judge's reason for every task and the clips land on main; this page reads them at view time.", "results/", "results"]
+    ["Flag", "Every change is a runner flag, off by default, with a counter in the log.", "adapters/lingbot_world2/", "adapters/lingbot_world2"],
+    ["Arms", "One job runs all arms on the same tasks and seed on Modal H100s.", "arms workflow", ".github/workflows/arms.yml"],
+    ["Judge", "PlayWorld's verifier, Gemini 3.1 Pro, four passes per clip.", "pwa score", "pwa/score.py"],
+    ["Decide", "A task moves at a full point. Adoption needs it on two seeds with no gate broken.", "plan of record", "AGENTS.md#plan-of-record"],
+    ["Publish", "Row, judge's reasons and clips land on main. This page reads them live.", "results/", "results"]
   ];
   function renderLoop() {
     var ol = $("loop-steps"); if (!ol) return; clear(ol);
@@ -789,27 +918,28 @@ import * as RunInfo from "./runinfo.js";
         el("p", { text: x[1] }), el("a", { href: (/\.|#/.test(x[3]) ? BLOB : "https://github.com/" + REPO + "/tree/main/") + x[3], target: "_blank", rel: "noopener", text: x[2] })]));
     });
     var note = $("loop-note"); clear(note);
-    note.appendChild(document.createTextNode("Measured: loading the 14B model fell from about 207 s to about 31 s with bit-identical weights ("));
+    note.appendChild(document.createTextNode("14B model load: about 207 s down to 31 s, bit-identical weights ("));
     note.appendChild(el("a", { href: PR + "79", target: "_blank", rel: "noopener", text: "PR #79" }));
-    note.appendChild(document.createTextNode("). Not covered by CI: GPU generation, Gemini scoring and player calls need keys."));
+    note.appendChild(document.createTextNode("). CI does not cover GPU generation, scoring or player calls."));
   }
 
   /* ---------- guided tour: a bar that walks the page in order; arrow keys step, Esc exits, ?tour=N deep links ---------- */
   var tourSteps = [], tourAt = -1;
   function buildTour() {
     var shown = bestFinal() || bestClosed();
-    var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can inference-time changes lift an open world model past Genie 3 (" + fmt(TARGET) + ") on PlayWorld? No retraining." }];
+    var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can we lift an open world model past Genie 3 (" + fmt(TARGET) + ") without retraining it?" }];
     steps.push({ el: function () { return $("scores"); }, title: "Where we start",
-      line: shown ? "Our best official score, AI played (" + shown.exp + "): " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks. Genie 3: " + fmt(TARGET) + " on all " + FULL_TASKS + "." : "No run big enough to estimate a score yet." });
+      line: shown ? "Best official score, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks (" + shown.exp + "). Genie 3: " + fmt(TARGET) + "." : "No run big enough to estimate a score yet." });
+    steps.push({ el: function () { return $("gallery"); }, title: "What works, what breaks", line: "Four task types. The judge's highest and lowest rollout for each." });
     storyShown.forEach(function (x) {
       var s = x.s;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
-      if (s.watch && x.ev) steps.push({ el: function () { return $("watch"); }, run: function () { watch(s.watch); }, title: "Watch " + s.watch.task, line: "Control on the left, treatment on the right, on one clock. The judge's score and comment are under each clip." });
-      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return $("watch"); }, run: function () { openScene(s.scene[0], s.scene[1]); }, title: "Watch " + s.scene[1], line: "One rollout, as the judge saw it." });
+      if (s.watch && x.ev) steps.push({ el: function () { return $("watch"); }, run: function () { watch(s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right, one clock." });
+      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return $("watch"); }, run: function () { openScene(s.scene[0], s.scene[1]); }, title: "Watch " + s.scene[1], line: s.say || "" });
     });
-    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One dispatch: flag, arms on GPUs, official judge, full-point rule, published clips." });
-    steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs. Nothing is hidden, including what failed." });
-    steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "The full log, with the commit and job behind each row." });
+    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One dispatch takes a flag to scored, published clips." });
+    steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
+    steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "Each row links its commit and job." });
     tourSteps = steps;
     if (tourAt >= 0) tourShow();
   }
@@ -823,6 +953,10 @@ import * as RunInfo from "./runinfo.js";
     $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next →";
     Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
     var node = s.el(); if (node && node.classList && node.id !== "top") node.classList.add("tour-on");
+    // presenting: only the section of this step stays at full strength
+    Array.prototype.forEach.call(document.querySelectorAll(".tour-here"), function (n) { n.classList.remove("tour-here"); });
+    var sec = node && node.closest ? (node.id === "top" ? document.querySelector(".view.lead") : node.closest("main > section")) : null;
+    if (sec) sec.classList.add("tour-here");
   }
   function tourUrl() {
     try {
@@ -839,11 +973,21 @@ import * as RunInfo from "./runinfo.js";
     var s = tourSteps[tourAt];
     tourShow();
     if (s.run) s.run(); else { if ($("cv-play").textContent === "Pause") $("cv-play").click(); scrollToEl(s.el()); }
-    tourUrl();
+    tourUrl(); tourArm();
+  }
+  // auto: advance by itself, longer on steps that play clips; any manual step keeps it running, Exit or the last step stops it
+  var tourAuto = false, tourTimer = null;
+  function tourArm() {
+    clearTimeout(tourTimer); tourTimer = null;
+    var b = $("tour-auto"); if (b) b.setAttribute("aria-pressed", String(tourAuto));
+    if (!tourAuto || tourAt < 0) return;
+    if (tourAt >= tourSteps.length - 1) { tourAuto = false; if (b) b.setAttribute("aria-pressed", "false"); return; }
+    tourTimer = setTimeout(function () { tourGo(tourAt + 1); }, tourSteps[tourAt].run ? 14000 : 8000);
   }
   function tourExit() {
+    tourAuto = false; tourArm();
     tourAt = -1; $("tour").hidden = true; document.body.classList.remove("touring");
-    Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
+    Array.prototype.forEach.call(document.querySelectorAll(".tour-on, .tour-here"), function (n) { n.classList.remove("tour-on"); n.classList.remove("tour-here"); });
     tourUrl();
   }
   function wireTour() {
@@ -852,12 +996,14 @@ import * as RunInfo from "./runinfo.js";
     $("tour-prev").addEventListener("click", function () { tourGo(tourAt - 1); });
     $("tour-next").addEventListener("click", function () { tourGo(tourAt + 1); });
     $("tour-exit").addEventListener("click", tourExit);
+    $("tour-auto").addEventListener("click", function () { tourAuto = !tourAuto; tourArm(); });
     document.addEventListener("keydown", function (e) {
       if (tourAt < 0 || e.altKey || e.ctrlKey || e.metaKey) return;
       var tg = e.target && e.target.tagName;
       if (tg === "SELECT" || tg === "INPUT" || tg === "TEXTAREA" || tg === "VIDEO") return;
       if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); tourGo(tourAt + 1); }
       else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); tourGo(tourAt - 1); }
+      else if (e.key === "a" || e.key === "A") { tourAuto = !tourAuto; tourArm(); }
       else if (e.key === "Escape") tourExit();
     });
   }
@@ -1100,7 +1246,7 @@ import * as RunInfo from "./runinfo.js";
       refreshRI();
       // every manifest, for task families and recorded flags in the run names
       Promise.all(runs.map(function (r) { return getJson(r.exp + ".json").then(function (m) { if (m && m.exp === r.exp) MANS[r.exp] = m; }, function () {}); }))
-        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGlance(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
+        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGallery(); renderGlance(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
       return scenesExp ? loadManifest() : null;
     }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); renderBoard(); syncUrl(); });
   }
@@ -1116,7 +1262,7 @@ import * as RunInfo from "./runinfo.js";
 
   /* ---------- render all ---------- */
   function renderAll() {
-    renderStatus(); renderVerdict(); renderGlance(); renderRuler(); renderFams(); renderFull(); renderStory(); renderLoop(); renderMethods();
+    renderStatus(); renderVerdict(); renderGlance(); renderRuler(); renderFams(); renderFull(); renderStory(); renderGallery(); renderLoop(); renderTimeline(); renderMethods();
     renderToggles(); renderBoard();
     syncUrl();
     var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
@@ -1130,6 +1276,7 @@ import * as RunInfo from "./runinfo.js";
     var sv2 = q.get("sort") || "", d = sv2.charAt(0) === "-" ? -1 : 1, sk = sv2.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
     tourWanted = Math.max(0, parseInt(q.get("tour") || "0", 10) || 0);
+    if (q.get("auto") === "1") tourAuto = true;
     scenesExp = q.get("scenes") || "";
     scenesTask = scenesExp ? (q.get("scene") || "") : "";
   }
@@ -1175,7 +1322,7 @@ import * as RunInfo from "./runinfo.js";
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {
       if (window.innerWidth === lastW) return; lastW = window.innerWidth;
-      clearTimeout(rz); rz = setTimeout(renderRuler, 120);
+      clearTimeout(rz); rz = setTimeout(function () { renderRuler(); renderTimeline(); }, 120);
     });
   }
 

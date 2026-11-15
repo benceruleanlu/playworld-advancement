@@ -399,3 +399,53 @@ table.ev td.up:hover, table.ev td.down:hover { filter: none; }
 /* during the tour the watch section shows clips first */
 body.touring #watch > .sub, body.touring #watch > .scnote, body.touring #cv-help, body.touring #cv-note { display: none; }
 footer { padding-top: 24px; }
+
+/* hero clip, gallery, run timeline, tour auto */
+.hero { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+.hero-side { display: grid; gap: 12px; min-width: 0; }
+.heroclip { margin: 0; border-radius: 12px; overflow: hidden; background: #000; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 14px 34px -14px rgba(0,0,0,.35); }
+.heroclip[hidden] { display: none; }
+.heroclip video { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }
+.heroclip figcaption { padding: 9px 12px 10px; font-size: 12.5px; line-height: 1.45; color: #d9d8d3; background: #121211; }
+.heroclip figcaption b { color: #fff; font-weight: 600; }
+.heroclip figcaption a { color: #a9c9f3; white-space: nowrap; }
+.scorecard .big { font-size: 52px; }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-side { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); align-items: start; } }
+.gal { display: grid; gap: 14px; }
+.gfam { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 11fr); gap: 16px 24px; padding: 18px 0; border-top: 1px solid var(--grid); scroll-margin-top: 64px; }
+.gfam:first-child { border-top: 0; padding-top: 0; }
+.gf-head h3 { font-size: 19px; letter-spacing: -.01em; margin: 0 0 6px; }
+.gf-q { margin: 0 0 10px; font-size: 15.5px; line-height: 1.45; color: var(--ink); text-wrap: balance; }
+.gf-scores { margin: 0 0 4px; font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.gf-scores b { color: var(--ink); font-weight: 600; }
+.gf-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.gc { padding: 10px; gap: 8px; }
+.gc-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.gc-head .sc { margin-left: auto; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.gc-head .cvlab.good { color: var(--good); } .gc-head .cvlab.bad { color: var(--bad); }
+.gc .media { background: #000; }
+.gc-q { margin: 0; padding: 0 0 0 10px; border-left: 2px solid var(--axis); font-size: 13.5px; line-height: 1.5; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 6; line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.gc .jnote { margin: 0; font-size: 11.5px; color: var(--muted); }
+.gc .row { justify-content: space-between; }
+@media (max-width: 800px) { .gfam { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) { .gf-cards { grid-template-columns: minmax(0, 1fr); } }
+.tl { margin-top: 14px; }
+.tl h3 { margin-bottom: 8px; }
+.tl[hidden] { display: none; }
+.tl svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tl svg text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink2); }
+.tl-key { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; white-space: nowrap; }
+.tl-key i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid; display: inline-block; }
+#tour-auto[aria-pressed="true"] { background: var(--page); color: var(--ink); }
+@media (max-width: 560px) { #tour-auto { display: none; } }
+/* less chrome: no chapter numbers, number sits in the finding title */
+main > section h2.sec::before { content: none; }
+.st h3 { display: flex; align-items: flex-start; gap: 10px; max-width: 34ch; }
+.st h3 .st-n { margin-top: 2px; }
+.verdict { font-size: 16px; }
+#cv-help[hidden] { display: none; }
+#cv-help:empty { display: none; }
+/* presenting: the step's section at full strength, the rest dimmed; within the findings, the other cards too */
+body.touring main > section:not(.tour-here), body.touring main > .view:not(.tour-here), body.touring footer { opacity: .28; transition: opacity .25s; }
+body.touring #story.tour-here .st:not(.tour-on) { opacity: .35; transition: opacity .25s; }
+@media (prefers-reduced-motion: reduce) { body.touring main > section, body.touring .st { transition: none; } }
