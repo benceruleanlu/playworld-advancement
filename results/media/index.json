@@ -1,6 +1,30 @@
 {
  "runs": [
   {
+   "exp": "stk14-fx-dev2-v1-a2",
+   "generated": "2026-11-15T06:59:06Z",
+   "n_tasks": 24,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stk14-fx-dev2-v1-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 2/2 of stk14-fx-dev2-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22"
+   ]
+  },
+  {
+   "exp": "stk14-fx-dev2-v1-a1",
+   "generated": "2026-11-15T06:58:05Z",
+   "n_tasks": 24,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stk14-fx-dev2-v1-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 1/2 of stk14-fx-dev2-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900"
+   ]
+  },
+  {
    "exp": "stk14-fx-dev-v1-a4",
    "generated": "2026-11-15T06:56:26Z",
    "n_tasks": 24,
