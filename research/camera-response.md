@@ -2,7 +2,7 @@
 
 Date: 2026-11-14 (Pacific evening). Question: when the poses command a turn, how far does the view of LingBot-World v2 14B really rotate; why do "turn out and come back" scripts end away from the start view even with perfect driving; and can a rollout correct itself from its own video?
 
-Provenance: every number in the first five sections comes from scripted trials run by an agent session for benceruleanlu on the 14B, in a private Modal workspace, through the live kernel (`editor_app.py`, `adapters/lingbot_world2/workspace.py`). No player and no judge were involved, and no shared GPU, key or workflow. The per-trial readouts are in `research/data/camera-response/` and `python -m adapters.lingbot_world2.camera_probe research/data/camera-response/*.jsonl` reprints the gain and error tables from them. The last section uses the official scores and published clips of 16 runs on main. Where something was not checked it says so.
+Provenance: every number in the first five sections comes from scripted trials run by an agent session for benceruleanlu on the 14B, in a private Modal workspace, through the live kernel (`editor_app.py`, `adapters/lingbot_world2/workspace.py`). No player and no judge were involved, and no shared GPU, key or workflow. The per-trial readouts are in `research/camera-response-data/` and `python -m adapters.lingbot_world2.camera_probe research/camera-response-data/*.jsonl` reprints the gain and error tables from them. The last section uses the official scores and published clips of 16 runs on main. Where something was not checked it says so.
 
 ## Setup
 
@@ -70,7 +70,7 @@ The start view not coming back is what the official judge writes about the same 
 
 ## 6. Does "the start view is back" predict the official score?
 
-Checked on what main already has: 86 officially scored clips of the nine return-to-start dev tasks (GC031, GC033, GC036, OE034, OE039, OE047, OE048, OE058, OE069) from 16 open-loop 14B runs (`fx14-model-dev-v2`, `orc14-gc-v1`, `mem14-fx-v1`, `sks14-fx-v1`, `sp14-gc-v1`, all arms), 480p release copies. For each clip the best `ncc` between frame 0 and the last 16 frames was computed (`research/data/camera-response/judged-clips.json`).
+Checked on what main already has: 86 officially scored clips of the nine return-to-start dev tasks (GC031, GC033, GC036, OE034, OE039, OE047, OE048, OE058, OE069) from 16 open-loop 14B runs (`fx14-model-dev-v2`, `orc14-gc-v1`, `mem14-fx-v1`, `sks14-fx-v1`, `sp14-gc-v1`, all arms), 480p release copies. For each clip the best `ncc` between frame 0 and the last 16 frames was computed (`research/camera-response-data/judged-clips.json`).
 
 - The start view is back at the end (`ncc` at least 0.5) in 10 of the 86 clips.
 - None of the 19 gate-failed clips is among those 10. With a gate-fail rate of 22%, about two would be expected by chance, so this is suggestive only.
