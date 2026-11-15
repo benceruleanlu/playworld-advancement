@@ -42,6 +42,8 @@ IF camera hint (off by default): --lingbot-if-camera-hint / LINGBOT_IF_CAMERA_HI
 Reminds third-person IF players that keys command the camera, not the subject.
 Player history endpoints (off by default): --lingbot-player-history-endpoints /
 LINGBOT_PLAYER_HISTORY_ENDPOINTS=1 keeps only endpoints from older player chunks.
+Insight director (off by default): --lingbot-insight-director / LINGBOT_INSIGHT_DIRECTOR=1.
+Scene caption + original goal + fixed activity-continuation text on insight tasks only.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -122,7 +124,7 @@ from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-if-camera-hint", "--lingbot-player-history-endpoints", "--lingbot-stateless",
-              "--lingbot-turn-cal", "--lingbot-caption-prompt",
+              "--lingbot-insight-director", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon")
 
@@ -146,6 +148,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "if_camera": "--lingbot-if-camera-hint" in argv or environ.get("LINGBOT_IF_CAMERA_HINT", "0") == "1",
         "history_endpoints": "--lingbot-player-history-endpoints" in argv
                              or environ.get("LINGBOT_PLAYER_HISTORY_ENDPOINTS", "0") == "1",
+        "insight_director": "--lingbot-insight-director" in argv
+                            or environ.get("LINGBOT_INSIGHT_DIRECTOR", "0") == "1",
     }
     flags["stall"], argv = W.parse(argv, environ)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
@@ -288,12 +292,17 @@ class LingBotWorld2Engine:
                         int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
+        original_goal = prompt
         if PROMPT_MODE != "goal":
             goal, prompt = prompt, prompts.model_prompt(prompt, name, PROMPT_MODE)
             STATS.caption(prompt != goal)
             if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
                 print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
                       f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
+        if STATS.insight_director:
+            directed = prompts.directed_insight(original_goal, prompt, name)
+            STATS.director_prompt(directed != prompt)
+            prompt = directed
         with W.watch(name, STALL):
             if self.session is None:
                 return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
@@ -390,7 +399,10 @@ def main(argv: list[str] | None = None) -> int:
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
                                  if_horizon=IF_HORIZON, if_camera=flags["if_camera"],
-                                 history_endpoints=flags["history_endpoints"])
+                                 history_endpoints=flags["history_endpoints"],
+                                 insight_director=flags["insight_director"])
+    if flags["insight_director"]:
+        print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
