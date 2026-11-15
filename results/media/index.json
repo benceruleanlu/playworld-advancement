@@ -1,6 +1,14 @@
 {
  "runs": [
   {
+   "exp": "gch13-arms-v1-a2",
+   "generated": "2026-11-15T02:19:15Z",
+   "n_tasks": 3,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-gch13-arms-v1-a2",
+   "scored": true,
+   "labels": []
+  },
+  {
    "exp": "smk14-arms-gc-v2-a1",
    "generated": "2026-11-15T02:18:04Z",
    "n_tasks": 3,
@@ -48,17 +56,6 @@
    "labels": [
     "not scored",
     "arm 1/2 of rs13-arms-v1: --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-player-hint"
-   ]
-  },
-  {
-   "exp": "gch13-arms-v1-a2",
-   "generated": "2026-11-15T02:02:32Z",
-   "n_tasks": 3,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-gch13-arms-v1-a2",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "arm 2/2 of gch13-arms-v1: --lingbot-turn-cal --lingbot-player-hint --agent-model gpt-6-luna --lingbot-gc-completion-hint"
    ]
   },
   {
