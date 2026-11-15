@@ -149,7 +149,7 @@ that has left the rolling window (opening included) and that the camera had look
 window does, recomputes that chunk into the sink slots after the first --lingbot-pose-mem-anchor latents, by default
 at a RoPE time just behind the window (one extra clean forward per chunk while installed); the original sink is
 copied back when nothing matches. Knobs --lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,latents,anchor,time,
-fallback,tasks,max-mb,rule,pick,yaw-scale}; dry run: python -m pwa.pose_mem_plan TASK. Acts in dataset mode (per latent chunk inside one step). Refused with
+fallback,tasks,max-mb,rule,pick,yaw-scale,rel}; dry run: python -m pwa.pose_mem_plan TASK. Acts in dataset mode (per latent chunk inside one step). Refused with
 --lingbot-stateless, sink 0 / local -1, a sink smaller than anchor + latents, --lingbot-reanchor and
 --lingbot-sink-key-scale. See pose_memory.py.
 
@@ -221,7 +221,8 @@ Env:
   LINGBOT_SINK_KEY_SCALE / LINGBOT_SINK_SCALE_AFTER / LINGBOT_SINK_SCALE_TASKS   same as --lingbot-sink-key-scale /
                     --lingbot-sink-scale-after / --lingbot-sink-scale-tasks (1.0 = off / 8 / ".*")
   LINGBOT_POSE_MEMORY  1 = same as --lingbot-pose-memory (knobs LINGBOT_POSE_MEM_DEG / _TRANS / _LEAVE_DEG /
-                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB)
+                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB / _RULE / _PICK /
+                    _YAW_SCALE / _REL)
   LINGBOT_WARP_REANCHOR  1 = same as --lingbot-warp-reanchor (knobs LINGBOT_WARP_MAX_DEG / _MAX_TRANS /
                     _LEAVE_DEG / _LEAVE_TRANS / _FOCUS / _ERODE / _TASKS)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
