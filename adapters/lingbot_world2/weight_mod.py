@@ -11,6 +11,11 @@ def _scale(val: float | None, env: str, default: float) -> float:
         raise ValueError(f"{env} must be >= 0, got {out}")
     return out
 
+def _count(val: int | None, env: str, default: int) -> int:
+    if (out := int(os.environ.get(env, str(default))) if val is None else int(val)) < 0:
+        raise ValueError(f"{env} must be >= 0, got {out}")
+    return out
+
 def is_stationary(rel: np.ndarray, atol: float = 1e-5) -> bool:
     return (a := np.asarray(rel, dtype=np.float64)).size > 0 and bool(np.allclose(a, np.eye(4), atol=atol))
 
@@ -35,10 +40,14 @@ def detach_model(model) -> None:
 class WeightModulator:
     def __init__(self, model, cam_static: float | None = None, cam_move: float | None = None,
                  cam_3p: float | None = None, text_scale: float | None = None, text_move: float | None = None,
-                 text_static: float | None = None):
+                 text_static: float | None = None, cam_static_late: float | None = None,
+                 cam_3p_late: float | None = None, late_steps: int | None = None):
         self.cam_static, self.cam_move = _scale(cam_static, "LINGBOT_CAM_WEIGHT_STATIC", 0.0), _scale(cam_move, "LINGBOT_CAM_WEIGHT_MOVE", 1.0)
         self.cam_3p, self.text_gain = _scale(cam_3p, "LINGBOT_CAM_WEIGHT_3P", 0.85), _scale(text_scale, "LINGBOT_TEXT_WEIGHT_SCALE", 1.0)
         self.text_static = _scale(text_static, "LINGBOT_TEXT_WEIGHT_STATIC", self.text_gain)
+        self.cam_static_late = _scale(cam_static_late, "LINGBOT_CAM_WEIGHT_STATIC_LATE", self.cam_static)
+        self.cam_3p_late = _scale(cam_3p_late, "LINGBOT_CAM_WEIGHT_3P_LATE", self.cam_3p)
+        self.late_steps, self._regime, self._base_cam = _count(late_steps, "LINGBOT_CAM_LATE_STEPS", 0), "move", 1.0
         self.text_move, self.cam_scale, self.text_scale, self._model = _scale(text_move, "LINGBOT_TEXT_WEIGHT_MOVE", 1.0), 1.0, 1.0, model
         detach_model(model)
         gc, gt = (lambda: self.cam_scale), (lambda: self.text_scale)
@@ -49,10 +58,25 @@ class WeightModulator:
     def step(self, rel: np.ndarray, third_person: bool = False) -> bool:
         self.cam_scale, self.text_scale = ((self.cam_static, self.text_static) if is_stationary(rel)
                                            else (self.cam_3p, self.text_gain) if third_person else (self.cam_move, self.text_move))
+        self._regime = "static" if is_stationary(rel) else "3p" if third_person else "move"
+        self._base_cam = self.cam_scale
         return self.cam_scale != 1.0 or self.text_scale != 1.0
+
+    def denoise_step(self, i: int, total: int) -> float:
+        """Per-denoising-step cam scale: the chunk's base scale, except in the last
+        `late_steps` steps of a stationary or third-person chunk, where the regime's
+        late scale applies. Moving first-person chunks are never rescheduled."""
+        late = self.cam_static_late if self._regime == "static" else self.cam_3p_late
+        self.cam_scale = late if (self.late_steps and self._regime != "move"
+                                  and i >= max(0, total - self.late_steps)) else self._base_cam
+        return self.cam_scale
+
+    def end_chunk(self) -> None:
+        self.cam_scale = self._base_cam
 
     def reset(self) -> None:
         self.cam_scale = self.text_scale = 1.0
+        self._regime, self._base_cam = "move", 1.0
 
     def __enter__(self): return self
     def __exit__(self, *_exc) -> None: self.reset()

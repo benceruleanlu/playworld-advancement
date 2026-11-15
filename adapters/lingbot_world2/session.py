@@ -505,6 +505,8 @@ class LingBotSession:
                 }
                 ts = self.timesteps
                 for i in range(len(ts)):
+                    if self.weight_mod is not None:
+                        self.weight_mod.denoise_step(i, len(ts))
                     t = torch.stack([ts[i]]).to(pipe.device)
                     pred = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init, **kwargs)[0]
                     self.cross_init = True
@@ -516,6 +518,8 @@ class LingBotSession:
                         noise = torch.randn(x0.shape, generator=self.gen, device=x0.device, dtype=x0.dtype)
                         latent = pipe.scheduler.add_noise(x0, noise, ts[i + 1])
                 new.append(x0)
+                if self.weight_mod is not None:
+                    self.weight_mod.end_chunk()  # the clean KV write uses the chunk's base scale
                 # write clean keys/values for this chunk into the KV cache
                 t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
                 pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
