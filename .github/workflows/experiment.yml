@@ -114,13 +114,6 @@ jobs:
         run: |
           [[ "$PLAYER_MODEL" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "player_model must match [A-Za-z0-9._:-]+" >&2; exit 2; }
           timeout 30s python -m adapters.common.agent_api
-      - name: Start FFmpeg install in background
-        # ubuntu-24.04 does not ship ffmpeg (runner-images Ubuntu2404-Readme apt list). Only scoring and media need it,
-        # so it installs while pip installs and Modal generation run; "Wait for FFmpeg" joins it. Skipped for gen-only on Modal.
-        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
-        run: |
-          rm -f "$RUNNER_TEMP"/ffmpeg.done
-          setsid nohup bash -c 'sudo apt-get install -yq --no-install-recommends ffmpeg || { sudo apt-get update -q && sudo apt-get install -yq ffmpeg; }; echo $? > "$RUNNER_TEMP"/ffmpeg.done' > "$RUNNER_TEMP"/ffmpeg.log 2>&1 < /dev/null &
       - name: Install Python dependencies
         run: |
           pip install -q huggingface_hub ${{ inputs.backend == 'modal' && 'modal' || '' }}
@@ -129,6 +122,17 @@ jobs:
             pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
             pip install -q -e .
           fi
+      - name: Set up FFmpeg
+        # ubuntu-24.04 does not ship ffmpeg. Scoring (upstream frame sampling: fps/scale/pad, JPEG) and pwa media
+        # (libx264, thumbnail, +faststart) use the pinned static build from imageio-ffmpeg, as ci.yml does, instead of apt.
+        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
+        run: |
+          pip install -q --only-binary=:all: imageio-ffmpeg==0.6.0
+          mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
+          ln -sf "$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -version
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -hide_banner -encoders | grep ' libx264 ' >/dev/null ||{ echo "ffmpeg lacks libx264" >&2; exit 1; }
+          echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
       - uses: actions/cache@v4
         with:
           path: data
@@ -186,16 +190,6 @@ jobs:
           modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
             --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
             --extra="$EXTRA"
-
-      - name: Wait for FFmpeg
-        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
-        run: |
-          for _ in $(seq 120); do [[ -f "$RUNNER_TEMP/ffmpeg.done" ]] && break; sleep 2; done
-          if [[ "$(cat "$RUNNER_TEMP/ffmpeg.done" 2>/dev/null)" != 0 ]]; then
-            cat "$RUNNER_TEMP/ffmpeg.log" || true
-            sudo apt-get update -q && sudo apt-get install -yq ffmpeg  # fallback: foreground install
-          fi
-          ffmpeg -version | head -1
 
       - name: Generate (local)
         if: inputs.backend == 'local' && inputs.stage != 'score-only'
