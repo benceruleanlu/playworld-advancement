@@ -1,0 +1,139 @@
+{
+ "exp": "pm14-fx-v2-a1",
+ "release_tag": "run-pm14-fx-v2-a1",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a1",
+ "generated": "2026-11-15T04:55:19Z",
+ "git_sha": "c72c4c9b97f3b5b63123d1dceaa8a5294477b0b1",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": false,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-pose-memory",
+  "--lingbot-pose-mem-anchor",
+  "1"
+ ],
+ "player_model": "",
+ "notes": "pose memory variants: opening compressed to 1 latent, re-timed memory, pose track corrected by yaw gain 0.85, plus the window control for pm14-fx-v1 arm 3; control is pm14-fx-v1-a1 (generation is deterministic) [arm 1/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-anchor 1]",
+ "labels": [
+  "not scored",
+  "replayed dataset moves (open loop), A/B only",
+  "arm 1/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-anchor 1"
+ ],
+ "report": "pm14-fx-v2-a1.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/GC036.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a1/OE048.jpg"
+  }
+ ]
+}
