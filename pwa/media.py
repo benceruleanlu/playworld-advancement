@@ -90,6 +90,17 @@ def run_labels(meta: dict, scored: bool, screening: str = "") -> list[str]:
     return labels
 
 
+def player_model(runner_args: list[str]) -> str:
+    """The AI player named by --agent-model in the runner args (the workflow passes it there), else ""."""
+    out = ""
+    for i, x in enumerate(runner_args or []):
+        if x == "--agent-model" and i + 1 < len(runner_args):
+            out = runner_args[i + 1]
+        elif x.startswith("--agent-model="):
+            out = x.split("=", 1)[1]
+    return out
+
+
 def watch_url(site_url: str, exp: str, task_id: str | None = None) -> str:
     """Deep link into the site's Scenes view: the run, and with task_id that one rollout, ready to play."""
     q = {"scenes": exp, **({"scene": task_id} if task_id else {})}
@@ -124,9 +135,12 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
         tasks.append({"task_id": tid, "family": t["family"], "mean": r.get("mean") if scored else None, "status": status,
                       "reason": r.get("reason", "") if scored else "", "video": video, "poster": poster})
     cap = chunk_cap(meta)
+    args = [str(x) for x in meta.get("runner_args") or []]
     man = {"exp": exp, "release_tag": f"run-{exp}", "release_url": release_url, "generated": now(),
            "git_sha": meta.get("git_sha") or "", "branch": meta.get("branch") or "", "runner": meta.get("runner") or "",
            "action_source": meta.get("action_source") or "", "scored": scored, "max_chunks": cap,
+           # shown under each clip in the site's Compare view: runner flags, AI player, the run's notes
+           "runner_args": args, "player_model": player_model(args), "notes": meta.get("notes") or "",
            "labels": run_labels(meta, scored, screening), "report": report_name or f"{exp}.md",
            "model": model_for(meta.get("runner") or ""), "license": LICENSE, "tasks": tasks}
     (out_dir / f"{exp}.json").write_text(json.dumps(man, indent=1, ensure_ascii=False) + "\n")
