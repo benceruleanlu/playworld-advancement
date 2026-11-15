@@ -74,11 +74,13 @@ class BacklashTracker:
         ys, ps = self._axis(0, (dy > 0) - (dy < 0)), self._axis(1, (dp > 0) - (dp < 0))
         self.boosted_frames += ys > 1.001 or ps > 1.001
         return ys, ps
-    def delta(self, key: str, translation_gain: float = 1.0, rotation_scale: float = 1.0) -> np.ndarray:
+    def delta(self, key: str, translation_gain: float = 1.0, rotation_scale: float = 1.0,
+              yaw_gain: tuple[float, float] | None = None) -> np.ndarray:
         ys, ps = self.step(key)
         if ys == ps:
-            return P.key_delta(key, translation_gain, rotation_scale * ys)
+            return P.key_delta(key, translation_gain, rotation_scale * ys, yaw_gain=yaw_gain)
         d = P.key_delta(key, translation_gain, 0.0)
         for k in (t for t in key.lower().split("+") if t in _ROT):
-            d[:3, :3] = d[:3, :3] @ _ROT[k](rotation_scale * (ys if k in ("j", "l") else ps))
+            g = (yaw_gain[0] if k == "j" else yaw_gain[1] if k == "l" else 1.0) if yaw_gain else 1.0
+            d[:3, :3] = d[:3, :3] @ _ROT[k](rotation_scale * g * (ys if k in ("j", "l") else ps))
         return d

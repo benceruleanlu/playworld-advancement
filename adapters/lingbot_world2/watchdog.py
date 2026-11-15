@@ -9,11 +9,15 @@ the Modal container, or from env vars, which reach only local runs:
   N s, every thread's Python stack is written to the process's real stderr (faulthandler runs in a C
   thread, so it fires even while the main thread is inside a torch op), and again every N s until the
   call returns.
-- `--lingbot-stall-abort N` / LINGBOT_STALL_ABORT_S (default 0 = off): if one call runs longer than N s,
+- `--lingbot-stall-abort N` / LINGBOT_STALL_ABORT_S (default 0 = off): if one call makes no progress for N s,
   print a `[lingbot] stall:` line, dump the stacks and end the process with exit code 124, so a stuck
   shard fails and frees its GPU. The process is the runner, which holds one task family of the shard
   under `pwa gen` and every remaining arm and family of the shard under `pwa gen-arms`; those tasks get
   no mp4 and `pwa gen` reports them missing.
+
+The abort measures time since the last progress mark, not total call time: `progress()` (silent) is called
+by session.step once per latent chunk and once per decoded latent, so a long dataset-mode step (one call
+of 7-30 minutes) is not killed while it advances. The dump timer still measures total call time.
 """
 from __future__ import annotations
 
@@ -29,6 +33,14 @@ ABORT_EXIT_CODE = 124
 DUMP_ARG, ABORT_ARG = "--lingbot-stall-dump", "--lingbot-stall-abort"
 DUMP_ENV, ABORT_ENV = "LINGBOT_STALL_DUMP_S", "LINGBOT_STALL_ABORT_S"
 DEFAULT_DUMP_S = 300.0
+
+# monotonic time of the last progress mark of the call being watched (watch() sets it at entry)
+_last = [time.monotonic()]
+
+
+def progress() -> None:
+    """Progress mark: the abort timer restarts from now. Silent and cheap; a no-op outside watch()."""
+    _last[0] = time.monotonic()
 
 
 @dataclass(frozen=True)
@@ -89,9 +101,10 @@ def _say(msg: str, file) -> None:
             pass
 
 
-def _abort(label: str, abort_s: float, file, exit_fn) -> None:
-    _say(f"[lingbot] stall: {label} still running after {abort_s:.0f}s; dumping stacks and exiting "
-         f"with {ABORT_EXIT_CODE} ({ABORT_ARG})", file)
+def _abort(label: str, abort_s: float, file, exit_fn, total_s: float | None = None) -> None:
+    total_s = abort_s if total_s is None else total_s
+    _say(f"[lingbot] stall: {label} still running after {total_s:.0f}s, no progress for {abort_s:.0f}s; "
+         f"dumping stacks and exiting with {ABORT_EXIT_CODE} ({ABORT_ARG})", file)
     faulthandler.dump_traceback(file=file, all_threads=True)
     file.flush()
     try:
@@ -107,21 +120,25 @@ def watch(label: str, limits: Limits, file=None, exit_fn=os._exit):
     default sys.__stderr__. `exit_fn` is injectable for tests."""
     file = sys.__stderr__ if file is None else file
     dump_s, abort_s = limits.dump_s, limits.abort_s
-    timer = None
+    stop, timer = threading.Event(), None
+    t0 = time.time()
+    _last[0] = time.monotonic()
     if dump_s > 0:
         faulthandler.dump_traceback_later(dump_s, repeat=True, file=file)
     if abort_s > 0:
-        timer = threading.Timer(abort_s, _abort, args=(label, abort_s, file, exit_fn))
-        timer.daemon = True
+        def poll():
+            while not stop.wait(min(abort_s / 4, 5.0)):
+                if time.monotonic() - _last[0] >= abort_s:
+                    _abort(label, abort_s, file, exit_fn, time.time() - t0)
+                    return
+        timer = threading.Thread(target=poll, daemon=True, name="lingbot-stall-abort")
         timer.start()
-    t0 = time.time()
     try:
         yield
     finally:
         if dump_s > 0:
             faulthandler.cancel_dump_traceback_later()
-        if timer is not None:
-            timer.cancel()
+        stop.set()
         dt = time.time() - t0
         if dump_s > 0 and dt > dump_s:
             _say(f"[lingbot] stall: {label} returned after {dt:.0f}s (over {DUMP_ARG} {dump_s:.0f})", file)
