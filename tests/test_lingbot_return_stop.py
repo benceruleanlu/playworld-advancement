@@ -29,7 +29,7 @@ def at(goal, spec, turn_cal=False):
 
 
 def test_plan_arms_only_on_one_final_return():
-    assert R.plan(OUT_BACK) == {"deg": 67.5, "steps": None, "both_sides": False, "side": "right"}
+    assert R.plan(OUT_BACK) == {"deg": 67.5, "steps": None, "both_sides": False, "side": "right", "move": "any"}
     assert R.plan(FULL_TURN)["side"] == "yaw" and R.plan(FULL_TURN.replace("degrees", "degrees clockwise"))["side"] == "right"
     assert R.plan("Tilt the camera downward 90 degrees, then return to the original view.")["side"] == "down"
     assert R.plan("Move right 10 steps, then move back to the original position.")["steps"] == 7.5
@@ -76,6 +76,9 @@ def test_tilt_steps_and_both_sides():
     steps = "Move right 10 steps, then move back to the original position."
     assert at(steps, "D2 A2") is None          # 3.2 of 10 steps
     assert at(steps, "D5 A5") == 10            # 8 steps out, then home
+    assert at(steps, "W5 S5") is None          # forward and back is not a move to the right
+    assert at(steps, "A5 D5") is None          # nor is the left
+    assert R.plan(steps)["move"] == "right" and R.plan(OUT_BACK)["move"] == "any"
     pan = "Pan slowly from left to right, then back to center"
     assert at(pan, "L1 R1") is None            # never went right of the start
     assert at(pan, "L1 R2 L1") == 4
@@ -140,6 +143,6 @@ def test_counterclockwise_is_the_left_side_and_default_steps_are_dataset_steps()
     for word in ("counterclockwise", "counter-clockwise", "anticlockwise"):
         assert R.plan(f"Rotate the camera 360 degrees {word} in place, then return to the original view.")["side"] == "left"
     walk = "Walk forward to the door, then walk back to the original position."
-    assert R.plan(walk) == {"deg": None, "steps": None, "both_sides": False, "side": "any"}
+    assert R.plan(walk) == {"deg": None, "steps": None, "both_sides": False, "side": "any", "move": "any"}
     assert at(walk, "W1 S1") is None           # 0.9 action = 1.45 dataset steps: not yet 2
     assert at(walk, "W2 S2") == 4              # 3 steps out, then home

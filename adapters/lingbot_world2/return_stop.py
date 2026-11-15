@@ -34,6 +34,7 @@ DIR_RE = re.compile(r"\b((?:counter|anti)-?clockwise|left|right|up|upward|down|d
 YAW_RE = re.compile(r"rotat|turn|pan", re.I)
 DIRS = {"upward": "up", "downward": "down", "clockwise": "right", "counterclockwise": "left",
         "counter-clockwise": "left", "anticlockwise": "left", "anti-clockwise": "left"}
+MOVE_RE = re.compile(r"\b(left|right|forward|backward)\b", re.I)
 DEFAULT_DEG, DEFAULT_STEPS = 40.0, 2.0
 
 
@@ -48,8 +49,11 @@ def plan(goal: str, frac: float = 0.75) -> dict | None:
     # yaw side for a turn, else any rotation
     side = DIR_RE.search(goal, 0, hits[0].start()) if degs else None
     side = side.group(1).lower() if side else ("yaw" if degs and YAW_RE.search(goal) else "any")
+    # a pure step goal ("Move right 10 steps, then move back") must travel the way it names
+    move = MOVE_RE.search(goal, 0, hits[0].start()) if steps and not degs else None
     return {"deg": frac * max(degs) if degs else None, "steps": frac * max(steps) if steps else None,
-            "both_sides": bool(SIDES_RE.search(goal)), "side": DIRS.get(side, side)}
+            "both_sides": bool(SIDES_RE.search(goal)), "side": DIRS.get(side, side),
+            "move": move.group(1).lower() if move else "any"}
 
 
 def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20):
@@ -58,11 +62,16 @@ def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn
     yaw_step, pitch_step = H.step_size(chunk_frames, session, turn_cal, unit)
     tokens_per_step = H.step_keys(1, chunk_frames, session) / float(unit)  # dataset "steps" per W/S/A/D action
     pos = lo = hi = t_lo = t_hi = 0.0
+    far = {"right": 0.0, "left": 0.0, "forward": 0.0, "backward": 0.0, "any": 0.0}
     for k in range(1, len(actions) + 1):
         s = H.replay(actions[:k], to_key, chunk_frames, session, turn_cal, unit)
         net = s["turned_right"] - s["turned_left"]
         dist = math.hypot(s["forward"], s["right"])
-        pos, lo, hi = max(pos, dist), min(lo, net), max(hi, net)
+        lo, hi = min(lo, net), max(hi, net)
+        for name, v in (("right", s["right"]), ("left", -s["right"]), ("forward", s["forward"]),
+                        ("backward", -s["forward"]), ("any", dist)):
+            far[name] = max(far[name], v)
+        pos = far[p.get("move", "any")]
         t_lo, t_hi = min(t_lo, s["tilt"]), max(t_hi, s["tilt"])
         sides = {"right": hi, "left": -lo, "up": t_hi, "down": -t_lo, "yaw": max(hi, -lo)}
         rot = sides.get(p.get("side", "any"), max(hi, -lo, t_hi, -t_lo))
