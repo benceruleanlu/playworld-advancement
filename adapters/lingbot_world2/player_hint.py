@@ -30,13 +30,13 @@ def step_keys(i: int, chunk_frames: int, session: bool) -> int:
     return P.frame_count(int(chunk_frames)) - 1
 
 
-def _delta(key: str, n: int, turn_cal: bool, unit: int) -> np.ndarray:
+def _delta(key: str, n: int, turn_cal: bool, unit: int, translation_gain: float = 1.0) -> np.ndarray:
     """Pose change of n frames of `key`, at the rates the engine uses for that call."""
     old = P.YAW, P.PITCH
     try:
         if turn_cal:
             P.calibrate(False, n, unit)
-        return np.linalg.matrix_power(P.key_delta(key), n)
+        return np.linalg.matrix_power(P.key_delta(key, translation_gain), n)
     finally:
         P.YAW, P.PITCH = old
 
@@ -47,12 +47,13 @@ def _angles(pose: np.ndarray) -> tuple[float, float]:
     return math.degrees(math.atan2(f[0], f[2])), math.degrees(math.asin(max(-1.0, min(1.0, -f[1]))))
 
 
-def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20) -> dict:
+def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20,
+           translation_gain: float = 1.0) -> dict:
     """Commanded camera after `actions` (player words, e.g. 'LEFT'); to_key maps them to engine keys."""
     pose, turned = np.eye(4), {"left": 0.0, "right": 0.0}
     for i, a in enumerate(actions):
         key = to_key(a)
-        d = _delta(key, step_keys(i, chunk_frames, session), turn_cal, unit)
+        d = _delta(key, step_keys(i, chunk_frames, session), turn_cal, unit, translation_gain)
         if key in YAW_KEYS:
             turned["left" if YAW_KEYS[key] < 0 else "right"] += abs(_angles(d)[0])
         pose = pose @ d
@@ -74,12 +75,14 @@ def _side(v: float, neg: str, pos: str, unit: str) -> str:
     return f"{num} {unit}" + ("" if r == 0 else f" {pos if r > 0 else neg}")
 
 
-def hint(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20) -> str:
+def hint(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20,
+         translation_gain: float = 1.0) -> str:
     yaw, pitch = step_size(chunk_frames, session, turn_cal, unit)
-    s = replay(actions, to_key, chunk_frames, session, turn_cal, unit)
+    s = replay(actions, to_key, chunk_frames, session, turn_cal, unit, translation_gain)
+    distance = "one step" if translation_gain == 1 else f"{translation_gain:g} of a normal step"
     return (
         f"Controls: one LEFT or RIGHT turns the camera about {yaw:.0f} degrees, one UP or DOWN tilts it about "
-        f"{pitch:.0f} degrees, and one W, S, A or D moves it one step forward, back, left or right. "
+        f"{pitch:.0f} degrees, and one W, S, A or D moves it {distance} forward, back, left or right. "
         f"Commanded camera now, relative to the start (heading 0, tilt 0, position 0): heading "
         f"{_side(s['heading'], 'left', 'right', 'degrees')}, tilt {_side(s['tilt'], 'down', 'up', 'degrees')}, "
         f"position {_side(s['forward'], 'back', 'forward', 'steps')} and "
@@ -88,14 +91,15 @@ def hint(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit
     )
 
 
-def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_hint=None):
+def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_hint=None, if_slow=False):
     """Wrap upstream decide_action so the goal it shows the player ends with hint().
     on_hint() is called once per hint sent (flag_stats counter)."""
 
     def decide(task, frame, recent_actions, chunk_idx, num_chunks, args, *rest, **kw):
         if not kw.get("stationary_only"):
             text = hint(recent_actions or [], to_key, int(getattr(args, "chunk_frames", 33) or 33), session,
-                        turn_cal, int(getattr(args, "action_frame_unit", 20) or 20))
+                        turn_cal, int(getattr(args, "action_frame_unit", 20) or 20),
+                        0.5 if if_slow and str(task.get("task_id", "")).startswith("IF") else 1.0)
             print(f"    [lingbot] player hint: {text.split('Commanded camera now, ', 1)[1]}", flush=True)
             task = {**task, "prompt": f"{task.get('prompt', '')}\n{text}"}
             if on_hint is not None:
