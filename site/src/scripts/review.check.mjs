@@ -4,21 +4,31 @@ import { readFileSync, readdirSync } from "node:fs";
 import assert from "node:assert/strict";
 import * as C from "./review-core.js";
 
-// seeded sides: deterministic, and balanced over many trials
-assert.equal(C.treatmentSide("AB", "stk-dev-s0:GC005"), C.treatmentSide("ab ", "stk-dev-s0:GC005"), "side ignores case and outer spaces");
-for (const r of ["AB", "jp", "Reviewer 2"]) {
-  let left = 0; const N = 10000;
-  for (let i = 0; i < N; i++) { const s = C.treatmentSide(r, "set:" + i); assert.equal(s, C.treatmentSide(r, "set:" + i)); if (s === "left") left++; }
-  assert.ok(Math.abs(left / N - 0.5) < 0.02, r + ": treatment left in " + left + " of " + N);
-}
-// two reviewers get different side assignments (not the same bit for every pair)
-let same = 0; for (let i = 0; i < 1000; i++) if (C.treatmentSide("AB", "p" + i) === C.treatmentSide("CD", "p" + i)) same++;
-assert.ok(same > 430 && same < 570, "two reviewers' sides are independent: " + same + "/1000 equal");
 // real pair ids are balanced too
 const mans = {};
 const mdir = new URL("../../../results/media/", import.meta.url);
 for (const f of readdirSync(mdir)) if (f !== "index.json" && f.endsWith(".json")) { const m = JSON.parse(readFileSync(new URL(f, mdir), "utf8")); mans[m.exp] = m; }
 const { pairs, dropped } = C.buildPairs(mans);
+// seeded sides: deterministic, case-insensitive, balanced within every group and family, new sides per round
+const strata = {}; pairs.forEach((p) => (strata[p.group + "|" + p.family] ||= []).push(p.id));
+for (const r of ["AB", "jp", "Reviewer 2", "alice", "x"]) {
+  const s1 = C.assignSides(C.sideSeed(r, 0), pairs);
+  assert.deepEqual(s1, C.assignSides(C.sideSeed(" " + r.toUpperCase() + " ", 0), pairs), "sides ignore case and outer spaces");
+  assert.deepEqual(s1, C.assignSides(C.sideSeed(r, 0), pairs.slice().reverse()), "sides do not depend on list order");
+  assert.equal(Object.keys(s1).length, pairs.length);
+  for (const [k, ids] of Object.entries(strata)) {
+    const left = ids.filter((id) => s1[id] === "left").length;
+    assert.ok(left === Math.floor(ids.length / 2) || left === Math.ceil(ids.length / 2), r + " " + k + ": " + left + " of " + ids.length + " left");
+  }
+  const s2 = C.assignSides(C.sideSeed(r, 1), pairs);
+  const moved = pairs.filter((p) => s1[p.id] !== s2[p.id]).length;
+  assert.ok(moved > pairs.length * 0.3 && moved < pairs.length * 0.7, r + ": a new round redraws sides (" + moved + " moved)");
+}
+// over many reviewers, a given pair's treatment is left about half the time, and two reviewers' sides are independent
+let leftN = 0, same = 0; const N = 2000, pid = pairs[0].id, pid2 = pairs[pairs.length - 1].id;
+for (let i = 0; i < N; i++) { const a1 = C.assignSides("r" + i, pairs), b1 = C.assignSides("q" + i, pairs); if (a1[pid] === "left") leftN++; if (a1[pid2] === b1[pid2]) same++; }
+assert.ok(Math.abs(leftN / N - 0.5) < 0.04, "pair side balance over reviewers: " + leftN + "/" + N);
+assert.ok(Math.abs(same / N - 0.5) < 0.04, "two reviewers' sides are independent: " + same + "/" + N);
 // seeded order: deterministic, a permutation, and not the identity
 const ids = pairs.map((p) => p.id);
 const o1 = C.shuffled(ids, "ab|all|all").join(), o2 = C.shuffled(ids, "ab|all|all").join();
@@ -64,17 +74,19 @@ assert.equal(C.kappa(["x", "x"], ["x", "x"]).kappa, 1, "perfect agreement on one
 const byGroup = {}; pairs.forEach((p) => { const g = (byGroup[p.group] ||= {}); g[p.family] = (g[p.family] || 0) + 1; });
 assert.equal(pairs.filter((p) => p.group === "stack").length, 72, "stack: 3 x 24 pairs");
 assert.ok(pairs.filter((p) => p.attention).every((p) => p.group === "servo" && p.family === "gc"), "attention checks are fixed-move servo GC trials");
-assert.equal(pairs.filter((p) => p.attention).length, 3, "three attention checks");
-assert.ok(!pairs.some((p) => p.group === "servo" && !p.attention && ["GC005", "GC016", "GC002", "GC025", "GC045"].includes(p.task)), "walking-only tasks are out of servo voting");
+assert.deepEqual(pairs.filter((p) => p.attention).map((p) => p.id).sort(), ["stksv-gc:GC002", "stksv-gc:GC016", "stksv-gc:GC025", "stksv-gc:GC045", "sv-gc:GC005", "sv-gc:GC016", "sv-gc:GC025", "sv-gc:GC045"], "eight attention checks, every byte-identical walking-only pair");
+assert.ok(!pairs.some((p) => p.group.startsWith("servo") && !p.attention && ["GC005", "GC016", "GC002", "GC025", "GC045"].includes(p.task)), "walking-only tasks are out of servo voting, closed loop included");
+assert.deepEqual(pairs.filter((p) => p.group === "servo-cl").map((p) => p.task), ["GC031", "GC033", "GC036", "GC038"], "closed-loop servo trials");
+assert.equal(pairs.filter((p) => p.group === "servo" && !p.attention).length, 12, "servo: 5 + 7 voting trials");
 assert.ok(pairs.every((p) => p.ctl.video && p.trt.video && p.ctl.exp !== p.trt.exp), "both clips exist");
 assert.equal(new Set(pairs.map((p) => p.id)).size, pairs.length, "pair ids unique");
 assert.deepEqual(C.buildPairs({}).dropped.length, C.SETS.length, "every set dropped without manifests");
 
 // export round trip
-const doc = { page_version: C.PAGE_VERSION, reviewer: "AB", manifests: { x: "2026" }, votes: [
+const doc = { page_version: C.PAGE_VERSION, reviewer: "AB", round: 2, manifests: { x: "2026" }, votes: [
   { pair_id: "s:GC1", task: "GC1", family: "gc", group: "servo", set: "s", attention: false, treatment_side: "left", follow: "left", follow_pref: "treatment", stable: "", stable_pref: "", note: 'a, "b"\nc', first_voted: "t0", last_voted: "t1" }] };
 const back = C.readResults(C.toCSV(doc));
-assert.equal(back.reviewer, "AB"); assert.equal(back.votes[0].note, 'a, "b"\nc'); assert.equal(back.votes[0].follow_pref, "treatment");
+assert.equal(back.reviewer, "AB"); assert.equal(back.votes[0].round, "2"); assert.equal(back.votes[0].note, 'a, "b"\nc'); assert.equal(back.votes[0].follow_pref, "treatment");
 assert.equal(C.readResults(JSON.stringify(doc)).votes.length, 1);
 assert.equal(C.pref("left", "left"), "treatment"); assert.equal(C.pref("right", "left"), "control"); assert.equal(C.pref("none", "left"), "none"); assert.equal(C.pref("", "left"), "");
 const ag = C.agreement([{ pair_id: "p1", follow_pref: "treatment" }, { pair_id: "p2", follow_pref: "none" }], [{ pair_id: "p1", follow_pref: "treatment" }, { pair_id: "p2", follow_pref: "control" }], "follow_pref");

@@ -1,27 +1,31 @@
 // Blind review page, pure parts: pair list, seeded sides and order, sign test, Cohen's kappa, export rows.
 // No DOM here, so review.check.mjs can test it under node. review.js renders.
 
-export const PAGE_VERSION = "review-1";
+export const PAGE_VERSION = "review-2";
 
 // Pair sets. Within a set, control and treatment share seed and fixed moves, except closed-loop sets, where the
 // AI player picks the moves for each clip. Arms checked against results/experiments.csv notes and each
 // manifest's runner_args (Nov 15 2026).
-// skip: tasks left out of voting. The yaw servo only acts on turns, so it leaves walking-only GC tasks unchanged;
-// attention: of those, tasks whose two published clips were byte-identical (sha1 checked), shown as ordinary
-// trials with the expected answer "no difference" and tallied apart.
+// skip: tasks left out of voting. The yaw servo only acts on turns, so walking-only GC tasks measure noise (fixed
+// moves) or the AI player (closed loop), not the servo. attention: of those, tasks whose two published clips are
+// byte-identical (sha1 of the release assets, Nov 15 2026), shown as ordinary trials with the expected answer
+// "no difference" and tallied apart. stksv-gc GC005 differs between arms, so it is skipped, not a check.
 const WALK_ONLY = ["GC005", "GC016", "GC002", "GC025", "GC045"];
 export const SETS = [
   { id: "stk-dev-s0", group: "stack", ctl: "stk14-fx-dev-v1-a1", trt: "stk14-fx-dev-v1-a2", label: "dev tasks, seed 0" },
   { id: "stk-dev-s1", group: "stack", ctl: "stk14-fx-dev-v1-a3", trt: "stk14-fx-dev-v1-a4", label: "dev tasks, seed 1" },
   { id: "stk-dev2", group: "stack", ctl: "stk14-fx-dev2-v1-a1", trt: "stk14-fx-dev2-v1-a2", label: "dev2 tasks, seed 0" },
-  { id: "sv-gc", group: "servo", ctl: "svgc14-fx-v1-a1", trt: "svgc14-fx-v1-a2", label: "caption prompt and turn calibration in both", skip: WALK_ONLY, attention: ["GC005"] },
-  { id: "stksv-gc", group: "servo", ctl: "stksv14-fx-gc-v1-a1", trt: "stksv14-fx-gc-v1-a2", label: "stack in both", skip: WALK_ONLY, attention: ["GC016", "GC025"] },
-  { id: "stksv-cl", group: "servo-cl", ctl: "stksv14-cl-gc-v1-a1", trt: "stksv14-cl-gc-v1-a2", label: "stack in both, AI player" }
+  { id: "sv-gc", group: "servo", ctl: "svgc14-fx-v1-a1", trt: "svgc14-fx-v1-a2", label: "caption prompt and turn calibration in both", skip: WALK_ONLY, attention: ["GC005", "GC016", "GC025", "GC045"] },
+  { id: "stksv-gc", group: "servo", ctl: "stksv14-fx-gc-v1-a1", trt: "stksv14-fx-gc-v1-a2", label: "stack in both", skip: WALK_ONLY, attention: ["GC002", "GC016", "GC025", "GC045"] },
+  { id: "stksv-cl", group: "servo-cl", ctl: "stksv14-cl-gc-v1-a1", trt: "stksv14-cl-gc-v1-a2", label: "stack in both, AI player", skip: WALK_ONLY }
 ];
+// The same file can sit in two sets: stk14-fx-dev-v1-a2 (stack, seed 0) GC005/016/031/033/038 equal
+// stksv14-fx-gc-v1-a1 (servo control) byte for byte. The reveal says so when both groups are in a selection.
+export const SHARED_CLIPS = { sets: ["stk-dev-s0", "stksv-gc"], tasks: ["GC005", "GC016", "GC031", "GC033", "GC038"] };
 export const GROUPS = {
   stack: { name: "Stack vs no flags", what: "Same seed and same fixed moves in both clips.", treat: "stack: turn calibration, caption prompt, insight director, IF slow translation, keep-first 10, attention window 22", control: "no flags" },
   servo: { name: "Yaw servo vs control (GC)", what: "Same seed and same fixed moves in both clips.", treat: "yaw servo on", control: "yaw servo off" },
-  "servo-cl": { name: "Yaw servo vs control (GC, closed loop)", what: "Closed loop: the AI player chose the moves for each clip, so the two clips can follow different moves.", treat: "yaw servo on", control: "yaw servo off", closed: true }
+  "servo-cl": { name: "Yaw servo vs control (GC, closed loop)", what: "Closed loop: the AI player chose the moves for each clip, so the two clips can follow different moves and run for different lengths. A clip that ends holds its last frame under a \"Clip ended\" label; judge stability only over the part both clips play.", treat: "yaw servo on", control: "yaw servo off", closed: true }
 };
 export const FAMS = ["gc", "if", "insight", "outsight"];
 
@@ -48,8 +52,19 @@ export function rng(seed) { // mulberry32
   };
 }
 function norm(reviewer) { return String(reviewer || "").trim().toLowerCase(); }
-// which side the treatment clip is on, fixed by reviewer and pair: a reload or a different filter never flips it
-export function treatmentSide(reviewer, pairId) { return Math.floor(hash("side|" + norm(reviewer) + "|" + pairId) / 2) % 2 ? "right" : "left"; }
+// the side seed: reviewer name, plus the round once "Clear my votes and start over" has been used
+export function sideSeed(reviewer, round) { return norm(reviewer) + (round ? "#" + round : ""); }
+// which side the treatment clip is on, per pair. Balanced within each group and family: the stratum's pairs are put in
+// a seeded order and alternate sides, so a stratum of n pairs has floor(n/2) or ceil(n/2) on the left.
+export function assignSides(seed, pairs) {
+  const strata = {}, out = {};
+  pairs.forEach((p) => { (strata[p.group + "|" + p.family] ||= []).push(p.id); });
+  Object.keys(strata).sort().forEach((k) => {
+    const ids = shuffled(strata[k].slice().sort(), "side|" + seed + "|" + k), flip = hash("flip|" + seed + "|" + k) % 2;
+    ids.forEach((id, i) => { out[id] = (i + flip) % 2 ? "right" : "left"; });
+  });
+  return out;
+}
 // trial order: a Fisher-Yates shuffle seeded by reviewer and the chosen group and family
 export function shuffled(items, seedKey) {
   const r = rng(hash("order|" + seedKey) % 4294967296), a = items.slice();
@@ -116,12 +131,12 @@ export function tally(votes, q) {
 }
 
 /* ---------- export / import ---------- */
-export const CSV_COLS = ["reviewer", "pair_id", "task", "family", "group", "set", "attention", "treatment_side", "follow", "follow_pref", "stable", "stable_pref", "note", "first_voted", "last_voted", "page_version", "manifests"];
+export const CSV_COLS = ["reviewer", "round", "pair_id", "task", "family", "group", "set", "attention", "treatment_side", "follow", "follow_pref", "stable", "stable_pref", "note", "first_voted", "last_voted", "page_version", "manifests"];
 function q(v) { const s = v === null || v === undefined ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 export function toCSV(doc) {
   const mv = Object.keys(doc.manifests || {}).sort().map((k) => k + "@" + doc.manifests[k]).join(" ");
   const lines = [CSV_COLS.join(",")];
-  doc.votes.forEach((v) => { lines.push(CSV_COLS.map((c) => q(c === "page_version" ? doc.page_version : c === "manifests" ? mv : c === "reviewer" ? doc.reviewer : v[c])).join(",")); });
+  doc.votes.forEach((v) => { lines.push(CSV_COLS.map((c) => q(c === "page_version" ? doc.page_version : c === "manifests" ? mv : c === "reviewer" ? doc.reviewer : c === "round" ? (doc.round || 0) : v[c])).join(",")); });
   return lines.join("\n") + "\n";
 }
 export function parseCSV(text) {

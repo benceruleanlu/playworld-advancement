@@ -1,7 +1,9 @@
 ---
 import "../styles/global.css";
 // title and description default to the main page; other pages pass their own
-const { title = "PlayWorld Advancement", description = "Live experiment results for the PlayWorld advancement hackathon project: inference-time changes to LingBot-World v2, scored on dev subsets of the benchmark." } = Astro.props;
+// og:description defaults to the main page's static share text; a page that passes description shares that instead
+const { title = "PlayWorld Advancement", description = "Live experiment results for the PlayWorld advancement hackathon project: inference-time changes to LingBot-World v2, scored on dev subsets of the benchmark.", url = "https://benceruleanlu.github.io/playworld-advancement/" } = Astro.props;
+const ogDescription = Astro.props.description || "Inference-time changes to an open world model, LingBot-World v2, with no training, scored on PlayWorld dev tasks by the benchmark's judge. No full 171-task run.";
 ---
 <!doctype html>
 <html lang="en">
@@ -9,11 +11,11 @@ const { title = "PlayWorld Advancement", description = "Live experiment results 
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title}</title>
-    <meta property="og:title" content="PlayWorld Advancement">
+    <meta property="og:title" content={title}>
     <meta property="og:type" content="website">
     <!-- Static text, not data-driven: update this, the meta description, README.md line 5 and research/demo-video.md once a 171-task run is scored. -->
-    <meta property="og:description" content="Inference-time changes to an open world model, LingBot-World v2, with no training, scored on PlayWorld dev tasks by the benchmark's judge. No full 171-task run.">
-    <meta property="og:url" content="https://benceruleanlu.github.io/playworld-advancement/">
+    <meta property="og:description" content={ogDescription}>
+    <meta property="og:url" content={url}>
     <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
     <meta name="description" content={description}>
