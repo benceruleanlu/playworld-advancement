@@ -108,6 +108,11 @@ the dataset only with --lingbot-turn-cal. Outermost decide_action wrapper, so th
 history endpoints are not reached. For A/B of model-side flags only, not final numbers. Needs --action-source
 agent or refined. See scripted_player.py.
 
+IF fixed camera (off by default): `--lingbot-if-fixed-camera` or LINGBOT_IF_FIXED_CAMERA=1 sends
+stationary camera poses on matching third-person IF tasks from the first frame. The original subject
+goal stays in the auto-caption prompt. Session only; refuses pose hints, measured turn and IF settle.
+Counts suppressed motion frames in if_fixed_camera_frames; no timing, noise or conditioning-layer changes.
+
 Conditioning schedule (off by default, session only): `--lingbot-cond-schedule` or LINGBOT_COND_SCHEDULE=1
 scales DiT camera FiLM and cross-attention output on early denoising steps of stationary and third-person
 chunks, restoring (1, 1) on late steps and the t=0 KV write (--lingbot-cond-early/cam/3p/text; cond_schedule.py).
@@ -298,6 +303,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import cond_schedule as CS  # noqa: E402
+from adapters.lingbot_world2 import if_fixed_camera as IFC  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_director as D  # noqa: E402
@@ -336,7 +342,7 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
               "--lingbot-if-subject-director", "--lingbot-weight-mod", "--lingbot-if-identity-cue",
               "--lingbot-measured-turn", "--lingbot-scripted-player", "--lingbot-noise-mean-coupling",
-              YSV.FLAG)
+              YSV.FLAG, "--lingbot-if-fixed-camera")
 
 
 def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
@@ -430,6 +436,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "if_repeat": "--lingbot-if-repeat-check" in argv or environ.get("LINGBOT_IF_REPEAT_CHECK", "0") == "1",
         "if_slow": "--lingbot-if-slow-translation" in argv
                    or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
+        "if_fixed_camera": "--lingbot-if-fixed-camera" in argv
+                           or environ.get("LINGBOT_IF_FIXED_CAMERA", "0") == "1",
         "noise_mean": "--lingbot-noise-mean-coupling" in argv or environ.get("LINGBOT_NOISE_MEAN_COUPLING", "0") == "1",
         "gc_director": "--lingbot-gc-chunk-director" in argv or environ.get("LINGBOT_GC_CHUNK_DIRECTOR", "0") == "1",
         "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
@@ -453,6 +461,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-noise-mean-coupling requires session mode")
     if flags["if_identity"] and mode != "auto":
         raise SystemExit("--lingbot-if-identity-cue requires auto caption prompting (scene plus IF goal)")
+    if flags["if_fixed_camera"]:
+        if mode != "auto" or flags["stateless"]:
+            raise SystemExit("--lingbot-if-fixed-camera requires auto caption prompting and session mode")
+        if any(flags[k] for k in ("player_hint", "if_camera", "measured_turn")):
+            raise SystemExit("--lingbot-if-fixed-camera cannot use pose hints or measured turn: keys no longer move the camera")
     flags["stall"], argv = W.parse(argv, environ)
     flags["cond_sched"], argv = CS.parse(argv, environ)
     if flags["cond_sched"].enabled and flags["weight_mod"]:
@@ -460,6 +473,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     flags["kv_noise"], argv = KVN.parse(argv, environ)
     flags["stg"], argv = STGM.parse(argv, environ)
     flags["if_settle"], argv = IS.parse(argv, environ)
+    if flags["if_fixed_camera"] and flags["if_settle"].enabled:
+        raise SystemExit("--lingbot-if-fixed-camera and --lingbot-if-settle are alternatives; use one")
     if flags["if_settle"].enabled and flags["stateless"]:
         raise SystemExit("--lingbot-if-settle requires session mode")
     if flags["if_settle"].enabled and flags["if_horizon"]:
@@ -738,6 +753,7 @@ class LingBotWorld2Engine:
               + (", insight director on" if STATS.insight_director else "")
               + (", IF repeat check on" if STATS.if_repeat else "")
               + (", IF slow translation on (gain 0.5)" if STATS.if_slow else "")
+              + (", IF fixed camera on" if STATS.if_fixed_camera else "")
               + (", GC chunk director on" if GC_DIRECTOR else "")
               + (", GC ease turns on" if GC_EASE_TURNS else "")
               + (", IF subject director on" if IF_SUBJECT else "")
@@ -845,6 +861,9 @@ class LingBotWorld2Engine:
         n = S.chunks_for(num_frames)
         keys = S.fit_keys(P.parse_action(action), S.keys_needed(n, first=not cont))
         self._calibrate(name, len(keys), action)
+        if STATS.if_fixed_camera:
+            keys, suppressed = IFC.hold(prompts._current.get("task"), name, keys)
+            STATS.if_fixed_camera_frames += suppressed
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
         steered0 = getattr(self.session, "repe_steered", 0)
@@ -1057,7 +1076,7 @@ def main(argv: list[str] | None = None) -> int:
                                  if_horizon=IF_HORIZON, if_camera=flags["if_camera"],
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
-                                 if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
+                                 if_slow=flags["if_slow"], if_fixed_camera=flags["if_fixed_camera"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
                                  measured_turn=flags["measured_turn"], cond_sched=cs_mode,
                                  kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
