@@ -1,18 +1,47 @@
-## pm14-fx-v2-a2 (arm 2/4 of pm14-fx-v2, generated, not scored)
+## pm14-fx-v2-a2
 
-args `--lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-time recent`
+runner `lingbot_world2` | action source `dataset` | passes 4 | tasks 6 | missing 0
+
+| family | mean | std | n | gate pass | missing | dropped | per pass |
+|---|---:|---:|---:|---:|---:|---:|---|
+| gc | 3.03 | 0.27 | 3 | 3/3 | 0 | 0 | 2.67, 3.27, 3.20, 3.00 |
+| outsight | 1.92 | 0.32 | 3 | 3/3 | 0 | 0 | 2.33, 1.67, 2.00, 1.67 |
+| **overall** | **2.48** | 0.11 | | | | | 2.50, 2.47, 2.60, 2.33 |
+
+**Reference (paper, full benchmark)**
+
+| model | gc | if | insight | outsight | overall |
+|---|---:|---:|---:|---:|---:|
+| Genie 3 | 2.74 | 2.40 | 1.51 | 1.81 | 2.12 |
+| SANA-WM | 1.72 | 1.89 | 1.13 | 1.16 | 1.48 |
+| Matrix-Game-3.0 | 1.30 | 1.25 | 1.00 | 1.00 | 1.14 |
+
+[All experiments on the results site](https://benceruleanlu.github.io/playworld-advancement/)
+
+### Tasks
+
+| task | family | mean | passes | status | reason |
+|---|---|---:|---|---|---|
+| GC031 | gc | 1.75 | 1/2.2/1.6/2.2 | ok | The camera successfully completed a 360-degree pan and returned to the initial viewpoint, but a severe layout reset occurred in the initial area: the couple and bench originally on the right disappeared, and the signpost structure changed, failing to maintain world model consistency.<details><summary>judge's original</summary>镜头成功完成了360度环视并回到初始视角，但初始区域发生了严重的布局重置，原本在右侧的情侣和长椅消失，指示牌结构改变，未能保持世界模型的一致性。</details> |
+| GC033 | gc | 4.60 | 5/3.6/5/4.8 | ok | The video successfully panned left and returned to the initial viewpoint. Key objects in the initial display window reappeared consistently, with their spatial positions and colors remaining stable, and only the text on the sign became slightly blurry upon returning.<details><summary>judge's original</summary>视频成功执行了向左平移并返回初始视角的动作，初始橱窗内的关键物体一致地重新出现，空间位置和颜色保持稳定，仅标志上的文字在返回后出现轻微模糊。</details> |
+| GC036 | gc | 2.75 | 2/4/3/2 | ok | The camera failed to perform the final pan left back to the center and instead kept panning to the right.<details><summary>judge's original</summary>镜头未能执行最后向左平移回到中心的动作，而是持续向右平移。</details> |
+| OE039 | outsight | 2.00 | 2/2/2/2 | ok | The camera successfully completed a 360-degree rotation and pulled back, but upon returning to the initial viewpoint, the puppy's breed was noticeably replaced, the orange chair in the background disappeared, and the view outside the window reset, resulting in poor evolution quality.<details><summary>judge's original</summary>镜头成功完成了360度旋转并后退，但转回初始视角时，小狗的品种发生了明显的替换，且背景中的橙色椅子消失、窗外景色重置，演变质量较低。</details> |
+| OE047 | outsight | 1.50 | 2/1/2/1 | gate_fail | The camera turned right, turned back, and tilted up as prompted, but the man left the escalator and walked toward the elevator, then contradictorily reset back onto the escalator after the camera turned back, causing the trajectory to break completely.<details><summary>judge's original</summary>镜头按提示完成了右转、转回和上仰，但男子离开了扶梯走向电梯，并在镜头转回后矛盾地重置回扶梯上，导致轨迹完全断裂。</details><br>pass 2 gate_fail: The camera did not rotate to the right as required by the prompt.<details><summary>judge's original</summary>镜头未按提示词要求向右旋转。</details> |
+| OE048 | outsight | 2.25 | 3/2/2/2 | ok | The video completed the turn to the right and returned to the original viewpoint, and the coffee level also rose, but after returning, the cup, coffee machine panel, and background plants underwent severe object replacement, and later in the clip the camera made an unprompted large turn to the right again.<details><summary>judge's original</summary>视频完成了向右转动并返回原视角的动作，咖啡液面也有所上升，但返回后杯子、咖啡机面板和背景植物发生了严重的物体替换，且镜头在后期出现了未要求的再次向右大幅度转动。</details> |
+
+> Reasons are machine-translated into English for display after scoring; the judge's original text (under each) is authoritative.
 
 ### Scenes
 
-> **Not scored; replayed dataset moves (open loop), A/B only; arm 2/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-time recent.**
+> **Replayed dataset moves (open loop), A/B only.**
 
 [Watch all 6 rollouts of `pm14-fx-v2-a2` on the results site](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2#scenes). Each **play** link opens that rollout in the site's Scenes view (live once this run's manifest is on main). The **mp4** link downloads the file: GitHub serves release assets as attachments, not inline.
 
 | task | family | score | status | watch |
 |---|---|---:|---|---|
-| GC031 | gc | - | not scored | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=GC031#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/GC031.mp4) |
-| GC033 | gc | - | not scored | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=GC033#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/GC033.mp4) |
-| GC036 | gc | - | not scored | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=GC036#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/GC036.mp4) |
-| OE039 | outsight | - | not scored | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=OE039#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/OE039.mp4) |
-| OE047 | outsight | - | not scored | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=OE047#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/OE047.mp4) |
-| OE048 | outsight | - | not scored | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=OE048#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/OE048.mp4) |
+| GC031 | gc | 1.75 | ok | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=GC031#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/GC031.mp4) |
+| GC033 | gc | 4.60 | ok | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=GC033#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/GC033.mp4) |
+| GC036 | gc | 2.75 | ok | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=GC036#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/GC036.mp4) |
+| OE039 | outsight | 2.00 | ok | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=OE039#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/OE039.mp4) |
+| OE047 | outsight | 1.50 | gate_fail | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=OE047#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/OE047.mp4) |
+| OE048 | outsight | 2.25 | ok | [play](https://benceruleanlu.github.io/playworld-advancement/?scenes=pm14-fx-v2-a2&scene=OE048#scenes) · [mp4](https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v2-a2/OE048.mp4) |
