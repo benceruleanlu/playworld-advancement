@@ -127,6 +127,11 @@ def normalise_translation(rel: np.ndarray, scale: float = TRANS_SCALE) -> np.nda
     return out
 
 
+def is_pure_turn(keys) -> bool:
+    """True when every key is the same single rotation key (j/l/i/k): --lingbot-gc-ease-turns eases only these."""
+    return bool(keys) and len(set(keys)) == 1 and keys[0] in ("j", "l", "i", "k")
+
+
 class PoseTrack:
     """Absolute camera track across steps. advance(keys) -> normalised relative
     poses for the new latent frames (one per 4 pixel frames)."""
@@ -137,14 +142,17 @@ class PoseTrack:
         self.prev_latent = None      # absolute pose of the latest latent frame
         self.latents = None          # absolute poses of the last advance()'s latents (one per rel)
 
-    def advance(self, keys: list[str]) -> np.ndarray:
+    def advance(self, keys: list[str], ease_turns: bool = False) -> np.ndarray:
         first = self.prev_latent is None
         if (len(keys) + (4 if first else 0)) % FRAMES_PER_CHUNK:
             raise ValueError(f"{len(keys)} keys do not fill whole chunks (first={first})")
+        # Raised-cosine speed: half speed at edges, 1.5x mid-chunk; sum preserves total angle.
+        scales = (1 - 0.5 * np.cos(2 * np.pi * (np.arange(len(keys)) + 0.5) / len(keys))
+                  if ease_turns and is_pure_turn(keys) else None)
         cur = self.last
         lat = [cur] if first else []  # latent 0 is pixel frame 0
         for i, k in enumerate(keys, 1):
-            cur = cur @ P.key_delta(k, self.translation_gain)
+            cur = cur @ P.key_delta(k, self.translation_gain, 1.0 if scales is None else float(scales[i - 1]))
             if i % 4 == 0:
                 lat.append(cur)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
@@ -288,6 +296,7 @@ class LingBotSession:
         pipe.scheduler.set_timesteps(pipe.num_train_timesteps, shift=self.shift)
         self.timesteps = pipe.scheduler.timesteps[list(TIMESTEPS_INDEX)]
         self.context = encode_prompt(pipe, prompt, self.t5_cache)
+        self.prompt = prompt
 
         Ks = torch.tensor([P.INTRINSICS_480P], dtype=torch.float32)
         Ks = get_Ks_transformed(Ks, height_org=480, width_org=832, height_resize=self.h,
@@ -421,7 +430,18 @@ class LingBotSession:
         return emb.to(self.pipe.param_dtype)
 
     # -- step --------------------------------------------------------------
-    def step(self, keys: list[str]):
+    def update_prompt(self, prompt: str) -> bool:
+        """Refresh text cross-attention only; preserve visual KV, camera and decoder state."""
+        if not self.started:
+            raise RuntimeError("reset the session before updating its prompt")
+        if prompt == self.prompt:
+            return False
+        context = encode_prompt(self.pipe, prompt, self.t5_cache)
+        self.context, self.prompt = context, prompt
+        self.cross_init = False  # upstream overwrites text K/V on the next first-call forward
+        return True
+
+    def step(self, keys: list[str], ease_turns: bool = False):
         """Generate len(keys) pixel frames (whole chunks) and return uint8 [F, H, W, 3]:
         first step 16n-3 frames from the input frame, later steps the previous last
         frame plus 16n new ones."""
@@ -430,7 +450,7 @@ class LingBotSession:
             raise RuntimeError("LingBotSession.step() before reset()")
         pipe = self.pipe
         first = self.chunk_id == 0
-        rel = self.track.advance(keys)
+        rel = self.track.advance(keys, ease_turns=ease_turns)
         n_chunks = len(rel) // CHUNK
         end_lat = (self.chunk_id + n_chunks) * CHUNK
         if end_lat > ROPE_LATENTS:
