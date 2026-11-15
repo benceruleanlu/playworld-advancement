@@ -1,6 +1,30 @@
 {
  "runs": [
   {
+   "exp": "sv14-fx-v2-a2",
+   "generated": "2026-11-15T05:55:25Z",
+   "n_tasks": 5,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sv14-fx-v2-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 2/2 of sv14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --seed 1 --lingbot-yaw-servo --lingbot-yaw-servo-tasks ^[GO][CE][0-9]"
+   ]
+  },
+  {
+   "exp": "sv14-fx-v2-a1",
+   "generated": "2026-11-15T05:55:17Z",
+   "n_tasks": 5,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sv14-fx-v2-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "replayed dataset moves (open loop), A/B only",
+    "arm 1/2 of sv14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-yaw-servo --lingbot-yaw-servo-tasks ^[GO][CE][0-9]"
+   ]
+  },
+  {
    "exp": "pm14-fx-v3-a3",
    "generated": "2026-11-15T05:52:35Z",
    "n_tasks": 6,
