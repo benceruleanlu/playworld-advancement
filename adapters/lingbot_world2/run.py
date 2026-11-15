@@ -156,9 +156,16 @@ that has left the rolling window (opening included) and that the camera had look
 window does, recomputes that chunk into the sink slots after the first --lingbot-pose-mem-anchor latents, by default
 at a RoPE time just behind the window (one extra clean forward per chunk while installed); the original sink is
 copied back when nothing matches. Knobs --lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,latents,anchor,time,
-fallback,tasks,max-mb,rule,pick,yaw-scale}; dry run: python -m pwa.pose_mem_plan TASK. Acts in dataset mode (per latent chunk inside one step). Refused with
+fallback,tasks,max-mb,rule,pick,yaw-scale,rel}; dry run: python -m pwa.pose_mem_plan TASK. Acts in dataset mode (per latent chunk inside one step). Refused with
 --lingbot-stateless, sink 0 / local -1, a sink smaller than anchor + latents, --lingbot-reanchor and
 --lingbot-sink-key-scale. See pose_memory.py.
+
+Homography-warped view re-anchoring (off by default, session only): `--lingbot-warp-reanchor` or
+LINGBOT_WARP_REANCHOR=1 projects the opening image into each returning chunk's camera frustum via pinhole
+homography K R K^-1 (plus optional focus-depth term t / Z_0), encodes the warped still clip once per overlapping
+return chunk, and writes valid in-frustum latent patches into y (`mask` 1 inside frustum, 0 outside). Knobs
+--lingbot-warp-{max-deg,max-trans,leave-deg,leave-trans,focus,erode,tasks}. Refused with --lingbot-stateless,
+--lingbot-reanchor and --lingbot-pose-memory. See warp_reanchor.py.
 
 IF identity cue (off by default): `--lingbot-if-identity-cue` or LINGBOT_IF_IDENTITY_CUE=1 appends a fixed sentence
 group about keeping each subject's identity (if_identity.CUE) to the model prompt of third-person IF tasks that have
@@ -221,7 +228,10 @@ Env:
   LINGBOT_SINK_KEY_SCALE / LINGBOT_SINK_SCALE_AFTER / LINGBOT_SINK_SCALE_TASKS   same as --lingbot-sink-key-scale /
                     --lingbot-sink-scale-after / --lingbot-sink-scale-tasks (1.0 = off / 8 / ".*")
   LINGBOT_POSE_MEMORY  1 = same as --lingbot-pose-memory (knobs LINGBOT_POSE_MEM_DEG / _TRANS / _LEAVE_DEG /
-                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB)
+                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB / _RULE / _PICK /
+                    _YAW_SCALE / _REL)
+  LINGBOT_WARP_REANCHOR  1 = same as --lingbot-warp-reanchor (knobs LINGBOT_WARP_MAX_DEG / _MAX_TRANS /
+                    _LEAVE_DEG / _LEAVE_TRANS / _FOCUS / _ERODE / _TASKS)
   LINGBOT_TURNTABLE_POSES  1 = same as --lingbot-turntable-poses (LINGBOT_TURNTABLE_WALK = ground|free,
                     LINGBOT_TURNTABLE_RESCALE = 1)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
@@ -300,6 +310,7 @@ from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import stg as STGM  # noqa: E402
 from adapters.lingbot_world2 import sink_scale as SK  # noqa: E402
 from adapters.lingbot_world2 import turntable as TT  # noqa: E402
+from adapters.lingbot_world2 import warp_reanchor as WR  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 from adapters.lingbot_world2 import yaw_gain as YG  # noqa: E402
@@ -480,6 +491,14 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
             raise SystemExit("--lingbot-pose-memory and --lingbot-reanchor both target GC returns; use one per arm")
         if flags["sink_scale"].enabled:
             raise SystemExit("--lingbot-pose-memory and --lingbot-sink-key-scale both rewrite the sink; use one per arm")
+    flags["warp_reanchor"], argv = WR.parse(argv, environ)
+    if flags["warp_reanchor"].enabled:
+        if flags["stateless"]:
+            raise SystemExit("--lingbot-warp-reanchor requires session mode (writes persistent y latents)")
+        if flags["reanchor"]:
+            raise SystemExit("--lingbot-warp-reanchor and --lingbot-reanchor both write return latents in y; use one per arm")
+        if flags["pose_mem"].enabled:
+            raise SystemExit("--lingbot-warp-reanchor and --lingbot-pose-memory both target view returns; use one per arm")
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     flags["player"], argv = agent_api.configure(argv, environ)
@@ -503,6 +522,7 @@ KV_NOISE = KVN.KVNoiseConfig()  # --lingbot-kv-noise / LINGBOT_KV_NOISE=1, sessi
 STG = STGM.StgConfig()  # --lingbot-stg / LINGBOT_STG=1, off by default; session only
 SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
 POSE_MEM = PM.PoseMemoryConfig()  # --lingbot-pose-memory / LINGBOT_POSE_MEMORY=1, session only, off by default
+WARP_REANCHOR = WR.WarpReanchorConfig()  # --lingbot-warp-reanchor / LINGBOT_WARP_REANCHOR=1, session only, off by default
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
 YAW_SERVO = False  # --lingbot-yaw-servo / LINGBOT_YAW_SERVO=1, off by default; session + turn-cal
 YAW_SERVO_CFG = YSV.ServoConfig()  # its knobs (--lingbot-yaw-servo-k / -beta, or env)
@@ -629,7 +649,8 @@ class LingBotWorld2Engine:
                                             **({"kv_noise": KVN.KVNoise(KV_NOISE)} if KV_NOISE.enabled else {}),
                                             **({"stg": stg} if stg is not None else {}),
                                             **({"sink_scale": SINK_SCALE} if SINK_SCALE.enabled else {}),
-                                            **({"pose_mem": POSE_MEM} if POSE_MEM.enabled else {}))
+                                            **({"pose_mem": POSE_MEM} if POSE_MEM.enabled else {}),
+                                            **({"warp_reanchor": WARP_REANCHOR} if WARP_REANCHOR.enabled else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -655,6 +676,7 @@ class LingBotWorld2Engine:
                   else ", sink key scale inert (sink 0)" if SINK == 0 else f", {SINK_SCALE.describe()}")
                  if SINK_SCALE.enabled else "")
               + (f", {POSE_MEM.describe()}" if POSE_MEM.enabled else "")
+              + (f", {WARP_REANCHOR.describe()}" if WARP_REANCHOR.enabled else "")
               + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
                  else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
@@ -797,6 +819,10 @@ class LingBotWorld2Engine:
                 self.session.pose_mem_name = name
                 if self.session.pose_mem_on:
                     STATS.pose_mem_armed()
+            if WARP_REANCHOR.enabled:  # only with the flag, so the no-flag reset path stays main's
+                self.session.warp_reanchor_on = WARP_REANCHOR.applies(name)
+                if self.session.warp_reanchor_on:
+                    STATS.warp_armed()
         self._configure_if_motion(name, keys)
         if YAW_GAIN.enabled:  # only with the flag, so the no-flag track stays main's
             self.session.track.yaw_gain = YAW_GAIN.pair()
@@ -819,6 +845,7 @@ class LingBotWorld2Engine:
         stg_chunks, stg_calls = getattr(self.session, "stg_chunks", 0), getattr(self.session, "stg_calls", 0)
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
         pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
+        wr_before = (self.session.warp_events, self.session.warp_patches) if WARP_REANCHOR.enabled else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         servo_split = self.yaw_servo is not None and YSV.applies(name, pattern=YAW_SERVO_CFG.tasks) and any(YSV.yaw_part(k) for k in keys)
         if servo_split:
@@ -846,6 +873,9 @@ class LingBotWorld2Engine:
         if pm_before is not None:
             STATS.pose_mem_counted({k: v - pm_before[k] for k, v in self._pose_mem_counts().items()},
                                    self.session.pm_peak_bytes)
+        if wr_before is not None:
+            STATS.warp_reanchored(self.session.warp_events - wr_before[0],
+                                  self.session.warp_patches - wr_before[1])
         if self.weight_mod is not None:
             steps = self.session.weight_mod_steps - modded[0]
             # the servo splits one call into per-chunk session steps: count the call once, as without it
@@ -927,8 +957,9 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM
-    global YAW_SERVO, YAW_SERVO_CFG, TURNTABLE, _PARSE_SEGMENTS
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG
+    global WARP_REANCHOR
+    global TURNTABLE, _PARSE_SEGMENTS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -942,6 +973,7 @@ def main(argv: list[str] | None = None) -> int:
     COND_SCHED = flags["cond_sched"]
     SINK_SCALE = flags["sink_scale"]
     POSE_MEM = flags["pose_mem"]
+    WARP_REANCHOR = flags["warp_reanchor"]
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     KV_NOISE = flags["kv_noise"]
     kvn_mode = "off" if not KV_NOISE.enabled else ("skip" if STATELESS else "on")
@@ -963,7 +995,7 @@ def main(argv: list[str] | None = None) -> int:
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
                                  sink_scale=SINK_SCALE.enabled, noise_mean=NOISE_MEAN, turn_step=flags["turn_step"],
                                  yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "", pose_mem=POSE_MEM.enabled,
-                                 yaw_servo=YAW_SERVO,
+                                 yaw_servo=YAW_SERVO, warp_reanchor=WARP_REANCHOR.enabled,
                                  turntable=TURNTABLE.walk if TURNTABLE.enabled else "",
                                  turntable_rescale=TURNTABLE.enabled and TURNTABLE.rescale)
     if flags["insight_director"]:

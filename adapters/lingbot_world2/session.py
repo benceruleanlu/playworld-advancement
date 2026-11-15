@@ -38,6 +38,10 @@ no files. Differences from upstream, all deliberate:
     (PoseMemory.decide, also replayed by `python -m pwa.pose_mem_plan`), that chunk's stored x0 is recomputed by
     one clean forward into the sink slots after the anchor latents; the original sink is copied back when nothing
     matches, and on an exception (_pose_mem_before, _mem_recompute, pose_memory.py).
+  * opt-in homography-warped view re-anchoring (warp_reanchor=WarpReanchorConfig, --lingbot-warp-reanchor, off
+    by default): on return approaches toward the start pose, projects frame 0 into the chunk's camera frustum,
+    encodes the warped still clip, and writes valid in-frustum latent patches into `y` (_warp_anchor_y,
+    warp_reanchor.py).
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -57,6 +61,7 @@ from adapters.lingbot_world2 import pose_memory as PM
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import sink_scale as SK
 from adapters.lingbot_world2 import turntable as TT
+from adapters.lingbot_world2 import warp_reanchor as WR
 from adapters.lingbot_world2 import watchdog as W
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
@@ -339,7 +344,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None, kv_noise=None, stg=None, sink_scale=None, pose_mem=None):
+                 cond_sched=None, kv_noise=None, stg=None, sink_scale=None, pose_mem=None, warp_reanchor=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -367,6 +372,9 @@ class LingBotSession:
         self.pose_mem_name = ""   # call name of the rollout (set by the engine with the flag; picks `auto`)
         self.pm_stored = self.pm_installs = self.pm_restores = self.pm_latents = self.pm_forwards = 0
         self.pm_chunks = self.pm_evicted = self.pm_retimes = 0
+        # --lingbot-warp-reanchor: config (None = off), per-task match flag, and lifetime event/patch counters
+        self.warp_reanchor, self.warp_reanchor_on = warp_reanchor, False
+        self.warp_events = self.warp_patches = 0
         self._free()
 
     def _free(self):
@@ -379,6 +387,7 @@ class LingBotSession:
         self._anchor = None
         self._anchored = set()  # latents re-anchored to the input image (kv_noise keeps their chunk clean)
         self.detector = None
+        self._warp_tracker = None
         self.pmem = None          # --lingbot-pose-memory bank, cleared on every reset
         self._pm_snapshot = None  # host copy of the original sink slots [anchor, anchor + latents) of every block
         self._pm_installed = ()   # (chunk id, rope latent) pairs whose recomputed K/V sit in those slots
@@ -451,6 +460,8 @@ class LingBotSession:
         self.gen.manual_seed(int(seed))
         self.track = PoseTrack()
         self.detector = ReturnDetector() if reanchor else None
+        if self.warp_reanchor is not None:
+            self._warp_tracker = WR.WarpTracker(self.warp_reanchor)
         self.third_person = bool(third_person)
         if self.weight_mod is not None:
             self.weight_mod.reset()
@@ -541,6 +552,47 @@ class LingBotSession:
         self._anchored.add(g)
         print(f"[lingbot] session: re-anchored latent {g} (frame {4 * g}) to the input image", flush=True)
 
+    def _warp_anchor_y(self, g: int, c2w: np.ndarray) -> bool:
+        """--lingbot-warp-reanchor: project frame 0 into latent g's frustum via camera homography
+        and write valid in-frustum latent patches into y[:, g] (mask 1 inside frustum, 0 outside)."""
+        import torch  # noqa: PLC0415
+        k_row = (self.Ks[0].detach().cpu().tolist() if hasattr(self.Ks[0], "detach")
+                 else np.asarray(self.Ks[0], dtype=np.float64).tolist())
+        K_tuple = (float(k_row[0]), float(k_row[1]), float(k_row[2]), float(k_row[3]))
+        uv0, valid_pix = WR.project_to_start(c2w, K_tuple, self.h, self.w, self.warp_reanchor.focus)
+        mask_np = WR.latent_valid_mask(valid_pix, self.lat_h, self.lat_w, self.warp_reanchor.erode)
+        total = self.lat_h * self.lat_w
+        n_valid = int(mask_np.sum())
+        if n_valid <= 0:
+            return False
+        deg, trans = pose_offset(c2w)
+        dev = self.pipe.device
+        with torch.no_grad():
+            if n_valid == total and deg <= 0.5 and trans <= 0.25:
+                if self._anchor is None:
+                    still = self._img.repeat(1, 5, 1, 1).to(dev)
+                    self._anchor = self.pipe.vae.encode([still])[0][:, -1]
+                z_warp = self._anchor
+            else:
+                img_2d = self._img.permute(1, 0, 2, 3).to(device=dev, dtype=torch.float32)
+                grid = torch.from_numpy(uv0).unsqueeze(0).to(device=dev, dtype=torch.float32)
+                warped = torch.nn.functional.grid_sample(
+                    img_2d, grid, mode="bilinear", padding_mode="border", align_corners=True
+                ).permute(1, 0, 2, 3)
+                still = warped.repeat(1, 5, 1, 1)
+                z_warp = self.pipe.vae.encode([still])[0][:, -1]
+        mask_t = torch.from_numpy(mask_np).to(device=self.y.device, dtype=self.y.dtype)
+        m = mask_t[None]
+        z_t = z_warp.to(device=self.y.device, dtype=self.y.dtype)
+        self.y[:4, g] = m
+        self.y[4:, g] = z_t * m + self.y[4:, g] * (1.0 - m)
+        self.warp_events += 1
+        self.warp_patches += n_valid
+        self._anchored.add(g)
+        print(f"[lingbot] warp-reanchor: latent {g} (frame {4 * g}, {deg:.1f} deg, {trans:.1f} units, "
+              f"{n_valid}/{total} patches)", flush=True)
+        return True
+
     def _plucker(self, rel: np.ndarray):
         """[1, 384, f, lat_h, lat_w] camera embedding for f relative poses (float32 math
         outside autocast, cast to param dtype, as upstream)."""
@@ -602,6 +654,13 @@ class LingBotSession:
         if self.detector is not None:
             for i in self.detector.update(self.track.latents):
                 self._anchor_y(self.chunk_id * CHUNK + i)
+        if self.warp_reanchor is not None and self.warp_reanchor_on:
+            if self._warp_tracker is None:
+                self._warp_tracker = WR.WarpTracker(self.warp_reanchor)
+            for g, c2w, _ in self._warp_tracker.select_chunk_anchors(
+                self.track.latents, self.chunk_id * CHUNK, CHUNK
+            ):
+                self._warp_anchor_y(g, c2w)
 
         new, modulated = [], False
         pm = self._pose_memory()  # None unless --lingbot-pose-memory is on for this rollout
@@ -612,7 +671,7 @@ class LingBotSession:
                 cid, chunk_hit, stg_hit = self.chunk_id, False, False
                 rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
                 if pm is not None:  # before weight_mod.step; _mem_recompute sets the stored chunk's own scales
-                    self._pose_mem_before(cid, self.track.latents[c * CHUNK:(c + 1) * CHUNK])
+                    self._pose_mem_before(cid, self.track.latents[c * CHUNK:(c + 1) * CHUNK], rel_c)
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
                     self.weight_mod_chunks += 1
@@ -762,11 +821,11 @@ class LingBotSession:
                 self._pm_restore()
             raise
 
-    def _pose_mem_before(self, cid: int, latent_c2ws):
+    def _pose_mem_before(self, cid: int, latent_c2ws, rel_c=None):
         """Select memory for chunk cid from its commanded latent poses (PoseMemory.decide) and install it in the
         sink slots, re-time it, or put the original sink back when nothing matches (fallback start)."""
         pm, cfg = self.pmem, self.pose_mem
-        d = pm.decide(latent_c2ws, cid, self._pm_installed)
+        d = pm.decide(latent_c2ws, cid, self._pm_installed, rel_c)
         if d.kind == "restore":
             self._pm_restore()
             self.pm_restores += 1
@@ -783,8 +842,8 @@ class LingBotSession:
         if len(d.matches) < cfg.chunks and self._pm_installed != ():  # unused slots hold the original sink
             self._pm_restore()
         self._pm_installed = None  # mid-install: the guard restores if a recompute raises
-        for s, r, m in zip(d.slots, d.ropes, d.matches):
-            self._mem_recompute(m.entry, s, r)
+        for s, r, m, mr in zip(d.slots, d.ropes, d.matches, d.rels):
+            self._mem_recompute(m.entry, s, r, mr)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         self._pm_installed = d.ids
@@ -795,24 +854,26 @@ class LingBotSession:
         else:
             self.pm_retimes += 1
         dt = time.time() - t0
-        for s, r, m in zip(d.slots, d.ropes, d.matches):
+        for s, r, m, mr in zip(d.slots, d.ropes, d.matches, d.rels):
+            rel_tag = f" rel={cfg.rel}:{PM.rel_motion(mr)}" if cfg.rel != "stored" else ""
             if d.kind == "retime":
                 print(f"[lingbot] pose-mem: chunk {cid} keeps chunk {m.entry.cid} re-timed slots {s}-{s + CHUNK - 1} "
-                      f"rope={cfg.time}:{r} {dt:.2f}s", flush=True)
+                      f"rope={cfg.time}:{r}{rel_tag} {dt:.2f}s", flush=True)
                 continue
             print(f"[lingbot] pose-mem: chunk {cid} <- chunk {m.entry.cid} (dyaw {m.dyaw:.1f} deg, dpitch "
                   f"{m.dpitch:.1f} deg, dpos {m.dpos:.1f}, o={m.overlap:.2f}"
                   + (f", window o={m.window:.2f}" if cfg.rule != "legacy" else "")
-                  + f") slots {s}-{s + CHUNK - 1} rope={cfg.time}:{r} {dt:.2f}s"
+                  + f") slots {s}-{s + CHUNK - 1} rope={cfg.time}:{r}{rel_tag} {dt:.2f}s"
                   + (f" [{m.note}]" if m.note else ""), flush=True)
 
-    def _mem_recompute(self, entry, slot: int, rope_lat: int):
+    def _mem_recompute(self, entry, slot: int, rope_lat: int, mem_rel=None):
         """One clean t=0 forward of a stored chunk that writes its K/V into sink slots [slot, slot + CHUNK) of every
         block. Each block gets a dict whose k/v are views of the live cache from latent 0 to slot + CHUNK and whose
         end indices are its own copies, so the forward takes upstream's no-eviction branch, writes only those
         slots, attends the anchor latents (and memory in lower slots) plus itself, and never reads or writes the
         live global/local end indices. Its RoPE time is rope_lat (current_start). With --lingbot-weight-mod the
-        forward runs at chunk j's own base scales (as its clean KV write did), then the current ones come back."""
+        forward runs at base scales for `rel` (entry.rel by default; still/current under --lingbot-pose-mem-rel),
+        then the current ones come back."""
         fs = self.frame_seqlen
         views = []
         for blk in self.kv:
@@ -821,23 +882,24 @@ class LingBotSession:
             loc.fill_(slot * fs)
             views.append({"k": blk["k"][:, :(slot + CHUNK) * fs], "v": blk["v"][:, :(slot + CHUNK) * fs],
                           "global_end_index": g, "local_end_index": loc})
+        rel = (self.pmem.mem_rel(entry) if self.pmem is not None else entry.rel) if mem_rel is None else mem_rel
         wm = self.weight_mod
         saved = (wm.cam_scale, wm.text_scale, wm._regime, wm._base_cam) if wm is not None else None
-        if wm is not None:  # chunk j's base scales, as its own clean KV write had them (end_chunk)
-            wm.step(entry.rel, third_person=self.third_person)
+        if wm is not None:  # base scales for `rel` (entry.rel by default; still/current under --lingbot-pose-mem-rel)
+            wm.step(rel, third_person=self.third_person)
         try:
-            self._mem_forward(entry, views, rope_lat, slot)
+            self._mem_forward(entry, views, rope_lat, slot, rel)
         finally:
             if saved is not None:
                 wm.cam_scale, wm.text_scale, wm._regime, wm._base_cam = saved
         self.cross_init = True  # after update_prompt the call above wrote the new text K/V, as a first forward would
         self.pm_forwards += 1
 
-    def _mem_forward(self, entry, views, rope_lat: int, slot: int):
+    def _mem_forward(self, entry, views, rope_lat: int, slot: int, mem_rel=None):
         import torch  # noqa: PLC0415
         fs, pipe, j = self.frame_seqlen, self.pipe, entry.cid
         with torch.autocast("cuda", enabled=False):
-            emb = self._plucker(entry.rel)
+            emb = self._plucker(entry.rel if mem_rel is None else mem_rel)
         pipe.model(x=[entry.x0.to(pipe.device)], t=torch.stack([self.timesteps[-1] * 0.0]).to(pipe.device),
                    cross_attn_first_call=not self.cross_init, context=[self.context[0]], seq_len=self.max_seq_len,
                    y=[self.y[:, j * CHUNK:(j + 1) * CHUNK]], dit_cond_dict={"c2ws_plucker_emb": emb.chunk(1, dim=0)},

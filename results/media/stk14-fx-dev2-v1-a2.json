@@ -1,0 +1,430 @@
+{
+ "exp": "stk14-fx-dev2-v1-a2",
+ "release_tag": "run-stk14-fx-dev2-v1-a2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stk14-fx-dev2-v1-a2",
+ "generated": "2026-11-15T06:59:06Z",
+ "git_sha": "054ad073c7f58e8397885bb5b6c97d297c6a6272",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": false,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-turn-cal",
+  "--lingbot-caption-prompt",
+  "--lingbot-insight-director",
+  "--lingbot-if-slow-translation",
+  "--lingbot-sink-size",
+  "10",
+  "--lingbot-local-attn",
+  "22"
+ ],
+ "player_model": "",
+ "notes": "stacked candidate vs no flags on the 24 dev2 tasks, fixed actions, official judge 2 passes; pairs with stk14-fx-dev-v1 on dev [arm 2/2 of stk14-fx-dev2-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22]",
+ "labels": [
+  "not scored",
+  "replayed dataset moves (open loop), A/B only",
+  "arm 2/2 of stk14-fx-dev2-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22"
+ ],
+ "report": "stk14-fx-dev2-v1-a2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC002",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC002.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC002.jpg"
+  },
+  {
+   "task_id": "GC012",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC012.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC012.jpg"
+  },
+  {
+   "task_id": "GC022",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC022.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC022.jpg"
+  },
+  {
+   "task_id": "GC025",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC025.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC025.jpg"
+  },
+  {
+   "task_id": "GC035",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC035.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC035.jpg"
+  },
+  {
+   "task_id": "GC045",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC045.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/GC045.jpg"
+  },
+  {
+   "task_id": "IF004",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF004.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF004.jpg"
+  },
+  {
+   "task_id": "IF009",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF009.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF009.jpg"
+  },
+  {
+   "task_id": "IF015",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF015.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF015.jpg"
+  },
+  {
+   "task_id": "IF016",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF016.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF016.jpg"
+  },
+  {
+   "task_id": "IF036",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF036.jpg"
+  },
+  {
+   "task_id": "IF049",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF049.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/IF049.jpg"
+  },
+  {
+   "task_id": "OE004",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE004.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE004.jpg"
+  },
+  {
+   "task_id": "OE007",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE007.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE007.jpg"
+  },
+  {
+   "task_id": "OE008",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE008.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE008.jpg"
+  },
+  {
+   "task_id": "OE010",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE010.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE010.jpg"
+  },
+  {
+   "task_id": "OE029",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE029.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE029.jpg"
+  },
+  {
+   "task_id": "OE038",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE038.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE038.jpg"
+  },
+  {
+   "task_id": "OE046",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE046.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE046.jpg"
+  },
+  {
+   "task_id": "OE060",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE060.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE060.jpg"
+  },
+  {
+   "task_id": "OE061",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE061.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE061.jpg"
+  },
+  {
+   "task_id": "OE062",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE062.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE062.jpg"
+  },
+  {
+   "task_id": "OE067",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE067.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE067.jpg"
+  },
+  {
+   "task_id": "OE071",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE071.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-stk14-fx-dev2-v1-a2/OE071.jpg"
+  }
+ ]
+}
