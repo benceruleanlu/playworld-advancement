@@ -160,3 +160,29 @@ def test_measure_chunk_splits_by_key():
     rendered, trusted = CP.measure_chunk(_frames(offs), ["j"] * 4 + ["l"] * 4 + ["none"] * 4)
     assert rendered["j"] < -1.0 and rendered["l"] > 1.0 and abs(rendered["none"]) < 0.05
     assert rendered["j"] == pytest.approx(-rendered["l"], rel=0.03) and all(trusted.values())
+
+
+def test_report_tables(tmp_path):
+    import json
+
+    def row(task, name, tag, gains, net, servo=None):
+        segs = [{"key": k, "commanded": c, "rendered": c * g, "gain": g, "trusted": True, "frames": 80, "pitch": 0, "peak": 0.3}
+                for (k, c), g in zip((("j", -90.0), ("l", 90.0)) if name == "L90-R90" else (("l", 90.0), ("j", -90.0)), gains)]
+        r = {"id": f"{task}_{name}_{tag}", "task": task, "name": name, "tag": tag, "segments": segs, "commanded_net": 0.0,
+             "rendered_net": net, "trusted": True}
+        if servo is not None:
+            r["servo"] = {"adapt": servo}
+        return r
+
+    rows = [row("GC033", "L90-R90", "base", (1.24, 0.94), -27.2), row("GC033", "R90-L90", "base", (0.91, 1.11), -17.6),
+            row("GC033", "L90-R90", "servo", (1.0, 1.0), -1.5, servo=True), row("GC033", "R90-L90", "fixed-L0.8", (0.91, 0.9), 0.9),
+            row("GC033", "L90-R90", "chunked-open", (1.24, 0.94), -27.2, servo=False)]
+    p = tmp_path / "t.jsonl"
+    p.write_text("\n".join(json.dumps(r) for r in rows + rows[:1]) + "\n")       # a repeated id is kept once
+    loaded = CP.load_trials([p])
+    assert len(loaded) == 5 and [CP.arm_of(r) for r in loaded] == ["open", "open", "servo", "fixed-L0.8", "open"]
+    g = CP.gain_table(loaded)
+    assert "| GC033 | 1.24 | 1.11 | 0.91 | 0.94 | 1.27 |" in g
+    a = CP.arm_table(loaded)
+    assert "| GC033 | L90-R90 | 27.2 | - | 1.5 |" in a and "| GC033 | R90-L90 | 17.6 | 0.9 | - |" in a
+    assert "mean over the 0 rows every arm ran" in a

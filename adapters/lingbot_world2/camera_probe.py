@@ -283,3 +283,88 @@ def measure_chunk(frames, keys: list[str]) -> tuple[dict, dict]:
         rendered[k] += yaw
         trusted[k] = trusted[k] and peak >= MT.MIN_PEAK
     return rendered, trusted
+
+
+# ----------------------------------------------------------------- report
+
+def load_trials(paths) -> list[dict]:
+    """Trial readouts from .jsonl files (one JSON object per line); a repeated id keeps its last entry."""
+    import json  # noqa: PLC0415
+    seen: dict = {}
+    for path in paths:
+        with open(path) as f:
+            for line in f:
+                if line.strip():
+                    row = json.loads(line)
+                    seen[row.get("id") or len(seen)] = row
+    return list(seen.values())
+
+
+def _turns(row: dict) -> list[dict]:
+    return [m for m in row["segments"] if m["commanded"]]
+
+
+def arm_of(row: dict) -> str:
+    """Which method produced a trial: 'open' (gain 1, no feedback), 'servo', or its tag (e.g. 'fixed-L0.8')."""
+    tag = row.get("tag") or "base"
+    if "servo" in row:
+        return "servo" if row["servo"]["adapt"] else "open"
+    return "open" if tag in ("base", "onestep") else tag
+
+
+def end_error(row: dict) -> float:
+    """Degrees between where the script should end and where the rendered view ended (from summed frame motion)."""
+    return abs(row["rendered_net"] - row["commanded_net"])
+
+
+def gain_table(rows: list[dict]) -> str:
+    """Markdown: per scene, rendered / commanded for left and right, on the first turn and after a reversal."""
+    by: dict = {}
+    for r in rows:
+        if arm_of(r) != "open" or not r.get("trusted", True):
+            continue
+        for i, m in enumerate(_turns(r)):
+            by.setdefault(r["task"], {}).setdefault(("L" if m["key"] == "j" else "R", "first" if i == 0 else "later"), []).append(m["gain"])
+    out = ["| Scene | Left, first turn | Left, later | Right, first turn | Right, later | Left over right |", "|---|---|---|---|---|---|"]
+    mean = lambda v: sum(v) / len(v) if v else float("nan")  # noqa: E731
+    fmt = lambda v: f"{mean(v):.2f}" if v else "-"            # noqa: E731
+    for task in sorted(by):
+        g = by[task]
+        left, right = g.get(("L", "first"), []) + g.get(("L", "later"), []), g.get(("R", "first"), []) + g.get(("R", "later"), [])
+        ratio = f"{mean(left) / mean(right):.2f}" if left and right else "-"
+        out.append(f"| {task} | {fmt(g.get(('L', 'first'), []))} | {fmt(g.get(('L', 'later'), []))} | "
+                   f"{fmt(g.get(('R', 'first'), []))} | {fmt(g.get(('R', 'later'), []))} | {ratio} |")
+    return "\n".join(out)
+
+
+def arm_table(rows: list[dict], names=("L90-R90", "R90-L90")) -> str:
+    """Markdown: per scene and script, the end heading error of each arm, with the mean per arm."""
+    arms = sorted({arm_of(r) for r in rows}, key=lambda a: (a != "open", a))
+    cell: dict = {}
+    for r in rows:
+        if r["name"] in names:
+            cell[(r["task"], r["name"], arm_of(r))] = r
+    out = ["| Scene | Script | " + " | ".join(arms) + " |", "|---|---|" + "---|" * len(arms)]
+    sums = {a: [] for a in arms}
+    for task, name in sorted({(t, n) for t, n, _ in cell}):
+        vals = []
+        for a in arms:
+            r = cell.get((task, name, a))
+            if r is None:
+                vals.append("-")
+            else:
+                vals.append(f"{end_error(r):.1f}" + ("" if r.get("trusted", True) else " (untrusted)"))
+                if all((task, name, b) in cell for b in arms):
+                    sums[a].append(end_error(r))
+        out.append(f"| {task} | {name} | " + " | ".join(vals) + " |")
+    n = len(next(iter(sums.values()))) if sums else 0
+    out.append(f"| **mean over the {n} rows every arm ran** | | "
+               + " | ".join(f"**{sum(v) / len(v):.1f}**" if v else "-" for v in sums.values()) + " |")
+    return "\n".join(out)
+
+
+if __name__ == "__main__":
+    import sys
+    trials = load_trials(sys.argv[1:])
+    print(f"{len(trials)} trials\n\nRendered / commanded yaw, open loop:\n\n{gain_table(trials)}\n\n"
+          f"Heading error at the end of the script, degrees:\n\n{arm_table(trials)}")
