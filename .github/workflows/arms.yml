@@ -2,8 +2,9 @@ name: arms
 # Several arms (runner arg strings) on one small task list, generated back to back in one Modal GPU container
 # per shard (`pwa gen-arms`), so the model load and first-chunk warm-up are paid once. Arm i is an ordinary
 # experiment named EXP-a<i>. After generation each arm's clips are published to a release run-EXP-a<i>
-# (linked from the step summary) and an `experiment` run with stage=score-only is dispatched per arm, which
-# scores, reports, publishes scenes and records the csv row exactly like any other run.
+# (linked from the step summary), its scenes manifest goes to results/media/ on main for the site, and an
+# `experiment` run with stage=score-only is dispatched per arm, which scores, reports, publishes scenes and
+# records the csv row exactly like any other run.
 # Manual: Actions tab -> arms -> Run workflow. Needs a runner with main(argv): lingbot_world2 or lingbot_world2_1p3b.
 # warm=on generates on the deployed Modal app playworld-warm (warm_app.py, pwa/warm.py) instead of an ephemeral
 # app, so a container that is still up from an earlier warm run skips the model load and first-step warm-up.
@@ -299,7 +300,9 @@ jobs:
       - name: Publish arm videos (GitHub Releases run-EXP-aN)
         # Unscored clips, right after generation, so every arm can be watched before (or without) scoring.
         # The score-only experiment run later uploads to the same release with --clobber and, with the official
-        # judge, replaces the notes. Each arm is guarded, so one failing arm never hides the others.
+        # judge, replaces the notes. Each arm is guarded, so one failing arm never hides the others. An arm whose
+        # every upload succeeded gets media/NAME/.published (as publish_scenes.sh) and a line in published.txt,
+        # which the next step reads to put its manifest on main.
         if: ${{ !cancelled() && steps.gen.outputs.started == 'true' && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
         continue-on-error: true
         env:
@@ -308,7 +311,9 @@ jobs:
           JUDGE: ${{ inputs.judge_model }}
         run: |
           repo="https://github.com/$GITHUB_REPOSITORY"
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
           shopt -s nullglob
+          : > "$RUNNER_TEMP/published.txt"
           # pwa media writes "Unscored rollouts ..." notes (no report link) while the arm has no scores
           case "$STAGE:$JUDGE" in
             full:) next="If it generated any clips, a score-only \`experiment\` run is dispatched for it and replaces these notes once it scores them." ;;
@@ -317,7 +322,10 @@ jobs:
           esac
           publish_arm() {  # NAME IDX SPEC. Called under ||, where bash -e is off, so every command checks its status.
             local name="$1" idx="$2" spec="$3" tag="run-$1" out="$RUNNER_TEMP/media/$1" files mp4 tid
-            pwa media "$name" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag" || return 1
+            rm -f "$out/.published"
+            # the manifest labels: not scored, capped if capped (pwa media), and the arm's args
+            pwa media "$name" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag" \
+              --site-url "$site" --label "arm $idx of $EXP: $spec" || return 1
             files=("$out"/*.mp4 "$out"/*.jpg)
             if (( ${#files[@]} == 0 )); then echo "$name: no rollouts to publish"; return 0; fi
             { echo "Unscored clips from arm $idx of \`$EXP\` (\`$spec\`). $next"; echo; cat "$out/RELEASE_NOTES.md"; } > "$out/NOTES.md" || return 1
@@ -327,17 +335,52 @@ jobs:
               gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "Scenes: $name" \
                 --notes-file "$out/NOTES.md" --latest=false || return 1
             fi
+            touch "$out/.published" || return 1
+            echo "$name $idx $spec" >> "$RUNNER_TEMP/published.txt" || return 1
             for mp4 in "$out"/*.mp4; do
               tid=$(basename "$mp4" .mp4)
-              echo "| $name | \`$spec\` | $tid | [mp4]($repo/releases/download/$tag/$tid.mp4) | [jpg]($repo/releases/download/$tag/$tid.jpg) |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $name | \`$spec\` | $tid | [play](${site}?scenes=$name&scene=$tid#scenes) | [mp4]($repo/releases/download/$tag/$tid.mp4) | [jpg]($repo/releases/download/$tag/$tid.jpg) |" >> "$GITHUB_STEP_SUMMARY"
             done
           }
-          { echo "### Arm videos"; echo; echo "| Arm | Args | Task | Video | Poster |"; echo "|---|---|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Arm videos"; echo; echo "**play** links go live once the next step puts the arm's manifest on main."; echo
+            echo "| Arm | Args | Task | Site | Video | Poster |"; echo "|---|---|---|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
           failed=()
           while read -r name idx spec <&3; do
             publish_arm "$name" "$idx" "$spec" || { echo "::warning::$name: publishing its videos failed"; failed+=("$name"); }
           done 3< "$RUNNER_TEMP/owned.txt"
           if (( ${#failed[@]} )); then { echo; echo "Not published: ${failed[*]}"; } >> "$GITHUB_STEP_SUMMARY"; exit 1; fi
+
+      - name: Commit arm scenes to main
+        # Every arm in published.txt (generated by this run, every clip uploaded) gets results/media/NAME.json and
+        # an index entry the same way experiment.yml does it (scenes_to_main.sh -> pwa.media to-main, which never
+        # replaces an official scored manifest), plus results/reports/NAME.md with its play links unless main
+        # already has a report for it. Runs before the dispatch below, so with stage=full the score-only run's
+        # scored manifest and report land after these and replace them (to-main lets scored replace unscored).
+        # Then the summary gets per-task play links and arm-vs-arm compare links. Never fails the job.
+        if: ${{ !cancelled() && steps.gen.outputs.started == 'true' && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
+        continue-on-error: true
+        run: |
+          touch "$RUNNER_TEMP/published.txt"
+          [[ -s "$RUNNER_TEMP/published.txt" ]] || { echo "no arm published its clips; nothing to commit"; exit 0; }
+          rc=0
+          .github/scripts/push_results.sh "results: $EXP arm scenes" '
+            mkdir -p "$MAIN_DIR/results/reports"
+            while read -r name idx spec <&3; do
+              SCENES_DIR="$RUNNER_TEMP/media/$name" EXP="$name" .github/scripts/scenes_to_main.sh \
+                || { echo "::warning::$name: scenes manifest not committed"; continue; }
+              rep="$MAIN_DIR/results/reports/$name.md"
+              [[ -f "$rep" ]] || { echo "## $name (arm $idx of $EXP, generated, not scored)"; echo; echo "args \`$spec\`"; echo
+                                    cat "$RUNNER_TEMP/media/$name/SCENES.md"; } > "$rep"
+            done 3< "$RUNNER_TEMP/published.txt"' || rc=$?
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          mans=()
+          while read -r name idx spec <&3; do mans+=("$RUNNER_TEMP/media/$name/$name.json"); done 3< "$RUNNER_TEMP/published.txt"
+          { echo; python -m pwa.media arms-md "$site" "${mans[@]}"; } >> "$GITHUB_STEP_SUMMARY"
+          if (( rc )); then
+            echo "::warning::arm scenes were not committed to main, so the site links above do not work yet"
+            { echo; echo "Not committed to main: the site links above do not work yet."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Dispatch one score-only experiment run per arm
         # Every arm in owned.txt (generated by this run) with at least one mp4, also when Generate failed for another

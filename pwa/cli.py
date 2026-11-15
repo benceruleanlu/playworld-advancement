@@ -188,6 +188,7 @@ def parser() -> argparse.ArgumentParser:
                    help="screening run: name of its screening judge, shown as a label (its scores are never published)")
     p.add_argument("--report-name", default="", help="file under results/reports/ the release notes link to (default EXP.md)")
     p.add_argument("--site-url", default="", help="results site for the play links in SCENES.md (default: the public site)")
+    p.add_argument("--label", action="append", default=[], help="extra manifest label (repeatable; the arms workflow adds the arm's args)")
 
     p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason")
     p.add_argument("exp")
@@ -408,7 +409,7 @@ def dispatch(a) -> int:  # noqa: C901
         from . import media
         man = media.build(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), Path(a.out), a.base_url,
                           a.release_url, a.height, screening=a.screening, report_name=a.report_name,
-                          site_url=a.site_url or media.SITE_URL)
+                          site_url=a.site_url or media.SITE_URL, extra_labels=a.label)
         if man is None:
             emit({"exp": a.exp, "skipped": "pipeline test"}, True)
             return 0
