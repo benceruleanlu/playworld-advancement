@@ -47,6 +47,8 @@ def test_sampler_stages_shapes_and_session_reset_are_independent():
     ("IF010_chunk_01", True, 4), ("GC033_chunk_01", False, 0),
     ("GC033_full", True, 0), ("OE018_chunk_01", True, 0)])
 def test_runner_scope_counts_and_continuation(monkeypatch, tmp_path, name, enabled, expected):
+    for flag in ("GC_EASE_TURNS", "GC_DIRECTOR"):
+        monkeypatch.setattr(R, flag, False)
     engine = R.LingBotWorld2Engine.__new__(R.LingBotWorld2Engine)
     session = engine.session = S.LingBotSession(object(), 480 * 832, 5.0)
     engine._last_chunk, engine.args = None, SimpleNamespace(seed=42, fps=16)
