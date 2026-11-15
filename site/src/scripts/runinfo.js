@@ -19,6 +19,14 @@ export const FLAG_NAMES = {
   "--lingbot-if-repeat-check": "IF repeat check",
   "--lingbot-if-slow-translation": "IF slow translation",
   "--lingbot-if-fixed-camera": "fixed camera for third-person IF",
+  "--lingbot-if-settle": "IF settle",
+  "--lingbot-if-settle-mult": function (v) { return "budget x" + v; },
+  "--lingbot-repe-steer": "text steering",
+  "--lingbot-repe-scale": function (v) { return "scale " + v; },
+  "--lingbot-yarn-q": "query temperature",
+  "--lingbot-yarn-ref": function (v) { return "reference " + v + " latents"; },
+  "--lingbot-yarn-gain": function (v) { return "gain " + v; },
+  "--lingbot-yarn-below-ref": "also below the reference",
   "--lingbot-gc-chunk-director": "GC chunk director",
   "--lingbot-gc-ease-turns": "GC ease turns",
   "--lingbot-if-subject-director": "IF subject director",
@@ -88,6 +96,8 @@ export const FLAG_NAMES = {
 };
 // knob -> the flag it tunes
 var KNOB_OF = {
+  "--lingbot-if-settle-mult": "--lingbot-if-settle", "--lingbot-repe-scale": "--lingbot-repe-steer",
+  "--lingbot-yarn-ref": "--lingbot-yarn-q", "--lingbot-yarn-gain": "--lingbot-yarn-q", "--lingbot-yarn-below-ref": "--lingbot-yarn-q",
   "--lingbot-cond-early": "--lingbot-cond-schedule", "--lingbot-cond-text": "--lingbot-cond-schedule",
   "--lingbot-cond-cam": "--lingbot-cond-schedule", "--lingbot-cond-3p": "--lingbot-cond-schedule",
   "--lingbot-sink-scale-after": "--lingbot-sink-key-scale", "--lingbot-sink-scale-tasks": "--lingbot-sink-key-scale",
