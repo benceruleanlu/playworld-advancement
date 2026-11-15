@@ -1,11 +1,13 @@
 name: experiment
 # Shown in the Actions list and the API, so a run can be identified while it is still in progress.
-run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.judge_model && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.max_chunks && format(' · SMOKE capped {0} chunks', inputs.max_chunks) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
+run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ (inputs.judge_model && inputs.judge_model != 'gemini') && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.max_chunks && format(' · SMOKE capped {0} chunks', inputs.max_chunks) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
 
 # Manual: Actions tab -> experiment -> Run workflow.
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
 # backend=local: generation runs on this runner (no GPU; use runner=tests/fake_runner.py to test the pipeline).
-# Scoring (Gemini) and reporting always run on this runner. The results/experiments.csv row is committed to main.
+# Scoring and reporting always run on this runner. Default judge: the Luna PROXY judge (openai:gpt-6-luna), whose
+# rows go to results/proxy_experiments.csv only. judge_model=gemini = official Gemini 3.1 Pro, whose
+# results/experiments.csv row is committed to main.
 
 on:
   workflow_dispatch:
@@ -51,8 +53,8 @@ on:
         description: Verifier passes
         default: "2"
       judge_model:
-        description: "Screening judge(s) for dev loops, comma-separated [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna. openai:gpt-4.1 = PROXY judge (key PLAYER_API_KEY unless JUDGE_API_KEY), its rows go to results/proxy_experiments.csv. Empty = official judge. Never writes the results csv row."
-        default: ""
+        description: "Judge. Default openai:gpt-6-luna = Luna PROXY judge (user decision Nov 15, Gemini credits out): rows go to results/proxy_experiments.csv, never the results csv, not comparable to the paper or Genie 3. gemini = official Gemini 3.1 Pro judge (needs credits or GCP_GEMINI_API_KEY). Or comma-separated screening judges [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna."
+        default: "openai:gpt-6-luna"
       notes:
         default: ""
       extra:
@@ -114,24 +116,17 @@ jobs:
             echo "MAX_CHUNKS=$CAP_IN" >> "$GITHUB_ENV"
             echo "::notice title=capped smoke run::$CAP_IN agent chunks per rollout (official 30); not comparable to official scores"
           fi
-          # judge_model: comma-separated [openai:|gemini:]MODEL[:minimal|low|medium|high]; exported to later steps
-          # as JUDGE_SPECS (space-separated; each is one `pwa score|report --judge-model` value)
-          JUDGE_IN="${JUDGE_IN// /}"
-          [[ "$JUDGE_IN" =~ ^[A-Za-z0-9._:,-]*$ ]] || { echo "judge_model must match [A-Za-z0-9._:,-]*" >&2; exit 2; }
-          if [[ -n "$JUDGE_IN" ]]; then
-            specs=()
-            IFS=',' read -ra items <<< "$JUDGE_IN"
-            for raw in "${items[@]}"; do
-              m="$raw"
-              [[ "$m" =~ :(minimal|low|medium|high)$ ]] && m="${m%:*}"
-              m="${m#openai:}"; m="${m#gemini:}"
-              [[ "$m" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "judge_model entry '$raw' must be [openai:]MODEL[:minimal|low|medium|high] with MODEL in [A-Za-z0-9._-]" >&2; exit 2; }
-              [[ " ${specs[*]} " != *" $raw "* ]] || { echo "judge_model lists '$raw' twice" >&2; exit 2; }
-              specs+=("$raw")
-            done
-            (( ${#specs[@]} > 0 )) || { echo "judge_model has no entries" >&2; exit 2; }
-            echo "JUDGE_SPECS=${specs[*]}" >> "$GITHUB_ENV"
-            echo "::notice title=screening judge::${specs[*]} (dev screening; no results csv row)"
+          # judge_model (default openai:gpt-6-luna, the PROXY judge): "gemini" or empty = the official judge, as
+          # before Luna became the default; otherwise comma-separated [openai:|gemini:]MODEL[:minimal|low|medium|high].
+          # Normalised by judge_specs.sh and exported to later steps as JUDGE_SPECS (space-separated; each is one
+          # `pwa score|report --judge-model` value; empty = official) and JUDGE_LIST (comma-separated, for pwa media).
+          # Every later step reads these, never the raw input, so "gemini" and empty behave the same everywhere.
+          specs=$(.github/scripts/judge_specs.sh "$JUDGE_IN")
+          if [[ -n "$specs" ]]; then
+            { echo "JUDGE_SPECS=$specs"; echo "JUDGE_LIST=${specs// /,}"; } >> "$GITHUB_ENV"
+            echo "::notice title=screening judge::$specs (dev screening; no results csv row)"
+          else
+            echo "::notice title=official judge::Gemini 3.1 Pro (judge_model=${JUDGE_IN:-empty})"
           fi
       - uses: actions/setup-python@v5
         with:
@@ -360,7 +355,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STAGE: ${{ inputs.stage }}
-          JUDGE_IN: ${{ inputs.judge_model }}
+          JUDGE_IN: ${{ env.JUDGE_LIST }}  # normalised in the first step: empty = official judge
           RUNNER_IN: ${{ inputs.runner }}
           ACTION_SOURCE: ${{ inputs.action_source }}
         run: |
@@ -380,7 +375,7 @@ jobs:
         # records its rows in results/proxy_experiments.csv, which the site does not read.
         # The snippet is single-quoted: never put an apostrophe in it, comments included (tests/test_push_results_snippets.py).
         # PUSH_RESULTS_EXPECT makes push_results.sh fail if a report is missing after the snippet ran.
-        if: inputs.stage != 'gen-only' && inputs.judge_model != ''
+        if: inputs.stage != 'gen-only' && env.JUDGE_SPECS != ''
         run: |
           expect=()
           for slug in $JUDGE_SLUGS; do expect+=("results/reports/$EXP.$slug.md"); done
@@ -418,7 +413,7 @@ jobs:
             .github/scripts/scenes_to_main.sh'
 
       - name: Commit experiment log
-        if: inputs.stage != 'gen-only' && inputs.judge_model == ''
+        if: inputs.stage != 'gen-only' && env.JUDGE_SPECS == ''
         run: |
           # Runs on any branch record their row and report on main, from a separate checkout of main, so no
           # branch code reaches main. The row replaces the status=running row written at launch.
@@ -431,7 +426,7 @@ jobs:
       - name: Mark final status on main
         # gen-only or screening-judge success -> generated (no official score); a failed or cancelled job (any
         # stage) -> failed / cancelled. Only touches a row that still says running, so a scored row is never downgraded.
-        if: always() && (job.status != 'success' || inputs.stage == 'gen-only' || inputs.judge_model != '')
+        if: always() && (job.status != 'success' || inputs.stage == 'gen-only' || env.JUDGE_SPECS != '')
         continue-on-error: true
         env:
           STATUS: ${{ job.status == 'success' && 'generated' || (job.status == 'cancelled' && 'cancelled' || 'failed') }}

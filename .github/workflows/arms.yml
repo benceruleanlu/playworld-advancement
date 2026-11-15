@@ -4,7 +4,8 @@ name: arms
 # experiment named EXP-a<i>. After generation each arm's clips are published to a release run-EXP-a<i>
 # (linked from the step summary), its scenes manifest goes to results/media/ on main for the site, and an
 # `experiment` run with stage=score-only is dispatched per arm, which scores, reports, publishes scenes and
-# records the csv row exactly like any other run.
+# records the csv row exactly like any other run (the results csv row only with judge_model=gemini; the default
+# Luna proxy judge writes results/proxy_experiments.csv).
 # Manual: Actions tab -> arms -> Run workflow. Needs a runner with main(argv): lingbot_world2 or lingbot_world2_1p3b.
 # warm=on generates on the deployed Modal app playworld-warm (warm_app.py, pwa/warm.py) instead of an ephemeral
 # app, so a container that is still up from an earlier warm run skips the model load and first-step warm-up.
@@ -55,8 +56,8 @@ on:
         description: Verifier passes (passed to each score-only run)
         default: "2"
       judge_model:
-        description: Screening judge for the score-only runs (see experiment.yml); empty = official judge
-        default: ""
+        description: "Judge for the score-only runs (see experiment.yml). Default openai:gpt-6-luna = Luna PROXY judge, not comparable to the paper. gemini = official Gemini 3.1 Pro."
+        default: "openai:gpt-6-luna"
       notes:
         default: ""
       extra:
@@ -137,6 +138,7 @@ jobs:
           WARM: ${{ inputs.warm }}
           WARM_IDLE: ${{ inputs.warm_idle_minutes }}
           WARM_MAX: ${{ inputs.warm_max_containers }}
+          JUDGE_IN: ${{ inputs.judge_model }}
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
           if [[ "$WARM" == on ]]; then
@@ -144,6 +146,10 @@ jobs:
             [[ "$WARM_MAX" =~ ^[0-9]+$ ]] && (( WARM_MAX >= 1 && WARM_MAX <= 8 )) || { echo "warm_max_containers must be 1-8" >&2; exit 2; }
           fi
           [[ "$EXTRA$ARMS" != *$'\n'* ]] || { echo "extra and arms must be one line" >&2; exit 2; }
+          # judge_model, normalised as experiment.yml does (judge_specs.sh), so a bad value fails before any GPU time.
+          # ARMS_JUDGE: comma-separated screening judges, empty = official judge ("gemini" or empty input).
+          specs=$(.github/scripts/judge_specs.sh "$JUDGE_IN")
+          echo "ARMS_JUDGE=${specs// /,}" >> "$GITHUB_ENV"
           # The args every arm gets, computed once so the labels below match what gen-arms runs.
           if [[ "$ACTION_SOURCE" != "dataset" && "$EXTRA" != *"--agent-model"* ]]; then
             EXTRA="$EXTRA --agent-model $PLAYER_MODEL_IN"
@@ -308,7 +314,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STAGE: ${{ inputs.stage }}
-          JUDGE: ${{ inputs.judge_model }}
+          JUDGE: ${{ env.ARMS_JUDGE }}  # normalised in the first step: empty = official judge
         run: |
           repo="https://github.com/$GITHUB_REPOSITORY"
           site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
@@ -395,7 +401,7 @@ jobs:
           RUNNER: ${{ inputs.runner }}
           ACTION_SOURCE: ${{ inputs.action_source }}
           PASSES: ${{ inputs.passes }}
-          JUDGE: ${{ inputs.judge_model }}
+          JUDGE: ${{ env.ARMS_JUDGE }}  # normalised in the first step: empty = official judge
           PLAYER_MODEL_IN: ${{ inputs.player_model }}
           GPU: ${{ inputs.gpu }}
         run: |
@@ -405,10 +411,11 @@ jobs:
             vids=(runs/"$name"/videos/*/*.mp4)
             if (( ${#vids[@]} == 0 )); then echo "::warning::$name: no videos, not dispatched for scoring"; continue; fi
             [[ "$spec" == base ]] && spec=""
-            # extra only labels the run title here; a score-only run generates nothing
+            # extra only labels the run title here; a score-only run generates nothing. The official judge is sent as
+            # the literal gemini, never empty, so the experiment default (the Luna proxy) cannot replace it.
             gh workflow run experiment.yml --ref "$GITHUB_REF_NAME" -f exp="$name" -f stage=score-only \
               -f backend=modal -f split="$SPLIT" -f tasks="$TASKS" -f runner="$RUNNER" -f action_source="$ACTION_SOURCE" \
-              -f passes="$PASSES" -f judge_model="$JUDGE" -f player_model="$PLAYER_MODEL_IN" -f gpu="$GPU" -f extra="$spec"
+              -f passes="$PASSES" -f judge_model="${JUDGE:-gemini}" -f player_model="$PLAYER_MODEL_IN" -f gpu="$GPU" -f extra="$spec"
             echo "$name" >> "$RUNNER_TEMP/dispatched.txt"
             echo "dispatched score-only run for $name (arm $idx)"
             sleep 2
