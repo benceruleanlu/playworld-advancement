@@ -8,9 +8,9 @@ The judging criteria are rigour, novelty, results, autonomy and reproducibility,
 
 1. What we did and where we stand (results).
 2. The bar and the verdict table (rigour).
-3. The same video scored three times (rigour, and the reason for the bar).
-4. One hypothesis that failed, with its clips (honest failures).
-5. The one lead and its second seed (rigour).
+3. The same video scored twice (rigour, and the reason for the bar).
+4. One hypothesis dropped on a small sample, with its clips (honest failures).
+5. The attention window: a one-task lead after its second seed (rigour).
 6. Proposals as pull requests, experiments as GitHub Actions runs (autonomy, reproducibility).
 7. What is still open.
 
@@ -21,12 +21,12 @@ The short tour on the site is this list. Open `?tour=1&auto=1` and it plays by i
 | Time | On screen | Say |
 |---|---|---|
 | 0:00 | Header: what we did, clip, dev score | We changed how an open world model runs, without retraining, and scored it on PlayWorld dev tasks. Our best official score is 1.64 on 24 of 171 tasks, a diagnostic run with no method flags and an older AI player, not the starting-model number. No run covers all 171 tasks, so there is no score to set against Genie 3's 2.12. |
-| 0:12 | Verdict table | Here is every change we tested and what happened. A task counts only if it moves a full point, on two seeds, with the AI player. Nothing has cleared that bar. |
-| 0:26 | Finding: same video, three scorings | Why a full point. These three controls are the same video. The judge scored one task 1.25, 2.63 and 2.00. |
-| 0:36 | The two identical clips playing | Same clip, left and right. Different scores. |
-| 0:48 | Finding: sink key scale, then its clips | A hypothesis that failed. We thought the opening frames reset the scene. Turning them down made every arm worse. Dropped. |
-| 1:07 | Finding: attention window, two seeds | Our best lead moved tasks on both seeds, but not the same tasks. Not repeated, so not adopted. |
-| 1:18 | Still open | No 171-task score and nothing adopted. The stack's gain has only a proxy judge score. |
+| 0:12 | Verdict table | Here is every change we tested and what happened. A task counts only if it moves a full point, on two seeds, with the AI player. Nothing has cleared that bar. Gains seen only on small samples are marked as leads. |
+| 0:26 | Finding: same video, different scores | Why a full point. These two runs made byte-identical clips. The judge scored GC036 2.65 in one and 1.35 in the other. On six tasks it cannot resolve a difference under about 0.5. |
+| 0:36 | The two identical GC036 clips playing | Same clip, left and right. Different scores. |
+| 0:48 | Finding: sink key scale, then its clips | We thought the opening frames reset the scene. Turning them down scored lower, two of three arms by more than the noise, on six tasks and one seed. Dropped on that small sample. |
+| 1:07 | Finding: attention window, two seeds | A larger window lifted one task, OE039, on both seeds; the family score did not move the same way twice. A one-task lead, not adopted. |
+| 1:18 | Still open | No final 171-task score and nothing adopted. What we measured is the judge's noise and the servo's geometry. The stack's out-of-sight gain is a lead from six-task pairs under the proxy judge. |
 | 1:26 | Method: steps, counts, run chart | Every proposal is a pull request. Every experiment is a GitHub Actions run that generates on Modal, scores with the official judge and publishes the clips. Each dot is a run, each square a merged pull request. |
 | 1:45 | Header again, or the 171-task table if it exists | What comes next, in one sentence. |
 
@@ -42,7 +42,7 @@ The numbers in the "Say" column are today's. Read them off the page when recordi
 ## Before recording
 
 - Merge the open site pull request so the live page has the short tour.
-- If the 171-task runs have been scored, the header shows starting model against method on all 171 tasks by itself, the heading asks the Genie 3 question, and the verdict line changes from "No full-benchmark run" to "Yes" or "No". Rewrite the first and last rows of the shot list around that table, and update the static text that does not switch: the meta and Open Graph descriptions in `site/src/layouts/Base.astro` and README.md line 5.
+- If the 171-task runs have been scored, the header shows starting model against method on all 171 tasks by itself, the heading asks the Genie 3 question, and the verdict line changes from "No full-benchmark run" (or "No final score") to "Yes" or "No". Rewrite the first and last rows of the shot list around that table, and update the static text that does not switch: the meta and Open Graph descriptions in `site/src/layouts/Base.astro` and README.md line 5.
 - Update the hand-written parts in `site/src/scripts/app.js` if results changed: `STORY` (finding text and `verdict`), `ADOPTED`, and the "Still open" points.
 - Check the clips play from GitHub release URLs in the browser used for recording. Only Chromium has been checked.
 
