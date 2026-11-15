@@ -120,6 +120,14 @@ details.tool[open] > summary, details.rules-wrap[open] > summary { margin-bottom
 .method .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--ink2); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--grid); }
 .method .ev { font-size: 13px; }
 .method .ev ul { margin: 2px 0 0; padding-left: 18px; }
+/* iteration speed */
+.speedhead { font-size: 17px; margin: 28px 0 4px; }
+.speedgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.levhead { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); font-weight: 600; margin: 16px 0 6px; }
+ul.levers { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+ul.levers li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+ul.levers li:last-child { border-bottom: 0; }
+ul.levers .nm { font-weight: 600; margin-right: auto; }
 /* protocol */
 .rules td { white-space: normal; min-width: 140px; }
 .rules td:first-child { font-weight: 600; min-width: 170px; }
