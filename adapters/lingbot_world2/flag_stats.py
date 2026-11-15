@@ -34,13 +34,13 @@ from pathlib import Path
 
 class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
-                 return_stop: bool = False, gc_completion: bool = False):
+                 return_stop: bool = False, gc_completion: bool = False, weight_mod: bool = False):
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
-        self.gc_completion = bool(gc_completion)
+        self.gc_completion, self.weight_mod = bool(gc_completion), bool(weight_mod)
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
-                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0}
+                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0, "weight_mod_steps": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -52,6 +52,7 @@ class FlagStats:
         self.return_stop_armed = False
         self.return_stops = 0
         self.gc_completion_hints = self.gc_completion_ends = 0
+        self.weight_mod_steps = 0
 
     def caption(self, used: bool):
         if used:
@@ -81,6 +82,9 @@ class FlagStats:
     def completion_end(self):
         self.gc_completion_ends += 1
 
+    def modulated(self, n: int = 1):
+        self.weight_mod_steps += int(n)
+
     def completion_summary(self, counts) -> dict:
         if not self.gc_completion:
             return {}
@@ -102,6 +106,8 @@ class FlagStats:
         if self.return_stop:
             s.update(return_stop="on" if self.return_stop_armed else "skip", return_stops=self.return_stops)
         s.update(self.completion_summary(vars(self)))
+        if self.weight_mod:
+            s.update(weight_mod="on", weight_mod_steps=self.weight_mod_steps)
         return s
 
     @staticmethod
@@ -114,7 +120,8 @@ class FlagStats:
                 f"caption_used={t['caption_used']} caption_fallback={t['caption_fallback']} "
                 f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}"
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
-                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items()))
+                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
+                + (f" weight_mod_steps={t['weight_mod_steps']}" if self.weight_mod else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -127,6 +134,7 @@ class FlagStats:
         t["return_stops"] += self.return_stops
         t["gc_completion_hints"] += self.gc_completion_hints
         t["gc_completion_ends"] += self.gc_completion_ends
+        t["weight_mod_steps"] += self.weight_mod_steps
         print(self.line(s), flush=True)
         return s
 

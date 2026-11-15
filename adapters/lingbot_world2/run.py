@@ -92,6 +92,7 @@ Flag counters (flag_stats.py): after each task one greppable line, e.g.
   [lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30
 and a `[lingbot] flags total ...` line at the end; also "lingbot_flags" in <task>_result.json.
 """
+import contextlib
 import os
 import sys
 import time
@@ -108,10 +109,11 @@ from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
+from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
-              "--lingbot-gc-completion-hint")
+              "--lingbot-gc-completion-hint", "--lingbot-weight-mod")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -128,6 +130,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
         "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
+        "weight_mod": "--lingbot-weight-mod" in argv or environ.get("LINGBOT_WEIGHT_MOD", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
     flags["stall"], argv = W.parse(argv, environ)
@@ -135,7 +138,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 
 
 # Set by main() from configure(); the engine reads them at call time.
-STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
+STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = WEIGHT_MOD = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
 CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
@@ -233,17 +236,21 @@ class LingBotWorld2Engine:
         # upstream's in-memory embeddings are keyed by prompt only: drop them when the CPU T5 thread count changed
         FS.partition_t5_memory(self.pipe, CPU_THREADS if t5_cpu else "gpu")
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
+        WM.detach_model(getattr(self.pipe, "model", None))
+        self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
                                             horizon_frames=int(getattr(args, "max_total_frames", 961) or 961),
-                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache)
+                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache,
+                                            weight_mod=self.weight_mod)
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
+              + (", weight-mod on" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
               + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else "")
@@ -299,15 +306,17 @@ class LingBotWorld2Engine:
         if not cont:
             horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
             reanchor = REANCHOR and S.reanchor_task(name)
+            third_person = WM.is_third_person(prompts._current.get("task"), name)
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
-                               reanchor=reanchor)
+                               reanchor=reanchor, third_person=third_person)
             if reanchor:
                 STATS.armed()
         start = self.session.chunk_id
-        anchored = self.session.reanchor_events
+        anchored, modded = self.session.reanchor_events, self.session.weight_mod_steps
         frames = self.session.step(keys)
         STATS.reanchored(self.session.reanchor_events - anchored)
+        STATS.modulated(self.session.weight_mod_steps - modded)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
@@ -343,10 +352,15 @@ class LingBotWorld2Engine:
         S.encode_prompt(self.pipe, prompt or DEFAULT_PROMPT, self.t5_cache)  # fills pipe._t5_cache as upstream would
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
-        video = self.pipe.generate(
-            prompt or DEFAULT_PROMPT, Image.open(image_path).convert("RGB"), action_path=str(action_dir),
-            chunk_size=P.LATENT_CHUNK, max_area=MAX_AREA, frame_num=len(c2ws),
-            shift=self.cfg.sample_shift, seed=int(self.args.seed), offload_model=False)
+        with (self.weight_mod or contextlib.nullcontext()):
+            if self.weight_mod is not None and self.weight_mod.step(
+                    S.normalise_translation(S.relative_latent_poses(c2ws[::4])),
+                    third_person=WM.is_third_person(prompts._current.get("task"), name)):
+                STATS.modulated(1)
+            video = self.pipe.generate(
+                prompt or DEFAULT_PROMPT, Image.open(image_path).convert("RGB"), action_path=str(action_dir),
+                chunk_size=P.LATENT_CHUNK, max_area=MAX_AREA, frame_num=len(c2ws),
+                shift=self.cfg.sample_shift, seed=int(self.args.seed), offload_model=False)
         frames = ((video.clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 3, 0).cpu().numpy()
         del video
         out = output_dir / f"{name}.mp4"
@@ -361,15 +375,17 @@ def main(argv: list[str] | None = None) -> int:
     """One run_agent invocation. argv is run_agent's (argv[0] is the script). Every call re-reads the flags,
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
-    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
+    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, WEIGHT_MOD, STATS, FAST
     global CPU_THREADS, STALL
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
+    WEIGHT_MOD = flags["weight_mod"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP,
+                                 gc_completion=GC_COMPLETION, weight_mod=WEIGHT_MOD)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
