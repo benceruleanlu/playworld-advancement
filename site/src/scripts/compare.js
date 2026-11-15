@@ -7,6 +7,7 @@
 // pwa:compare event and owns the URL, and hand-pick mode (pwa:hand), the run pickers below with ?compare= links.
 import * as RunInfo from "./runinfo.js";
 import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
+import { fmtT, playableUrl } from "./clips.js";
 (function () {
   var QKEYS = ["a", "b", "c"];
   var MAX_RUNS = 400; // manifests fetched, newest first
@@ -25,17 +26,8 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
   var live = []; // [{exp, v, d, endEl, lenEl}] for the rendered slots
 
   function noop() {}
-  function fmtT(s) {
-    if (!isFinite(s)) return "-:--.-";
-    s = Math.max(0, s);
-    var m = Math.floor(s / 60), r = s - m * 60;
-    return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1);
-  }
   // a clip URL is playable when it is https or same-origin (local fixtures)
-  function playable(u) {
-    if (!u) return false;
-    try { var x = new URL(u, location.href); return x.protocol === "https:" || x.origin === location.origin; } catch (e) { return false; }
-  }
+  function playable(u) { return playableUrl(u, location.href); }
 
   /* ---------- run facts ---------- */
   function runScored(m) { return !m || m.scored !== false; }

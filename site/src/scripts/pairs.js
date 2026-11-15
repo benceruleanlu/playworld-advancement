@@ -4,6 +4,8 @@
 // cap and seed. Control candidates are the treatment's own arm group plus EXP-aN runs named in its notes;
 // per task the candidate with the fewest flags that has the clip wins (ties: same group, more shared clips, notes order). No scores are read or computed here.
 import { words, visibleKeys, parseArgs } from "./runinfo.js";
+import { playableUrl, clipMap } from "./clips.js";
+export { playableUrl };
 
 export var SECTIONS = [
   ["fixed", "Fixed actions"],
@@ -14,13 +16,6 @@ export var SECTIONS = [
 ];
 var NAMED = /\b[a-z0-9]+(?:-[a-z0-9]+)*-a\d+\b/g;
 
-// https, or same origin when an origin is given (local fixtures)
-export function playableUrl(u, origin) {
-  if (!u || typeof u !== "string") return false;
-  if (/^https:\/\//.test(u)) return true;
-  if (!origin) return false;
-  try { return new URL(u, origin).origin === new URL(origin).origin; } catch (e) { return false; }
-}
 function sorted(a) { return a.slice().sort(); }
 function subsetStrict(a, b) { return a.length < b.length && a.every(function (k) { return b.indexOf(k) >= 0; }); }
 function sameSet(a, b) { return a.length === b.length && a.every(function (k) { return b.indexOf(k) >= 0; }); }
@@ -29,8 +24,7 @@ function minus(a, b) { return a.filter(function (k) { return b.indexOf(k) < 0; }
 // one run's pairing facts, or null when it cannot pair (no manifest, no playable clip, flags unknown)
 export function runFacts(exp, man, info, origin) {
   if (!man || !info || !info.keys) return null;
-  var tasks = {};
-  (man.tasks || []).forEach(function (t) { if (t && t.task_id && playableUrl(t.video, origin)) tasks[t.task_id] = t; });
+  var tasks = clipMap(man, function (u) { return playableUrl(u, origin); });
   if (!Object.keys(tasks).length) return null;
   var seed = "0", keys = [];
   // the manifest's args are authoritative; info.keys covers runs whose flags come from notes

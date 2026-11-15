@@ -4,6 +4,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import assert from "node:assert/strict";
 import { build } from "./runinfo.js";
+import { SETS as REVIEW_SETS, buildPairs as reviewPairs } from "./review-core.js";
 import { derivePairs, findComparison, filterPairs, seedsOf, pairId, pairById, readState, writeState, mapLegacy } from "./pairs.js";
 
 const root = new URL("../../../results/", import.meta.url);
@@ -101,6 +102,13 @@ if (existsSync(mdir)) {
   check("comparison keys are unique", () => {
     const ks = D.comparisons.concat(D.repeats).map((c) => c.key);
     assert.equal(new Set(ks).size, ks.length);
+  });
+  // the blind review page (review-core.js) keeps a hand-picked list; every one of its pairs must be a derived pair
+  check("review page pairs are derived pairs", () => {
+    const rp = reviewPairs(mans).pairs;
+    assert.ok(rp.length > 0);
+    rp.forEach((p) => assert.ok(D.byTriple[p.task + "|" + p.ctl.exp + "|" + p.trt.exp], "review " + p.id + " is not a derived pair"));
+    REVIEW_SETS.forEach((s) => assert.ok(all.some((p) => p.ctl === s.ctl && p.trt === s.trt), "review set " + s.id));
   });
   check("legacy links map", () => {
     assert.ok(mapLegacy(D, "OE039", "stk14-fx-dev-v1-a1", "stk14-fx-dev-v1-a2"));

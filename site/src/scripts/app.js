@@ -1,6 +1,7 @@
 // Client-side results page: fetches results/experiments.csv from main at view time.
 import * as RunInfo from "./runinfo.js";
 import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFull } from "./ui.js";
+import { FAMINFO } from "./families.js";
 (function () {
   var REPO = "benceruleanlu/playworld-advancement";
   var RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/experiments.csv";
@@ -464,12 +465,6 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
 
   /* ---------- story content (edit here as work lands) ---------- */
   var PR = "https://github.com/" + REPO + "/pull/";
-  var FAMINFO = {
-    gc: { name: "Geometry consistency", q: "layout holds as the camera moves", ask: "Move the camera away and back. Is the place still the same place?" },
-    if: { name: "Interaction fidelity", q: "each action does what was asked", ask: "Press a key. Does the subject do what was asked, with real contact?" },
-    insight: { name: "Insight evolution", q: "an on-screen process keeps going", ask: "Wait and watch. Does a process on screen keep going sensibly?" },
-    outsight: { name: "Out-of-sight evolution", q: "hidden things change sensibly", ask: "Look away, then back. Did the hidden part of the world move on sensibly?" }
-  };
   // group: now (model-side A/B) | parked (player-side, tried) | cand (merged or proposed, unscored)
   // arms: [label, exp] pairs read from results/experiments.csv; the first is the control. cells: per-task readout from results/reports/.
   // pending: shown while not every arm has a score (the CSV says "failed" for an arm whose clips exist but whose scoring failed).

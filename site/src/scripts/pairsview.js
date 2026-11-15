@@ -38,7 +38,7 @@ import { $, el, clear, segmented } from "./ui.js";
     var q = new URLSearchParams(location.search);
     var all = D.comparisons.concat(D.repeats);
     if (!all.length) { $("pr-cmp").replaceChildren(el("option", { text: "No published clip pairs yet" })); $("pr-cmp").disabled = true; return; }
-    fillPicker(); chips(); reviewLink();
+    fillPicker(); chips();
     if (q.has("compare")) {
       var task = q.get("compare") || "", m = q.get("a") ? null : mapLegacy(D, task, q.get("b") || "", q.get("c") || "");
       if (m) { selectPair(m.cmp, m.task, m.ctl, m.trt, false); landOn("compare-clips"); return; }
@@ -66,12 +66,6 @@ import { $, el, clear, segmented } from "./ui.js";
     if (!n) return;
     line.textContent = n + " control/treatment pairs from " + Object.keys(runs).length + " runs. Same task, same seed, same fixed actions unless the AI player drove.";
     line.hidden = false;
-  }
-  // the blind review page, once it exists (site/src/pages/review.astro)
-  function reviewLink() {
-    var a = $("pr-review"); if (!a || typeof fetch !== "function") return;
-    var href = location.pathname.replace(/[^/]*$/, "") + "review/";
-    fetch(href, { method: "HEAD" }).then(function (r) { if (r.ok) { a.href = href; a.hidden = false; } }, function () {});
   }
 
   /* ---------- state ---------- */
