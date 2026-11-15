@@ -6,7 +6,7 @@ The submission needs a 2-minute demo video. This is the plan for it. Nothing her
 
 The judging criteria are rigour, novelty, results, autonomy and reproducibility, at 20% each. The honest position today is that no change is adopted and no 171-task score exists, so the video leads with how we know that, not with a score.
 
-1. The question and where we stand (results).
+1. What we did and where we stand (results).
 2. The bar and the verdict table (rigour).
 3. The same video scored three times (rigour, and the reason for the bar).
 4. One hypothesis that failed, with its clips (honest failures).
@@ -20,7 +20,7 @@ The short tour on the site is this list. Open `?tour=1&auto=1` and it plays by i
 
 | Time | On screen | Say |
 |---|---|---|
-| 0:00 | Header: question, clip, score | We asked whether an open world model can pass Genie 3 on PlayWorld without retraining. Our best official score is 1.64 on 24 tasks. Genie 3 is at 2.12. So not yet. |
+| 0:00 | Header: what we did, clip, dev score | We changed how an open world model runs, without retraining, and scored it on PlayWorld dev tasks. Our best official score is 1.64 on 24 of 171 tasks, a diagnostic run with no method flags and an older AI player, not the starting-model number. No run covers all 171 tasks, so there is no score to set against Genie 3's 2.12. |
 | 0:12 | Verdict table | Here is every change we tested and what happened. A task counts only if it moves a full point, on two seeds, with the AI player. Nothing has cleared that bar. |
 | 0:26 | Finding: same video, three scorings | Why a full point. These three controls are the same video. The judge scored one task 1.25, 2.63 and 2.00. |
 | 0:36 | The two identical clips playing | Same clip, left and right. Different scores. |
@@ -42,7 +42,7 @@ The numbers in the "Say" column are today's. Read them off the page when recordi
 ## Before recording
 
 - Merge the open site pull request so the live page has the short tour.
-- If the 171-task runs have been scored, the header shows starting model against method on all 171 tasks by itself, and the verdict line changes from "Not yet" to "Yes" or "No". Rewrite the first and last rows of the shot list around that table.
+- If the 171-task runs have been scored, the header shows starting model against method on all 171 tasks by itself, the heading asks the Genie 3 question, and the verdict line changes from "No full-benchmark run" to "Yes" or "No". Rewrite the first and last rows of the shot list around that table, and update the static text that does not switch: the meta and Open Graph descriptions in `site/src/layouts/Base.astro` and README.md line 5.
 - Update the hand-written parts in `site/src/scripts/app.js` if results changed: `STORY` (finding text and `verdict`), `ADOPTED`, and the "Still open" points.
 - Check the clips play from GitHub release URLs in the browser used for recording. Only Chromium has been checked.
 

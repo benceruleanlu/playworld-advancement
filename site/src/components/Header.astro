@@ -1,13 +1,13 @@
 <header class="hero">
   <div class="hero-text">
-    <h1>Can inference-time changes lift an open world model past Genie 3 on PlayWorld?</h1>
-    <p class="lede"><a href="https://github.com/Robbyant/lingbot-world-v2" target="_blank" rel="noopener">LingBot-World v2</a>, not retrained. We change how it runs and score it with <a href="https://kxding.github.io/project/PlayWorld/" target="_blank" rel="noopener">PlayWorld</a>'s own judge, 1 to 5.</p>
+    <h1 id="hero-h1">What inference-time changes did to LingBot-World v2 on PlayWorld dev tasks</h1>
+    <p class="lede"><a href="https://github.com/Robbyant/lingbot-world-v2" target="_blank" rel="noopener">LingBot-World v2</a>, not retrained. We changed how it runs and scored it on <span id="hero-scope">dev subsets of</span> <a href="https://kxding.github.io/project/PlayWorld/" target="_blank" rel="noopener">PlayWorld</a>'s 171 tasks with the benchmark's judge, Gemini 3.1 Pro, 1 to 5. Runs after our Gemini credits ran out on Nov 15 have proxy-judge scores, quoted only in finding and test text.</p>
     <p class="verdict" id="verdict" hidden></p>
     <p class="cta"><button type="button" class="cvbtn primary" id="hero-tour">Start the tour</button> <button type="button" class="linkbtn" id="hero-tour-full">Full tour</button></p>
   </div>
   <div class="hero-side">
     <figure class="heroclip" id="heroclip" hidden></figure>
-    <div class="scorecard card" id="status" role="status" aria-live="polite" aria-label="Headline score">
+    <div class="scorecard card" id="status" role="status" aria-live="polite" aria-label="Best official dev-subset score">
       <div class="sk" style="height:132px"></div>
     </div>
   </div>
@@ -15,7 +15,7 @@
 <p class="glance" id="glance"></p>
 <div class="baseline" id="fullres" hidden></div>
 <div class="baseline" id="scores">
-  <h2>Where that leaves us against the published models</h2>
+  <h2 id="scores-h2">Published full-benchmark scores, from the PlayWorld paper</h2>
   <div id="ruler" class="ruler"><div class="sk" style="height:96px"></div></div>
   <p class="note" id="full"></p>
 </div>
