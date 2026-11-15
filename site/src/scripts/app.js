@@ -611,7 +611,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         "Leads: a larger attention window on OE039 only (no family effect on two seeds), the insight director (one up, one down), re-anchoring on GC (weak).",
         "The official judge has been unavailable since about 03:40 UTC on Sunday (its API credits ran out). Runs generated since then have clips and no official score.",
         "Generated, waiting on the official judge: the stack against no flags on 24 dev tasks at two seeds (stk14-fx-dev-v1) and on 24 dev2 tasks (stk14-fx-dev2-v1), the yaw servo runs, and pose memory after its fix (pm14-fx-v3).",
-        "Running: the stack with the yaw servo against no flags, with the AI player, on 24 dev tasks (clstk14-dev-v1)."],
+        "With the AI player on 24 dev tasks (clstk14-dev-v1), the stack with the yaw servo produced 8 of 24 clips and no flags produced 23. The cause is not known yet, and none of it has an official score."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
