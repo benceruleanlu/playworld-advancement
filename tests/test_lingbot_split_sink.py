@@ -335,7 +335,7 @@ class _T:
 
 
 def _make_session(monkeypatch, cfg: SS.SplitSinkConfig | None, *, armed: bool = True, sink: int = 6,
-                  fail_at: int | None = None, use_model_latents: bool = False):
+                  fail_at: int | None = None, yaw_gain: tuple[float, float] | None = None):
     nc = lambda *a, **kw: contextlib.nullcontext()  # noqa: E731
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
         amp=SimpleNamespace(autocast=nc), autocast=nc, no_grad=nc, float32="f32", uint8=np.uint8,
@@ -374,19 +374,7 @@ def _make_session(monkeypatch, cfg: SS.SplitSinkConfig | None, *, armed: bool = 
     )
     sess = S.LingBotSession(pipe, 480 * 832, 5.0, stream_decode=True,
                             **({"split_sink": cfg} if cfg is not None else {}))
-    track = S.PoseTrack()
-    if use_model_latents:
-        orig_advance = track.advance
-
-        def advance_with_model_latents(keys, ease_turns=False):
-            rel = orig_advance(keys, ease_turns=ease_turns)
-            # Distinct model_latents (90 deg rotated) vs intended latents to verify model_latents preference
-            rot = np.eye(4, dtype=np.float32)
-            rot[:3, :3] = P._rot_y(math.radians(15.0))
-            track.model_latents = np.stack([rot for _ in range(len(rel))], axis=0)
-            return rel
-
-        track.advance = advance_with_model_latents
+    track = S.PoseTrack(yaw_gain=yaw_gain)
 
     sess.started, sess.track, sess.y = True, track, np.zeros((20, 64, lat_h, lat_w), dtype=np.float32)
     sess.lat_h, sess.lat_w, sess.frame_seqlen = lat_h, lat_w, fs
@@ -438,14 +426,40 @@ def test_session_restores_pristine_keys_on_denoise_exception(monkeypatch):
     assert all(np.array_equal(b["k"], p) for b, p in zip(kv, pristine))
 
 
-def test_session_prefers_track_model_latents_when_present(monkeypatch):
-    cfg = SS.SplitSinkConfig(enabled=True, fg_scale=0.25, bg_scale=1.0, fg_frac=0.25, after=2, tasks="OE")
-    sess, _, _, _ = _make_session(monkeypatch, cfg, armed=True, sink=6, use_model_latents=True)
-    sess.step(["none"] * 28)
-    assert len(sess._ss_poses) == 6
-    expected_r = P._rot_y(math.radians(15.0))
-    for p in sess._ss_poses:
-        assert np.allclose(p[:3, :3], expected_r)
+def test_session_records_yaw_gain_scaled_model_latents_from_real_pose_track(monkeypatch):
+    P.reset({})
+    try:
+        P.calibrate(True, 0, 20)  # 22.5 deg per 20-frame token -> 4.5 deg per 4-frame latent step
+        cfg = SS.SplitSinkConfig(enabled=True, fg_scale=0.25, bg_scale=1.0, fg_frac=0.25, after=2, tasks="OE")
+
+        # 1) Single 2-chunk step across a right turn with non-unit yaw_gain=(1.0, 1.5)
+        sess, _, _, _ = _make_session(monkeypatch, cfg, armed=True, sink=6, yaw_gain=(1.0, 1.5))
+        sess.step(["l"] * 28)
+        assert len(sess._ss_poses) == 6
+        step_rad = 4.0 * P.YAW
+        for idx, pose in enumerate(sess._ss_poses):
+            expected_model_r = P._rot_y(1.5 * idx * step_rad)
+            intended_r = P._rot_y(1.0 * idx * step_rad)
+            assert np.allclose(pose[:3, :3], expected_model_r, atol=1e-6)
+            assert np.allclose(sess.track.latents[idx, :3, :3], intended_r, atol=1e-6)
+            if idx > 0:
+                assert not np.allclose(pose[:3, :3], sess.track.latents[idx, :3, :3], atol=1e-3)
+
+        # 2) Per-chunk opening steps with changing yaw_gain (as --lingbot-yaw-servo does)
+        sess2, _, _, _ = _make_session(monkeypatch, cfg, armed=True, sink=6, yaw_gain=(1.5, 1.0))
+        sess2.step(["j"] * 12)  # chunk 0: latents 0..3 at left gain 1.5
+        sess2.track.yaw_gain = (0.75, 1.0)
+        sess2.step(["j"] * 16)  # chunk 1: latents 4..5 continue from chunk 0's model pose at left gain 0.75
+        assert len(sess2._ss_poses) == 6
+        expected_angles = [0.0, -1.5 * step_rad, -3.0 * step_rad, -4.5 * step_rad,
+                           -(4.5 + 0.75) * step_rad, -(4.5 + 1.5) * step_rad]
+        for idx, (pose, ang) in enumerate(zip(sess2._ss_poses, expected_angles)):
+            assert np.allclose(pose[:3, :3], P._rot_y(ang), atol=1e-6), f"latent {idx} mismatch"
+            if idx > 0:
+                intended_ang = -1.0 * idx * step_rad
+                assert not np.allclose(pose[:3, :3], P._rot_y(intended_ang), atol=1e-3)
+    finally:
+        P.reset({})
 
 
 def test_session_unmatched_task_and_flag_off_are_bit_identical(monkeypatch):

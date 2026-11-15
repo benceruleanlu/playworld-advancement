@@ -187,16 +187,17 @@ class PoseTrack:
     poses for the new latent frames (one per 4 pixel frames).
 
     yaw_gain (left, right), --lingbot-yaw-gain, off (None) by default: the relative poses returned
-    (what the model gets) turn j / l by the gain, while `latents` (what ReturnDetector reads) follow
-    the intended track without it, kept separately in `intended_last`. Off, both tracks are one."""
+    (what the model gets) and `model_latents` turn j / l by the gain, while `latents` (what ReturnDetector
+    reads) follow the intended track without it, kept separately in `intended_last`. Off, both tracks are one."""
 
-    def __init__(self, translation_gain: float = 1.0):
+    def __init__(self, translation_gain: float = 1.0, yaw_gain: tuple[float, float] | None = None):
         self.translation_gain = translation_gain
-        self.yaw_gain = None         # set per call by run.py with --lingbot-yaw-gain
+        self.yaw_gain = yaw_gain     # set per call by run.py with --lingbot-yaw-gain
         self.last = np.eye(4)        # absolute pose of the latest pixel frame (model track)
         self.intended_last = np.eye(4)  # same, intended track (no yaw gain)
         self.prev_latent = None      # absolute pose of the latest latent frame (model track)
         self.latents = None          # intended absolute poses of the last advance()'s latents (one per rel)
+        self.model_latents = None    # model-track absolute poses of the last advance()'s latents (one per rel)
 
     def advance(self, keys: list[str], ease_turns: bool = False) -> np.ndarray:
         first = self.prev_latent is None
@@ -219,9 +220,10 @@ class PoseTrack:
             if i % 4 == 0:
                 lat.append(cur)
                 ilat.append(want)
-        rel = relative_latent_poses(np.stack(lat), self.prev_latent)
-        self.last, self.prev_latent = cur, lat[-1]
-        self.intended_last, self.latents = (want, np.stack(ilat)) if gain else (cur, np.stack(lat))
+        model_lats = np.stack(lat)
+        rel = relative_latent_poses(model_lats, self.prev_latent)
+        self.last, self.prev_latent, self.model_latents = cur, lat[-1], model_lats
+        self.intended_last, self.latents = (want, np.stack(ilat)) if gain else (cur, model_lats)
         return normalise_translation(rel)
 
 
@@ -722,10 +724,7 @@ class LingBotSession:
         if hasattr(lat, "numpy"):
             lat = lat.numpy()
         lat_np = np.array(np.asarray(lat, dtype=np.float32)[:, :take], dtype=np.float32, copy=True)
-        track_lats = getattr(self.track, "model_latents", None)
-        if track_lats is None:
-            track_lats = self.track.latents
-        c2ws = np.asarray(track_lats[chunk_idx * CHUNK:chunk_idx * CHUNK + take], dtype=np.float64)
+        c2ws = np.asarray(self.track.model_latents[chunk_idx * CHUNK:chunk_idx * CHUNK + take], dtype=np.float64)
         self._ss_latents.append(lat_np)
         self._ss_poses.extend(np.array(c2ws[i], dtype=np.float64, copy=True) for i in range(len(c2ws)))
 
