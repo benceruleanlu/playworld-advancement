@@ -268,6 +268,8 @@ jobs:
           # openai: screening judges; empty falls back to PLAYER_API_KEY / PLAYER_API_URL (pwa/judge_openai.py)
           JUDGE_API_KEY: ${{ secrets.JUDGE_API_KEY }}
           JUDGE_API_URL: ${{ vars.JUDGE_API_URL }}
+          # openai: judges: cap on the estimated images one `pwa score` sends (empty = pwa default 12000; 0 = no cap)
+          PWA_PROXY_MAX_IMAGES: ${{ vars.PWA_PROXY_MAX_IMAGES }}
           # optional: a Google Cloud API key for Gemini Enterprise Agent Platform (formerly Vertex AI). Set = the same
           # Gemini judge is called there (express mode) instead of AI Studio (pwa/score.py judge_backend); pwa logs
           # "judge backend: gcp|aistudio"
@@ -379,8 +381,13 @@ jobs:
         if: inputs.stage != 'gen-only' && inputs.judge_model != ''
         run: |
           .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUGS" '
-            if [[ " $JUDGE_SLUGS" == *" openai-"* ]]; then
-              pwa upsert-row "$EXP" --proxy --into "$MAIN_DIR/results/proxy_experiments.csv" \
+            # only this run's openai: judges, so stale rows of other judges on the branch never overwrite main's
+            proxy_args=()
+            for spec in $JUDGE_SPECS; do
+              if [[ "$spec" == openai:* ]]; then proxy_args+=(--judge-model "$spec"); fi
+            done
+            if (( ${#proxy_args[@]} )); then
+              pwa upsert-row "$EXP" --proxy "${proxy_args[@]}" --into "$MAIN_DIR/results/proxy_experiments.csv" \
                 || echo "::warning::proxy csv row not committed"
             fi
             mkdir -p "$MAIN_DIR/results/reports"

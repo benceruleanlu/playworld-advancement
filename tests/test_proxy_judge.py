@@ -72,9 +72,11 @@ def test_estimate_images_uses_upstream_specs(monkeypatch, tmp_path):
     ref = tmp_path / "ref.png"
     ref.write_bytes(b"x")
     gc = score.estimate_images({**INFO, "image": str(ref)}, Path("/v.mp4"), specs)
-    assert gc == {"score": 12 + 4 + 1, "gate": 16, "total": 33, "calls": 2}
+    # every upstream sheet (1920x1080 primary, 1600x900 detail) is 6 high-detail tiles = 1105 tokens
+    assert gc == {"score": 12 + 4 + 1, "gate": 16, "total": 33, "calls": 2,
+                  "score_tokens": 17 * 1105, "gate_tokens": 16 * 1105}
     ins = score.estimate_images({**INFO, "family": "insight"}, Path("/v.mp4"), specs)
-    assert ins == {"score": 16, "gate": 0, "total": 16, "calls": 1}
+    assert ins == {"score": 16, "gate": 0, "total": 16, "calls": 1, "score_tokens": 16 * 1105, "gate_tokens": 0}
     monkeypatch.setattr(score, "video_seconds", lambda v: None)
     assert score.estimate_images(INFO, Path("/v.mp4"), specs) is None
 
@@ -179,3 +181,150 @@ def test_proxy_failure_is_reported_failed_never_one(cli_env):
     err = (Path(env["PWA_RUNS"]) / "t" / "eval-openai-gpt-4.1" / "pass1" / "IF002_score.err").read_text()
     assert "HTTP 503" in err and KEY not in err
     assert not (Path(env["PWA_RUNS"]) / "t" / "eval-openai-gpt-4.1" / "pass1" / "IF002_score.json").exists()
+
+
+def test_image_tokens_tile_count():
+    assert score.image_tokens(1920, 1080) == 1105 and score.image_tokens(1600, 900) == 1105
+    assert score.image_tokens(512, 512) == 255 and score.image_tokens(4000, 4000, "low") == 85
+
+
+def test_contradictory_judge_flags_are_refused():
+    with pytest.raises(PwaError, match="--judge gemini"):
+        score.judges_of(ns(judge="gemini", judge_model=["openai:gpt-4o"]))
+    with pytest.raises(PwaError, match="Gemini model"):
+        score.judges_of(ns(judge="openai", judge_model=["gemini-3.1-pro-preview"]))
+    assert score.judges_of(ns(judge="gemini", judge_model=["gemini-4-hydrogen"]))[0].provider == "gemini"
+
+
+def test_video_seconds_falls_back_to_ffmpeg_without_ffprobe(monkeypatch, tmp_path):
+    real = score.subprocess.run
+
+    def run(cmd, *a, **kw):
+        if cmd[0] == "ffprobe":
+            raise FileNotFoundError("ffprobe")
+        return NS(stdout="", stderr="  Duration: 00:01:02.50, start: 0.000000, bitrate: 1 kb/s\n", returncode=1)
+
+    monkeypatch.setattr(score.subprocess, "run", run)
+    monkeypatch.setattr(score, "_ffmpeg_exe", lambda: "/x/ffmpeg")
+    assert score.video_seconds(tmp_path / "v.mp4") == pytest.approx(62.5)
+    monkeypatch.setattr(score, "_ffmpeg_exe", lambda: None)
+    assert score.video_seconds(tmp_path / "v.mp4") is None
+    monkeypatch.setattr(score.subprocess, "run", real)
+
+
+def _guard_args(exp, passes=2):
+    return NS(exp=exp, passes=passes, force=False, max_images=None)
+
+
+def test_cost_guard_counts_pending_calls_and_caps(monkeypatch, tmp_path):
+    monkeypatch.setattr(score, "exp_dir", lambda e: tmp_path / e)
+    monkeypatch.delenv("PWA_PROXY_MAX_IMAGES", raising=False)
+    monkeypatch.delenv("PWA_PROXY_USD_PER_MTOK", raising=False)
+    est = {"score": 17, "gate": 16, "total": 33, "calls": 2, "score_tokens": 17000, "gate_tokens": 16000}
+    monkeypatch.setattr(score, "estimate_images", lambda t, v, specs=None, detail="high": est)
+    monkeypatch.setattr(score, "_upstream_specs", lambda: None)
+    j = score.Judge.parse("openai:gpt-4.1")
+    sel = [{**INFO, "task_id": "GC005"}]
+    g = score.cost_guard(sel, _guard_args("e"), j)
+    assert (g["images"], g["calls"], g["tokens"]) == (66, 4, 66000)
+    # pass 1 already scored and gated: only pass 2 is counted
+    d = tmp_path / "e" / "eval-openai-gpt-4.1" / "pass1"
+    d.mkdir(parents=True)
+    for mode in ("score", "gate"):
+        (d / f"GC005_{mode}.json").write_text(json.dumps({"score": {"final_score_1_to_5": 3}}))
+    assert score.cost_guard(sel, _guard_args("e"), j)["images"] == 33
+    assert score.cost_guard(sel, NS(exp="e", passes=2, force=True, max_images=None), j)["images"] == 66
+    with pytest.raises(PwaError, match="over the cap"):
+        score.cost_guard(sel, NS(exp="e", passes=2, force=True, max_images=40), j)
+    monkeypatch.setenv("PWA_PROXY_MAX_IMAGES", "10")
+    with pytest.raises(PwaError, match="over the cap of 10"):
+        score.cost_guard(sel, _guard_args("e"), j)
+    monkeypatch.setenv("PWA_PROXY_MAX_IMAGES", "0")  # 0 = no cap
+    assert score.cost_guard(sel, NS(exp="e", passes=50, force=True, max_images=None), j)["images"] == 50 * 33
+    # unknown duration counts at the conservative per-task figure, never 0
+    monkeypatch.setattr(score, "estimate_images", lambda t, v, specs=None, detail="high": None)
+    assert score.cost_guard(sel, NS(exp="e", passes=1, force=True, max_images=0), j)["images"] == \
+        score.UNKNOWN_TASK_IMAGES
+
+
+def test_proxy_reports_leave_out_paper_reference_and_say_temperature_dropped(monkeypatch):
+    rep = {"exp": "e", "passes": [1, 2], "n_tasks": 1, "n_missing": 0, "strict": False, "overall": 2.4,
+           "overall_std": 0.1, "overall_per_pass": [2.3, 2.5], "families": {}, "judge_backend": "",
+           "judge": report.judge_json(score.Judge.parse("openai:gpt-5-mini")), "judge_dropped": ["temperature"]}
+    for text in (report.render(rep, {}), report.render_md(rep, {})):
+        assert "Genie 3" not in text and "provider default" in text
+    official = {**rep, "judge": None, "judge_dropped": []}
+    assert "Genie 3" in report.render(official, {}) and "Genie 3" in report.render_md(official, {})
+
+
+def test_compare_has_no_paper_fallback_for_proxy():
+    fam = lambda m: {"gc": {"mean": m, "std": None}}  # noqa: E731
+    mk = lambda e, m, judge: {"exp": e, "families": fam(m), "overall": m, "overall_std": None, "tasks": {},  # noqa: E731
+                              "judge": judge}
+    j = report.judge_json(score.Judge.parse("openai:gpt-4.1"))
+    c = report.compare(mk("a", 2.0, j), mk("b", 2.5, j))
+    assert c["overall"]["noise"] is None and c["overall"]["threshold"] is None and "?" in report.render_compare(c)
+    off = report.compare(mk("a", 2.0, None), mk("b", 2.5, None))
+    assert off["overall"]["noise"] is False and off["overall"]["threshold"] == pytest.approx(2 * report.FALLBACK_STD)
+
+
+def test_proxy_rows_never_reach_the_results_csv(monkeypatch, tmp_path):
+    monkeypatch.setattr(report, "RESULTS_CSV", tmp_path / "experiments.csv")
+    monkeypatch.delenv("PWA_PROXY_CSV", raising=False)
+    report.upsert_proxy_csv(_rep(), {"runner": "r"}, "dev", score.Judge.parse("openai:gpt-4.1"))
+    for dest in (tmp_path / "experiments.csv", tmp_path / "main" / "results" / "experiments.csv"):
+        with pytest.raises(ValueError, match="never go into the results csv"):
+            report.upsert_row_into("e", report.proxy_csv(), dest, keys=report.PROXY_KEYS)
+    # PWA_PROXY_CSV pointed at the results csv: the report warns and writes nothing
+    monkeypatch.setenv("PWA_PROXY_CSV", str(tmp_path / "experiments.csv"))
+    report.upsert_proxy_csv(_rep("x"), {"runner": "r"}, "dev", score.Judge.parse("openai:gpt-4.1"))
+    assert not (tmp_path / "experiments.csv").exists()
+    # a proxy row in a results csv (hand edit) is never copied by the default upsert-row
+    src = tmp_path / "src.csv"
+    src.write_text("exp,split,overall,status,judge\ne,dev,3.1,proxy,openai:gpt-4.1\n")
+    with pytest.raises(ValueError, match="no row"):
+        report.upsert_row_into("e", src, tmp_path / "out.csv")
+
+
+def test_malformed_proxy_csv_warns_and_report_still_writes(monkeypatch, tmp_path):
+    monkeypatch.setattr(report, "RESULTS_CSV", tmp_path / "experiments.csv")
+    monkeypatch.delenv("PWA_PROXY_CSV", raising=False)
+    report.proxy_csv().write_text("exp,split\na,b,c,d\n")
+    report.upsert_proxy_csv(_rep(), {"runner": "r"}, "dev", score.Judge.parse("openai:gpt-4.1"))  # no raise
+    assert report.proxy_csv().read_text() == "exp,split\na,b,c,d\n"
+
+
+def test_upsert_row_proxy_copies_only_this_runs_judges(monkeypatch, tmp_path):
+    monkeypatch.setattr(report, "RESULTS_CSV", tmp_path / "experiments.csv")
+    monkeypatch.delenv("PWA_PROXY_CSV", raising=False)
+    old, new = score.Judge.parse("openai:gpt-4.1"), score.Judge.parse("openai:gpt-4o")
+    report.upsert_proxy_csv(_rep(), {"runner": "r"}, "dev", old)  # stale copy inherited from main
+    report.upsert_proxy_csv(_rep(), {"runner": "r"}, "dev", new)  # this run
+    dest = tmp_path / "main_proxy.csv"
+    dest.write_text(report.proxy_csv().read_text().replace("2.5000", "3.9000"))  # main has newer rows
+    assert report.upsert_row_into("e", report.proxy_csv(), dest, keys=report.PROXY_KEYS,
+                                  judges=["openai:gpt-4o"]) == 1
+    rows = {r["judge"]: r["overall"] for r in csv.DictReader(dest.open())}
+    assert rows == {"openai:gpt-4.1": "3.9000", "openai:gpt-4o": "2.5000"}
+
+
+def test_temperature_rejection_is_remembered_and_stamped(monkeypatch, tmp_path):
+    monkeypatch.delenv("JUDGE_API_NO_TEMPERATURE", raising=False)
+    monkeypatch.setattr(score, "_DROPPED", {})
+    j = score.Judge.parse("openai:gpt-5-mini")
+    seen = []
+
+    def run(cmd, cwd=None, env=None, **kw):
+        seen.append(env.get("JUDGE_API_NO_TEMPERATURE"))
+        return NS(returncode=0, stdout="",
+                  stderr="[pwa judge] model rejects temperature=0.1; retrying with the provider default\n")
+
+    monkeypatch.setattr(score.subprocess, "run", run)
+    assert score.run_verifier(["x"], tmp_path / "a.err", 0, j)
+    assert score.run_verifier(["x"], tmp_path / "b.err", 0, j)
+    assert seen == [None, "1"] and score.dropped_params(j) == {"temperature"}
+    assert score.dropped_params(score.Judge.parse("openai:gpt-4.1")) == set()
+    out = tmp_path / "r.json"
+    out.write_text(json.dumps({"score": {"final_score_1_to_5": 2}}))
+    score.stamp_dropped(out, score.dropped_params(j))
+    assert json.loads(out.read_text())["judge_dropped"] == ["temperature"]

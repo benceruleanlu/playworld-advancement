@@ -56,6 +56,27 @@ def judge_backends(exp: str, passes: list[int], sel: list[dict], judge: Judge | 
     return "+".join(sorted(seen))
 
 
+def judge_dropped(exp: str, passes: list[int], sel: list[dict], judge: Judge | None = None) -> list[str]:
+    """Upstream sampling params (e.g. temperature) an openai: judge model rejected in any result of this run, so
+    those calls sampled at the provider default (pwa/score.py stamp_dropped). [] for every other judge."""
+    if not (judge and judge.provider == "openai"):
+        return []
+    seen = set()
+    for k in passes:
+        d = eval_dir(exp, judge=judge) / f"pass{k}"
+        for t in sel:
+            for mode in ("score", "gate"):
+                res = read_json(d / f"{t['task_id']}_{mode}.json")
+                if isinstance(res, dict):
+                    seen.update(x for x in (res.get("judge_dropped") or []) if isinstance(x, str))
+    return sorted(seen)
+
+
+def dropped_label(params: list[str]) -> str:
+    return (f"{', '.join(params)} rejected by the judge model: sampled at the provider default, not upstream's "
+            f"setting")
+
+
 def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = None,
           judge: Judge | None = None) -> dict:
     present = {t["task_id"] for t in sel if video_path(exp, t["task_id"]).is_file()}
@@ -106,7 +127,8 @@ def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = N
             "n_missing": len(sel) - len(present), "families": fams, "overall": om, "overall_std": os_,
             "overall_per_pass": overall_vals, "per_pass": {str(k): {kk: v for kk, v in p.items() if kk != "tasks"}
                                                           for k, p in per_pass.items()},
-            "tasks": tasks, "judge": judge_json(judge), "judge_backend": judge_backends(exp, passes, sel, judge)}
+            "tasks": tasks, "judge": judge_json(judge), "judge_backend": judge_backends(exp, passes, sel, judge),
+            "judge_dropped": judge_dropped(exp, passes, sel, judge)}
 
 
 def pass_reason(exp: str, tid: str, k: int, judge: Judge | None = None) -> str:
@@ -142,7 +164,7 @@ def judge_json(judge: Judge | None) -> dict | None:
     if judge is None:
         return None
     return {"model": judge.model, "thinking": judge.thinking, "provider": judge.provider, "slug": judge.slug,
-            "name": judge.name, "spec": judge.spec, "label": judge.label}
+            "name": judge.name, "spec": judge.spec, "label": judge.label, "proxy": judge.proxy}
 
 
 def _avg(xs):
@@ -162,6 +184,8 @@ def render(rep: dict, meta: dict) -> str:
       f"passes={len(rep['passes'])} tasks={rep['n_tasks']} missing={rep['n_missing']}"
       + (f" judge_backend={rep['judge_backend']}" if rep.get("judge_backend") else "")
       + ("  [strict]" if rep["strict"] else ""))
+    if rep.get("judge_dropped"):
+        p(f"*** {dropped_label(rep['judge_dropped'])} ***")
     if chunk_cap(meta):
         p(f"*** {cap_label(chunk_cap(meta))} ***")
     if scripted_player(meta):
@@ -175,10 +199,11 @@ def render(rep: dict, meta: dict) -> str:
           f"{f['dropped']:>4}  {per}")
     p(f"{'overall':<9} {f2(rep['overall'])} {f2(rep['overall_std'])}"
       f"{'':19}  {' '.join(f2(v, 4) for v in rep['overall_per_pass'])}")
-    p()
-    p(f"{'reference (paper, full benchmark)':<36}" + " ".join(f"{h:>5}" for h in ("gc", "if", "insi", "outs", "all")))
-    for name, r in REFERENCE.items():
-        p(f"  {name:<34}" + " ".join(f2(v) for v in r))
+    if not rep.get("judge"):  # paper numbers are Gemini 3.1 Pro scores: never next to a screening or proxy score
+        p()
+        p(f"{'reference (paper, full benchmark)':<36}" + " ".join(f"{h:>5}" for h in ("gc", "if", "insi", "outs", "all")))
+        for name, r in REFERENCE.items():
+            p(f"  {name:<34}" + " ".join(f2(v) for v in r))
     if any(f["dropped"] for f in rep["families"].values()):
         p()
         p("note: 'drop' = unscored or gated-without-review rollouts, excluded from the mean as upstream does; "
@@ -208,6 +233,9 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
     if j and not j.get("label", "").startswith("PROXY JUDGE"):
         p(f"> **{_md_cell(j['label'])}.** Dev screening only; not written to results/experiments.csv.")
         p()
+    if rep.get("judge_dropped"):
+        p(f"> **{_md_cell(dropped_label(rep['judge_dropped']).capitalize())}.**")
+        p()
     if chunk_cap(meta):
         p(f"> **{_md_cell(cap_label(chunk_cap(meta)).capitalize())}.** Smoke tier only; never the site headline.")
         p()
@@ -228,13 +256,14 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
           f"| {f['dropped']} | {per} |")
     per = ", ".join(_md2(v) for v in rep["overall_per_pass"]) or "-"
     p(f"| **overall** | **{_md2(rep['overall'])}** | {_md2(rep['overall_std'])} | | | | | {per} |")
-    p()
-    p("**Reference (paper, full benchmark)**")
-    p()
-    p("| model | gc | if | insight | outsight | overall |")
-    p("|---|---:|---:|---:|---:|---:|")
-    for name, r in REFERENCE.items():
-        p(f"| {name} | " + " | ".join(_md2(v) for v in r) + " |")
+    if not j:  # paper numbers are Gemini 3.1 Pro scores: never next to a screening or proxy score
+        p()
+        p("**Reference (paper, full benchmark)**")
+        p()
+        p("| model | gc | if | insight | outsight | overall |")
+        p("|---|---:|---:|---:|---:|---:|")
+        for name, r in REFERENCE.items():
+            p(f"| {name} | " + " | ".join(_md2(v) for v in r) + " |")
     if any(f["dropped"] for f in rep["families"].values()):
         p()
         p("> `dropped` = unscored or gated-without-review rollouts, excluded from the mean as upstream does. "
@@ -307,19 +336,33 @@ PROXY_FIELDS = CSV_FIELDS + ["judge"]
 PROXY_KEYS = ("exp", "split", "judge")
 
 
+def check_proxy_dest(dest) -> None:
+    """A proxy row never goes into the official results csv, by path or by name (a checkout of main)."""
+    from pathlib import Path
+    d = Path(dest)
+    if d.name == RESULTS_CSV.name or d.name == "experiments.csv" or d.resolve() == Path(RESULTS_CSV).resolve():
+        raise ValueError(f"{dest}: proxy judge rows never go into the results csv; use proxy_experiments.csv")
+
+
 def proxy_csv():
     from pathlib import Path
     env = os.environ.get("PWA_PROXY_CSV")
-    return Path(env) if env else RESULTS_CSV.parent / "proxy_experiments.csv"
+    dest = Path(env) if env else RESULTS_CSV.parent / "proxy_experiments.csv"
+    check_proxy_dest(dest)
+    return dest
 
 
 def upsert_proxy_csv(rep: dict, meta: dict, split: str, judge: Judge) -> None:
-    dest = proxy_csv()
-    head, rows = _read_csv_strict(dest) if dest.is_file() and dest.stat().st_size else (list(PROXY_FIELDS), [])
-    head += [c for c in PROXY_FIELDS if c not in head]
-    new = {**_csv_row(rep, meta, split), "status": "proxy", "judge": judge.spec}
-    rows = [r for r in rows if tuple(r.get(k, "") for k in PROXY_KEYS) != tuple(new[k] for k in PROXY_KEYS)] + [new]
-    _write_csv(dest, head, rows)
+    """Best effort: a bad proxy csv (or destination) is a warning, never a failed report."""
+    try:
+        dest = proxy_csv()
+        head, rows = _read_csv_strict(dest) if dest.is_file() and dest.stat().st_size else (list(PROXY_FIELDS), [])
+        head += [c for c in PROXY_FIELDS if c not in head]
+        new = {**_csv_row(rep, meta, split), "status": "proxy", "judge": judge.spec}
+        rows = [r for r in rows if tuple(r.get(k, "") for k in PROXY_KEYS) != tuple(new[k] for k in PROXY_KEYS)] + [new]
+        _write_csv(dest, head, rows)
+    except (ValueError, OSError) as e:
+        log(f"[pwa] WARNING: proxy csv row not written: {e}")
 
 
 def _csv_row(rep: dict, meta: dict, split: str) -> dict:
@@ -432,17 +475,27 @@ def _read_csv_strict(path) -> tuple[list[str], list[dict]]:
     return head, rows
 
 
-def upsert_row_into(exp: str, src, dest, keys: tuple[str, ...] = ("exp", "split")) -> int:
+def upsert_row_into(exp: str, src, dest, keys: tuple[str, ...] = ("exp", "split"),
+                    judges: list[str] | None = None) -> int:
     """Copy exp's row(s) from csv `src` into csv `dest` (replace rows with the same `keys`, default exp+split,
     else append), matching columns by name. Columns the destination lacks are added to its header; nothing is
-    dropped. Returns rows written."""
+    dropped. Returns rows written. With keys=PROXY_KEYS (proxy rows): `dest` must not be a results csv, and
+    `judges` (judge specs) limits the copy to the rows of those judges, so a branch's stale rows of other judges
+    never overwrite newer ones. Without it, proxy rows (status=proxy or a judge) are never copied."""
     from pathlib import Path
+    proxy = "judge" in keys
+    if proxy:
+        check_proxy_dest(dest)
     src, dest = Path(src), Path(dest)
     _, srows = _read_csv_strict(src)
     # never copy a score-less live row: the checkout's csv can hold one inherited from main
     mine = [r for r in srows if r.get("exp") == exp and r.get("status") not in LIVE_STATUSES]
+    if proxy and judges is not None:
+        mine = [r for r in mine if r.get("judge", "") in judges]
+    if not proxy:
+        mine = [r for r in mine if r.get("status") != "proxy" and not (r.get("judge") or "").strip()]
     if not mine:
-        raise ValueError(f"{src}: no row for exp {exp!r}")
+        raise ValueError(f"{src}: no row for exp {exp!r}" + (f" and judge {' '.join(judges)}" if proxy and judges else ""))
     if dest.is_file() and dest.stat().st_size:
         head, rows = _read_csv_strict(dest)
     else:
@@ -466,7 +519,7 @@ def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: boo
     rep["max_chunks"] = chunk_cap(read_meta(exp))
     if not rep["passes"]:
         hint = f" --judge-model {judge.spec}" if judge else ""
-        log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}{hint}`)")
+        log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}{hint}`)" + other_judge_dirs_hint(exp, judge))
         return rep
     add_english(exp, list(rep["tasks"].values()), judge)  # display copy of each reason; the scores are untouched
     if judge:
@@ -481,24 +534,42 @@ def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: boo
     return rep
 
 
+def other_judge_dirs_hint(exp: str, judge: Judge | None) -> str:
+    """For an openai: judge with no results: the other eval-openai-* dirs of exp, e.g. when PWA_PROXY_JUDGE_MODEL
+    differed between `pwa score` and this command."""
+    if not (judge and judge.provider == "openai"):
+        return ""
+    d = exp_dir(exp)
+    others = sorted(p.name for p in d.glob("eval-openai-*") if p.is_dir() and p.name != f"eval-{judge.slug}") \
+        if d.is_dir() else []
+    return f"; {exp} has {', '.join(others)}: pass that model with --judge-model" if others else ""
+
+
 def compare(a: dict, b: dict) -> dict:
     def noise(sa, sb):
         stds = [s for s in (sa, sb) if s is not None]
         return 2 * max(stds) if stds else None
+
+    # the paper's pass variance is Gemini 3.1 Pro's: never the noise floor of another judge. Without a measured
+    # std (1 pass, or identical passes) a screening or proxy delta is "?", not REAL.
+    fallback = None if a.get("judge") or b.get("judge") else 2 * FALLBACK_STD
+
+    def flag(d, thr):
+        return None if thr is None else abs(d) < thr
 
     fams = {}
     for fam in FAMILIES:
         fa, fb = a["families"].get(fam), b["families"].get(fam)
         if not fa or not fb or fa["mean"] is None or fb["mean"] is None:
             continue
-        thr = noise(fa["std"], fb["std"]) or 2 * FALLBACK_STD
+        thr = noise(fa["std"], fb["std"]) or fallback
         d = fb["mean"] - fa["mean"]
-        fams[fam] = {"a": fa["mean"], "b": fb["mean"], "delta": d, "threshold": thr, "noise": abs(d) < thr}
+        fams[fam] = {"a": fa["mean"], "b": fb["mean"], "delta": d, "threshold": thr, "noise": flag(d, thr)}
     ov = None
     if a["overall"] is not None and b["overall"] is not None:
-        thr = noise(a["overall_std"], b["overall_std"]) or 2 * FALLBACK_STD
+        thr = noise(a["overall_std"], b["overall_std"]) or fallback
         d = b["overall"] - a["overall"]
-        ov = {"a": a["overall"], "b": b["overall"], "delta": d, "threshold": thr, "noise": abs(d) < thr}
+        ov = {"a": a["overall"], "b": b["overall"], "delta": d, "threshold": thr, "noise": flag(d, thr)}
     tasks = {}
     for tid, ta in a["tasks"].items():
         tb = b["tasks"].get(tid)
@@ -509,7 +580,9 @@ def compare(a: dict, b: dict) -> dict:
         tasks[tid] = {"family": ta["family"], "a": ta["mean"], "b": tb["mean"], "delta": d, "threshold": thr,
                       "noise": None if thr is None else abs(d) < thr}
     return {"a": a["exp"], "b": b["exp"], "families": fams, "overall": ov, "tasks": tasks,
-            "threshold_source": "2x max pass std (fallback: paper variance 0.011)", "judge": a.get("judge")}
+            "threshold_source": "2x max pass std" + (" (fallback: paper variance 0.011)" if fallback else
+                                                      " (no fallback for a screening or proxy judge)"),
+            "judge": a.get("judge")}
 
 
 def render_compare(c: dict) -> str:

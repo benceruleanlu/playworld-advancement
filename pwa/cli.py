@@ -83,6 +83,9 @@ def _score_args(p):
     p.add_argument("--retries", type=int, default=1, help="retries per failed verifier call (default 1)")
     p.add_argument("--dry-run", action="store_true", help="sampling + prompt only, no Gemini; writes eval_dry/")
     p.add_argument("--force", action="store_true", help="rescore even if result files exist")
+    p.add_argument("--max-images", type=int, default=None, metavar="N",
+                   help="openai: (proxy) judges: refuse to start when the estimated images to send exceed N "
+                        "(default $PWA_PROXY_MAX_IMAGES, else 12000; 0 = no cap)")
     _judge_args(p, panel=True)
 
 
@@ -173,7 +176,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("exp")
     p.add_argument("--into", required=True, help="destination experiments.csv (e.g. a checkout of main)")
     p.add_argument("--proxy", action="store_true",
-                   help="copy EXP's proxy-judge rows from results/proxy_experiments.csv instead (keyed by exp, split, judge)")
+                   help="copy EXP's proxy-judge rows from results/proxy_experiments.csv instead (keyed by exp, split, judge); "
+                        "the destination may not be a results csv")
+    p.add_argument("--judge-model", action="append", default=None, metavar="SPEC",
+                   help="with --proxy: copy only the rows of this judge spec (repeatable), e.g. openai:gpt-4.1")
 
     p = mk("mark", "record a run's live status (running|generated|failed|cancelled) in a results csv (used by the workflow)")
     p.add_argument("exp")
@@ -398,7 +404,8 @@ def dispatch(a) -> int:  # noqa: C901
         rb = report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=judge)
         if not ra["passes"] or not rb["passes"]:
             where = f"eval-{judge.slug}/" if judge else "eval/"
-            raise PwaError(f"both experiments need at least one scored pass in {where}")
+            hint = "".join(report.other_judge_dirs_hint(r["exp"], judge) for r in (ra, rb) if not r["passes"])
+            raise PwaError(f"both experiments need at least one scored pass in {where}{hint}")
         if a.cmd == "cells":
             c = report.cells(ra, rb)
             emit(c, a.json, report.render_cells(c))
@@ -409,7 +416,11 @@ def dispatch(a) -> int:  # noqa: C901
 
     if a.cmd == "upsert-row":
         try:
-            n = (report.upsert_row_into(a.exp, report.proxy_csv(), a.into, keys=report.PROXY_KEYS) if a.proxy
+            if a.judge_model and not a.proxy:
+                raise ValueError("--judge-model needs --proxy")
+            n = (report.upsert_row_into(a.exp, report.proxy_csv(), a.into, keys=report.PROXY_KEYS,
+                                        judges=[score.Judge.parse(m).spec for m in a.judge_model]
+                                        if a.judge_model else None) if a.proxy
                  else report.upsert_row_into(a.exp, core.RESULTS_CSV, a.into))
         except (ValueError, OSError) as e:
             raise PwaError(str(e)) from e

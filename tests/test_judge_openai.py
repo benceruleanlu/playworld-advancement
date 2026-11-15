@@ -236,9 +236,13 @@ def test_judge_api_env_fallbacks(monkeypatch):
     monkeypatch.setenv("JUDGE_API_URL", "https://judge.example/v1")
     monkeypatch.setenv("JUDGE_API_KEY", "jk")
     assert jo.judge_api() == ("https://judge.example/v1", "jk")
-    monkeypatch.setenv("JUDGE_API_KEY", "")  # empty secret in Actions -> fall back
+    monkeypatch.setenv("JUDGE_API_KEY", "")  # empty secret in Actions: never the player key to another host
+    assert jo.judge_api() == ("https://judge.example/v1", "")
+    monkeypatch.setenv("JUDGE_API_URL", "https://player.example/v1/")  # the player's own URL -> fall back
     assert jo.judge_api()[1] == "pk"
     monkeypatch.delenv("JUDGE_API_URL")
+    assert jo.judge_api() == ("https://player.example/v1", "pk")
+    monkeypatch.delenv("JUDGE_API_URL", raising=False)
     monkeypatch.setenv("PLAYER_API_PROVIDER", "anthropic")
     with pytest.raises(ValueError, match="JUDGE_API_URL"):
         jo.judge_api()
