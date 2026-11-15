@@ -268,6 +268,10 @@ jobs:
           # openai: screening judges; empty falls back to PLAYER_API_KEY / PLAYER_API_URL (pwa/judge_openai.py)
           JUDGE_API_KEY: ${{ secrets.JUDGE_API_KEY }}
           JUDGE_API_URL: ${{ vars.JUDGE_API_URL }}
+          # optional: a Google Cloud API key for Gemini Enterprise Agent Platform (formerly Vertex AI). Set = the same
+          # Gemini judge is called there (express mode) instead of AI Studio (pwa/score.py judge_backend); pwa logs
+          # "judge backend: gcp|aistudio"
+          GCP_GEMINI_API_KEY: ${{ secrets.GCP_GEMINI_API_KEY }}
         run: |
           if [[ -z "${JUDGE_SPECS:-}" ]]; then
             pwa score "$EXP" --passes "$PASSES" --workers 6

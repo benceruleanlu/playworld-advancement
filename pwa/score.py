@@ -1,6 +1,7 @@
 """pwa score / preview: run the official Rubric Verifier as subprocesses."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -124,10 +125,40 @@ def passes_present(exp: str, judge: Judge | None = None) -> list[int]:
     return sorted(int(p.name[4:]) for p in d.glob("pass*") if p.name[4:].isdigit()) if d.is_dir() else []
 
 
+BACKENDS = ("aistudio", "gcp")
+GCP_API_VERSIONS = ("v1", "v1beta1")  # aiplatform.googleapis.com paths; AI Studio's v1beta (workflow default) 404s there
+
+
+def judge_backend() -> str:
+    """Where a Gemini judge is called. "gcp" = Google Cloud's Gemini Enterprise Agent Platform (formerly Vertex AI,
+    host aiplatform.googleapis.com): GCP_GEMINI_API_KEY set (a Google Cloud API key, express mode) or
+    PWA_JUDGE_BACKEND=gcp (no key: ADC with GOOGLE_CLOUD_PROJECT). Else "aistudio", which is upstream unchanged. Same model either way; the backend is recorded so a row says which API scored it."""
+    forced = os.environ.get("PWA_JUDGE_BACKEND", "").strip().lower()
+    if forced and forced not in BACKENDS:
+        raise PwaError(f"PWA_JUDGE_BACKEND must be one of {', '.join(BACKENDS)}")
+    if forced:
+        return forced
+    return "gcp" if os.environ.get("GCP_GEMINI_API_KEY", "").strip() else "aistudio"
+
+
+def on_gcp(judge: Judge | None = None) -> bool:
+    return judge_backend() == "gcp" and not (judge and judge.provider == "openai")
+
+
+def gcp_adc(judge: Judge | None = None) -> bool:
+    """Google Cloud without an API key: upstream always passes GEMINI_API_KEY explicitly, which the SDK would send as an
+    express-mode key, so pwa.judge_shim builds the client from project/location and ADC instead."""
+    return on_gcp(judge) and not os.environ.get("GCP_GEMINI_API_KEY", "").strip()
+
+
+def uses_shim(judge: Judge | None = None) -> bool:
+    return bool(judge and judge.needs_shim) or gcp_adc(judge)
+
+
 def verifier_cmd(mode: str, info: dict, video: Path, out: Path, dry: bool,
                  sampling_dir: Path | None = None, context: Path | None = None,
                  judge: Judge | None = None) -> list[str]:
-    module = "pwa.judge_shim" if judge and judge.needs_shim else "metrics.vqa.score"
+    module = "pwa.judge_shim" if uses_shim(judge) else "metrics.vqa.score"
     model = judge.upstream_model if judge else os.environ.get("GEMINI_MODEL", OFFICIAL_MODEL)
     cmd = [sys.executable, "-m", module, "--mode", mode, "--dataset", info["dataset"],
            "--task-id", info["task_id"], "--video", str(video), "--world-model", WORLD_MODEL,
@@ -138,24 +169,42 @@ def verifier_cmd(mode: str, info: dict, video: Path, out: Path, dry: bool,
         cmd += ["--sampling-output-dir", str(sampling_dir)]
     if context:
         cmd += ["--context-output", str(context)]
+    if not dry and on_gcp(judge):
+        # Agent Platform has no Files API (upstream's auto transport uploads above 18 MB). Same sheets, sent inline.
+        cmd += ["--evidence-transport", "inline"]
     return cmd + (["--dry-run"] if dry else [])
 
 
-SHIM_VARS = ("PWA_JUDGE_THINKING", "PWA_JUDGE_PROVIDER")
+SHIM_VARS = ("PWA_JUDGE_THINKING", "PWA_JUDGE_PROVIDER", "PWA_JUDGE_GCP_ADC")
 # upstream main() exits unless GEMINI_API_KEY is set; an openai: judge never builds a Gemini client
 GEMINI_KEY_PLACEHOLDER = "unused-by-openai-judge"
+GCP_ADC_PLACEHOLDER = "unused-gcp-adc"
 
 
 def verifier_env(judge: Judge | None = None) -> dict:
     paths = [str(PLAYWORLD), os.environ.get("PYTHONPATH")]
     env = {k: v for k, v in os.environ.items() if k not in SHIM_VARS}
-    if judge and judge.needs_shim:  # pwa.judge_shim must be importable from the PlayWorld cwd
+    if uses_shim(judge):  # pwa.judge_shim must be importable from the PlayWorld cwd
         paths.insert(1, str(ROOT))
-        if judge.thinking:
+        if judge and judge.thinking:
             env["PWA_JUDGE_THINKING"] = judge.thinking
     if judge and judge.provider == "openai":
         env["PWA_JUDGE_PROVIDER"] = "openai"
         env["GEMINI_API_KEY"] = GEMINI_KEY_PLACEHOLDER  # the real Gemini key stays out of this process
+    if on_gcp(judge):
+        # google-genai reads these even when upstream passes api_key explicitly; an api key with no project/location is
+        # express mode on the global endpoint (aiplatform.googleapis.com). USE_ENTERPRISE is the current name (it wins
+        # when both are set), USE_VERTEXAI the legacy one older SDKs read.
+        env["GOOGLE_GENAI_USE_ENTERPRISE"] = "true"
+        env["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+        if env.get("GOOGLE_GENAI_API_VERSION") not in GCP_API_VERSIONS:
+            env["GOOGLE_GENAI_API_VERSION"] = "v1beta1"
+        if gcp_adc(judge):
+            env["PWA_JUDGE_GCP_ADC"] = "1"
+            env["GEMINI_API_KEY"] = GCP_ADC_PLACEHOLDER  # upstream main() needs one; the shim never sends it
+            env.setdefault("GOOGLE_CLOUD_LOCATION", "global")  # Gemini 3.x previews are served from global only
+        else:
+            env["GEMINI_API_KEY"] = os.environ["GCP_GEMINI_API_KEY"].strip()
     return {**env, "PYTHONPATH": os.pathsep.join(filter(None, paths))}
 
 
@@ -175,6 +224,14 @@ def run_verifier(cmd: list[str], err_path: Path, retries: int, judge: Judge | No
         if attempt < retries:
             time.sleep(5 * (attempt + 1))
     return False
+
+
+def stamp_backend(path: Path, backend: str) -> None:
+    """Add judge_backend to a verifier result. Only gcp results carry it; absent = aistudio (upstream as is)."""
+    res = read_json(path)
+    if isinstance(res, dict):
+        res["judge_backend"] = backend
+        path.write_text(json.dumps(res, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def done(path: Path, dry: bool) -> bool:
@@ -212,6 +269,8 @@ def score_task(exp: str, info: dict, k: int, a, judge: Judge | None = None) -> l
             continue
         ok = run_verifier(verifier_cmd(mode, info, video, out, a.dry_run, judge=judge), out.with_suffix(".err"),
                           a.retries, judge)
+        if ok and not a.dry_run and on_gcp(judge):
+            stamp_backend(out, "gcp")
         events.append({"task_id": info["task_id"], "pass": k, "mode": mode, "status": "ok" if ok else "failed"})
         log(f"[pwa] pass{k} {info['task_id']} {mode}: {'ok' if ok else 'FAILED (see ' + str(out.with_suffix('.err')) + ')'}")
         if not ok and mode == "score":
@@ -238,6 +297,12 @@ def check_keys(judge: Judge | None) -> None:
             raise PwaError(str(e)) from e
         if not key:
             raise PwaError("an openai: judge needs JUDGE_API_KEY or PLAYER_API_KEY (config/env.sh)")
+    elif gcp_adc(judge):
+        if not os.environ.get("GOOGLE_CLOUD_PROJECT"):
+            raise PwaError("PWA_JUDGE_BACKEND=gcp without GCP_GEMINI_API_KEY needs GOOGLE_CLOUD_PROJECT and ADC "
+                           "(gcloud auth application-default login)")
+    elif on_gcp(judge):
+        pass  # GCP_GEMINI_API_KEY is set
     elif not os.environ.get("GEMINI_API_KEY"):
         raise PwaError("GEMINI_API_KEY is not set (config/env.sh); use --dry-run to test sampling only")
 
@@ -247,6 +312,9 @@ def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
         log(f"[pwa] {judge.label}; writing {eval_dir(a.exp, a.dry_run, judge)}")
     if not a.dry_run:
         check_keys(judge)
+        if not (judge and judge.provider == "openai"):
+            b = judge_backend()
+            log(f"[pwa] judge backend: {b}" + (" (Gemini Enterprise Agent Platform, formerly Vertex AI)" if b == "gcp" else ""))
     with_video = [t for t in sel if video_path(a.exp, t["task_id"]).is_file()]
     no_video = [t["task_id"] for t in sel if t not in with_video]
     if no_video:
@@ -266,6 +334,7 @@ def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
                "no_video": no_video, "ran": sum(e["status"] == "ok" for e in events),
                "skipped": sum(e["status"] == "skipped" for e in events), "failed": failed,
                "dir": str(eval_dir(a.exp, a.dry_run, judge)),
+               "judge_backend": None if a.dry_run or (judge and judge.provider == "openai") else judge_backend(),
                "judge": {"model": judge.model, "thinking": judge.thinking, "provider": judge.provider,
                          "slug": judge.slug} if judge else None}
     log(f"[pwa] score {a.exp}: ran={summary['ran']} skipped={summary['skipped']} failed={len(failed)}")
