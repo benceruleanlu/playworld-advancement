@@ -10,6 +10,7 @@
         <label>Moves from <select id="f-action"></select></label>
         <label>Branch <select id="f-branch"></select></label>
         <label class="check"><input type="checkbox" id="f-tests"> Show pipeline tests <span id="hidden-count" class="std"></span></label>
+        <label class="check" title="Runs that failed, were cancelled, or still say running long after the job limit. None produced a score."><input type="checkbox" id="f-ended"> Show runs with no result <span id="ended-count" class="std"></span></label>
       </div>
     </details>
     <details class="tool" id="compare"><summary>Compare two runs</summary>
@@ -21,8 +22,10 @@
     <details class="tool"><summary>How to read this table</summary>
       <ul class="plain">
         <li>Empty cells mean not measured, not zero.</li>
-        <li>The best score in each column is underlined. Only runs that meet every final-score check compare fairly with the published scores.</li>
+        <li>The best score in each column is underlined; tiny test runs and capped smoke runs are never underlined. Only runs that meet every final-score check compare fairly with the published scores.</li>
         <li>"Checks" shows which of the five final-score checks a run meets; "Scored" is how many times the judge scored it.</li>
+        <li>Runs that failed or were cancelled, and status rows still marked running hours after the job limit, are hidden by default; none produced a score. "Show runs with no result" lists them.</li>
+        <li>"capped smoke" rows stop each rollout after 10 of 30 chunks. They check behaviour only and never set the headline, the ruler, the task-type scores or the best-so-far line.</li>
         <li>The filters also change the charts under Progress.</li>
       </ul>
       <div class="cklegend" id="cklegend"></div>
