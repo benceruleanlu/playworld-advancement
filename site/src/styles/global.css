@@ -464,3 +464,14 @@ body.touring #story.tour-here .st:not(.tour-on) { opacity: .35; transition: opac
 .sp-slot figcaption .sc { margin-left: auto; font-weight: 650; font-variant-numeric: tabular-nums; }
 .sp-slot figcaption .rawid { flex-basis: 100%; }
 @media (max-width: 560px) { .sp-grid { grid-template-columns: minmax(0, 1fr); } }
+/* verdict table */
+.vdbox { margin-bottom: 16px; padding: 16px 18px; scroll-margin-top: 64px; }
+.vdbox[hidden] { display: none; }
+.vd-rule { margin: 0 0 10px; font-size: 15px; max-width: 90ch; text-wrap: pretty; }
+table.vd tbody th a { color: var(--ink); text-decoration: none; font-weight: 600; }
+table.vd tbody th a:hover { text-decoration: underline; }
+table.vd td .good, table.vd td .bad { font-weight: 650; }
+table.vd th, table.vd td { white-space: normal; }
+table.vd td.num, table.vd th.num { white-space: nowrap; width: 9%; }
+body.touring { scroll-padding-bottom: 90px; }
+body.touring #story.tour-here .vdbox:not(.tour-on) { opacity: .35; }
