@@ -51,11 +51,12 @@
   function isStale(r) { return r.status === "running" && r.overall === null && r.t !== null && Date.now() - r.t > STALE_MS; }
   // ended without a result: failed, cancelled, or a stale running row. Hidden by default.
   function isEnded(r) { return isLive(r) && (r.status === "failed" || r.status === "cancelled" || isStale(r)); }
-  // capped smoke tier: rollouts cut to 10 of 30 chunks, a behaviour check only, never comparable with official scores
-  function isCapped(r) { return /^smk\d*-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
   function isOpen(r) { return r.action_source === "dataset"; }
   function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
+  // capped smoke tier, a behaviour check only: each rollout was cut to fewer agent chunks than the official 30 (csv max_chunks, or for rows from
+  // before that column an smk-/smkNN- name or notes saying capped smoke); never comparable to a real score
+  function isCapped(r) { return (typeof r.max_chunks === "number" && r.max_chunks > 0) || /^smk\d*-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
   // real run too small to estimate a score: fewer than a dev split of tasks, or a single verifier pass
   function isSmoke(r) { return !isTest(r) && (isCapped(r) || (r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
@@ -115,7 +116,7 @@
         gc: num(o.gc), if: num(o.if), insight: num(o.insight), outsight: num(o.outsight),
         overall: num(o.overall), overall_std: num(o.overall_std), passes: num(o.passes),
         n_tasks: num(o.n_tasks), n_missing: num(o.n_missing), n_dropped: num(o.n_dropped), notes: (o.notes || "").trim(), branch: (o.branch || "").trim(),
-        status: (o.status || "").trim().toLowerCase(), run_url: (o.run_url || "").trim(), order: idx
+        status: (o.status || "").trim().toLowerCase(), run_url: (o.run_url || "").trim(), max_chunks: num(o.max_chunks), order: idx
       });
     });
     return out;
@@ -213,7 +214,10 @@
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", title: "An AI player chose every move while the world was being generated (closed loop).", text: "AI played" }));
     if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run from branch " + r.branch + ". The code behind this score is not merged into main yet.", text: "code not merged" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
-    if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: "Capped smoke run: rollouts stop after 10 of 30 chunks, on 2 or 3 chosen tasks. A behaviour check only, not comparable with official scores.", text: "capped smoke" }));
+    if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: typeof r.max_chunks === "number" && r.max_chunks > 0
+      ? "Each rollout was cut to " + r.max_chunks + " agent chunks instead of 30. A fast smoke check, never comparable to a real score."
+      : "Capped smoke run: rollouts stop early, on a few chosen tasks. A behaviour check only, not comparable with official scores.",
+      text: typeof r.max_chunks === "number" && r.max_chunks > 0 ? "capped smoke, " + r.max_chunks + " chunks" : "capped smoke" }));
     else if (isSmoke(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: a quick check that the pipeline works, too small to estimate a score.", text: "tiny test run" }));
     return b;
   }
@@ -234,14 +238,16 @@
     if (r.notes && !r.ref) td.appendChild(el("div", { class: "meta-line notes", text: r.notes }));
     tr.appendChild(td);
     var o = el("td", { class: "num overall" });
+    // same rows renderBoard leaves out of BEST: a smoke or capped row that ties a fair best is not underlined
+    var fair = !isSmoke(r);
     if (r.overall === null) dashCell(o);
     else {
-      o.appendChild(el("div", { class: r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
+      o.appendChild(el("div", { class: fair && r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
       if (typeof r.overall_std === "number") o.appendChild(el("div", { class: "std", text: "±" + fmt(r.overall_std) }));
     }
     tr.appendChild(o);
     FAMS.forEach(function (f) {
-      var t = el("td", { class: "num" + (r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
+      var t = el("td", { class: "num" + (fair && r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
     });
     var ckt = el("td", { class: "hide-sm" }); if (r.ref) dashCell(ckt); else ckt.appendChild(checksEl(r)); tr.appendChild(ckt);
     var nt = el("td", { class: "num hide-sm" });
@@ -748,7 +754,7 @@
     ["C", "code merged", function (r) { return !r.branch ? null : (r.branch === "main" ? 1 : 0); }]
   ];
   function checkRow(r) { return CHECKS.map(function (c) { return c[2](r); }); }
-  function isFinal(r) { return checkRow(r).every(function (v) { return v === 1; }); }
+  function isFinal(r) { return !isCapped(r) && checkRow(r).every(function (v) { return v === 1; }); }
   function checksEl(r) {
     var box = el("span", { class: "checks" }), res = checkRow(r), passed = 0;
     CHECKS.forEach(function (c, i) {
@@ -987,22 +993,34 @@
   /* ---------- scenes ---------- */
   var MEDIA_RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/media/";
   var scenesExp = "", scenesFam = "", scenesIdx = null, scenesMan = null, scenesAll = false, scenesDefault = "", SCENES_SHOWN = 4;
+  // deep link ?scenes=EXP&scene=TASK: that one rollout, player open. scenesWanted remembers a run not (yet) in the index.
+  var scenesTask = "", scenesWanted = "", scenesScrolled = false;
+  // an index entry or manifest without `scored` predates unscored scenes: it was an official scored run
+  function runScored(r) { return !r || r.scored !== false; }
+  function runLabels(r) { return (r && r.labels) || []; }
+  // the same deep link the workflow writes into the step summary and results/reports/ (pwa media watch_url)
+  function sceneLink(exp, task) {
+    var q = new URLSearchParams(); q.set("scenes", exp); if (task) q.set("scene", task);
+    return location.pathname + "?" + q.toString() + "#scenes";
+  }
   function getJson(name) {
     return get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
   }
-  function sceneCard(t) {
+  function sceneCard(t, open) {
     var famName = FAMINFO[t.family] ? FAMINFO[t.family].name : (t.family || "-");
     var media = el("div", { class: "media" });
-    if (t.video) {
+    function player(focus) {
+      var v = el("video", { controls: "", playsinline: "", preload: focus ? "none" : "metadata", src: t.video, poster: t.poster || null, "aria-label": "Rollout of " + t.task_id });
+      v.muted = true;
+      clear(media); media.appendChild(v);
+      var pr = v.play(); if (pr && pr.catch) pr.catch(function () { /* autoplay refused: controls stay */ });
+      if (focus) v.focus();
+    }
+    if (t.video && open) player(false);
+    else if (t.video) {
       media.appendChild(el("img", { src: t.poster || "", alt: "First frames of " + t.task_id, loading: "lazy" }));
       var pb = el("button", { class: "play", type: "button", "aria-label": "Play " + t.task_id });
-      pb.addEventListener("click", function () {
-        var v = el("video", { controls: "", playsinline: "", preload: "none", src: t.video, poster: t.poster || null, "aria-label": "Rollout of " + t.task_id });
-        v.muted = true;
-        clear(media); media.appendChild(v);
-        var pr = v.play(); if (pr && pr.catch) pr.catch(function () { /* autoplay refused: controls stay */ });
-        v.focus();
-      });
+      pb.addEventListener("click", function () { player(true); });
       media.appendChild(pb);
     } else {
       if (t.poster) media.appendChild(el("img", { src: t.poster, alt: "First frames of " + t.task_id, loading: "lazy" }));
@@ -1011,13 +1029,15 @@
     var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
     var row = el("div", { class: "row" }, [
       el("b", { text: t.task_id }),
-      el("span", { class: "sc", text: typeof t.mean === "number" ? fmt(t.mean) : "unscored" })
+      el("span", { class: "sc", text: typeof t.mean === "number" ? fmt(t.mean) : (runScored(scenesMan) ? "unscored" : "no score") })
     ]);
     var row2 = el("div", { class: "row" }, [
       el("span", { class: "fam", text: famName }),
       el("span", { class: "badge " + (ok ? "ok" : "warn"), text: st.length ? st.join(", ") : "no status" })
     ]);
     var kids = [media, row, row2];
+    if (t.video && /^https:/.test(t.video)) kids.push(el("div", { class: "row" }, [el("a", { class: "sclink", href: sceneLink(scenesExp, t.task_id), text: "Link to this scene" }),
+      el("a", { class: "sclink", href: t.video, rel: "noopener", text: "Download mp4" })]));
     if (t.reason) kids.push(el("details", null, [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })]));
     return el("article", { class: "scene" }, kids);
   }
@@ -1026,22 +1046,43 @@
     if (!grid) return;
     clear(grid);
     var runs = scenesIdx && scenesIdx.runs ? scenesIdx.runs : [];
+    var lb = $("sc-labels"); clear(lb); lb.hidden = true;
     if (!runs.length) {
-      empty.hidden = false; empty.textContent = "No scenes published yet. Each scored run adds its rollouts to a GitHub Release.";
+      empty.hidden = false; empty.textContent = "No scenes published yet. Each run that generates videos adds them to a GitHub Release.";
       filt2.hidden = true; $("sc-note").hidden = true; $("sc-files").hidden = true; return;
     }
     filt2.hidden = false;
     var rs = $("sc-run"), fs = $("sc-fam");
     clear(rs); runs.forEach(function (r) {
-      var o = el("option", { value: r.exp, text: r.exp + " (" + r.n_tasks + " tasks)" }); if (r.exp === scenesExp) o.selected = true; rs.appendChild(o);
+      var tags = [r.n_tasks + " tasks"];
+      if (!runScored(r)) tags.push("not scored");
+      if (runLabels(r).some(function (l) { return /^capped/.test(l); })) tags.push("capped");
+      var o = el("option", { value: r.exp, text: r.exp + " (" + tags.join(", ") + ")" }); if (r.exp === scenesExp) o.selected = true; rs.appendChild(o);
     });
     var run = runs.filter(function (r) { return r.exp === scenesExp; })[0];
     if (run && run.release_url && /^https:/.test(run.release_url)) { $("sc-files").href = run.release_url; $("sc-files").hidden = false; } else $("sc-files").hidden = true;
     renderSceneModel();
     if (!scenesMan) { empty.hidden = false; empty.textContent = "Could not load the manifest for " + scenesExp + "."; return; }
+    var labels = runLabels(scenesMan);
+    if (scenesWanted && scenesWanted !== scenesExp) labels = ["no scenes for " + scenesWanted + " yet (they appear when its run finishes publishing); showing " + scenesExp].concat(labels);
+    if (labels.length) {
+      lb.hidden = false;
+      labels.forEach(function (l) { lb.appendChild(el("span", { class: "badge warn", text: l })); });
+    }
     var tasks = scenesMan.tasks || [];
     clear(fs); fs.appendChild(el("option", { value: "", text: "All families" }));
     FAMS.forEach(function (f) { var o = el("option", { value: f[0], text: FAMINFO[f[0]].name }); if (f[0] === scenesFam) o.selected = true; fs.appendChild(o); });
+    var one = scenesTask ? tasks.filter(function (t) { return t.task_id === scenesTask; })[0] : null;
+    if (one) {
+      // deep link to one rollout: show it with the player open, and a way back to the whole run
+      empty.hidden = true; $("sc-note").hidden = !one.reason;
+      grid.appendChild(sceneCard(one, true));
+      var back = el("button", { class: "scmore", type: "button", text: "Show all " + tasks.length + " scenes of this run" });
+      back.addEventListener("click", function () { scenesTask = ""; renderScenes(); syncUrl(); });
+      grid.appendChild(el("div", { style: "grid-column:1/-1" }, [back]));
+      if (!scenesScrolled) { scenesScrolled = true; var sec = $("scenes"); if (sec && sec.scrollIntoView) sec.scrollIntoView(); }
+      return;
+    }
     var list = tasks.filter(function (t) { return !scenesFam || t.family === scenesFam; });
     empty.hidden = list.length > 0; if (!list.length) empty.textContent = "No tasks in this family for this run.";
     $("sc-note").hidden = !list.some(function (t) { return t.reason; });
@@ -1076,18 +1117,20 @@
       var runs = (ix && ix.runs) || [];
       runs.sort(function (a, b) { return a.generated < b.generated ? 1 : a.generated > b.generated ? -1 : 0; });
       scenesIdx = { runs: runs };
-      scenesDefault = runs.length ? runs[0].exp : "";
-      if (!runs.some(function (r) { return r.exp === scenesExp; })) scenesExp = scenesDefault;
+      // default: the newest official scored run with no labels, else the newest run
+      var official = runs.filter(function (r) { return runScored(r) && !runLabels(r).length; });
+      scenesDefault = official.length ? official[0].exp : (runs.length ? runs[0].exp : "");
+      if (!runs.some(function (r) { return r.exp === scenesExp; })) { scenesWanted = scenesExp; scenesExp = scenesDefault; scenesTask = ""; }
       return scenesExp ? loadManifest() : null;
     }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); syncUrl(); });
   }
   function wireScenes() {
     $("sc-run").addEventListener("change", function (e) {
-      scenesExp = e.target.value;
+      scenesExp = e.target.value; scenesTask = ""; scenesWanted = "";
       var req = scenesReq + 1;
       loadManifest().then(function () { if (req === scenesReq) { renderScenes(); syncUrl(); } });
     });
-    $("sc-fam").addEventListener("change", function (e) { scenesFam = e.target.value; scenesAll = false; renderScenes(); });
+    $("sc-fam").addEventListener("change", function (e) { scenesFam = e.target.value; scenesAll = false; scenesTask = ""; renderScenes(); syncUrl(); });
   }
 
   /* ---------- render all ---------- */
@@ -1109,6 +1152,7 @@
     var sv = q.get("sort") || "", d = sv.charAt(0) === "-" ? -1 : 1, sk = sv.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
     scenesExp = q.get("scenes") || "";
+    scenesTask = scenesExp ? (q.get("scene") || "") : "";
     cmpBase = q.get("base") || ""; // unknown values fall back to the default in renderCompare
   }
   function syncUrl() {
@@ -1119,7 +1163,8 @@
       if (filt.ended) q.set("ended", "1"); else q.delete("ended");
       if (sort.key === "overall" && sort.dir < 0) q.delete("sort"); else q.set("sort", (sort.dir < 0 ? "-" : "") + sort.key);
       if (cmpBase && cmpBase !== cmpAuto) q.set("base", cmpBase); else q.delete("base");
-      if (scenesExp && scenesExp !== scenesDefault) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
+      if (scenesExp && (scenesExp !== scenesDefault || scenesTask)) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
+      if (scenesTask) q.set("scene", scenesTask); else if (scenesIdx) q.delete("scene");
       var qs = q.toString();
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed or file: origins may refuse */ }

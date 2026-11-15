@@ -1,10 +1,11 @@
 <section id="scenes" aria-labelledby="h-scenes">
   <h2 id="h-scenes" class="sec">Scenes</h2>
-  <p class="sub">The videos from each scored run, one card per task. Click a picture to play it.</p>
+  <p class="sub">The videos from every run, one card per task, scored or not. Click a picture to play it. Runs that are not official scores (not scored, capped smoke, replayed moves) carry a label.</p>
   <div class="filters" id="scenes-filters" hidden>
     <label>Run <select id="sc-run"></select></label>
     <label>Family <select id="sc-fam"></select></label>
   </div>
+  <div class="sclabels" id="sc-labels" hidden></div>
   <p class="callout" id="sc-empty" style="margin-top:0">Loading scenes.</p>
   <div class="scenes" id="sc-grid" aria-live="polite"></div>
   <p class="scnote" id="sc-note" hidden>The judge's comments are its own words and are often in Chinese.</p>

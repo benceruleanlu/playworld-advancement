@@ -286,7 +286,10 @@ tr.skrow td { padding: 9px; border-bottom: 1px solid var(--grid); }
 .scene details { font-size: 12px; }
 .scene details p { margin: 4px 0 0; color: var(--ink2); overflow-wrap: anywhere; max-height: 9em; overflow-y: auto; }
 .scnote { font-size: 12px; color: var(--ink2); margin: 10px 0 0; max-width: 90ch; }
-.filters[hidden], .scnote[hidden], #sc-files[hidden], .callout[hidden] { display: none; }
+.scene .sclink { font-size: 12px; }
+.sclabels { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.sclabels .badge { white-space: normal; overflow-wrap: anywhere; height: auto; min-height: 20px; padding: 2px 8px; line-height: 1.35; border-radius: 10px; flex: 0 1 auto; }
+.filters[hidden], .scnote[hidden], #sc-files[hidden], .callout[hidden], .sclabels[hidden] { display: none; }
 .scmore { margin-top: 10px; font: inherit; font-size: 13px; color: var(--link); background: transparent; border: 1px solid var(--axis); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
 footer .credhead { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; margin: 14px 0 4px; color: var(--ink2); }
 footer ul.credits { margin: 0; padding-left: 18px; }

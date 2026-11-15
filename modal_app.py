@@ -73,6 +73,13 @@ def shard_argv(argv: list[str], shard: int, num_shards: int) -> list[str]:
     return [*argv[:i], *flags, *argv[i:]]
 
 
+def cap_argv(max_chunks: int) -> list[str]:
+    """`pwa gen` flag for a capped smoke run (0 = uncapped, the default). A pwa flag, so it goes before `--`."""
+    if max_chunks < 0:
+        raise SystemExit("max_chunks must be >= 0 (0 = uncapped)")
+    return [f"--max-chunks={max_chunks}"] if max_chunks else []
+
+
 @app.function(image=image, gpu=GPU, timeout=6 * 3600,
               volumes={"/runs": runs_vol, "/weights": weights_vol},
               secrets=[modal.Secret.from_name("pwa")])
@@ -123,7 +130,7 @@ def _git(*args: str, cwd: Path = ROOT) -> str:
 @app.local_entrypoint()
 def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str = "dataset",
          num_shards: int = 1, resume: bool = False, notes: str = "", tasks: str = "", extra: str = "",
-         arms: str = ""):
+         arms: str = "", max_chunks: int = 0):
     """arms: '|'-separated runner arg strings (pwa gen-arms). Each shard's container runs every arm, so the
     model loads once per container; arm i lands in the Volume at /<EXP>-a<i>."""
     import re
@@ -142,6 +149,7 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         argv.append("--resume")
     if notes:
         argv.append(f"--notes={notes}")  # one token, so notes starting with a dash still parse
+    argv += cap_argv(max_chunks)
     if extra:
         argv += ["--", *extra.split()]
     prov = {
