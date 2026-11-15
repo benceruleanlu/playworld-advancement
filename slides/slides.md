@@ -14,22 +14,37 @@ drawings:
   enabled: false
 ---
 
-# No leaderboard score: the official judge's noise matched our effects; a yaw servo cut the end-heading error
+# One coordinating agent session ran a research project through GitHub pull requests
 
-<div class="dg hnums mt-6">
-  <div><span class="n">2.12</span>Genie 3, PlayWorld paper, 171 tasks</div>
-  <div><span class="n">1.64 ± 0.13</span>ours, 24 dev tasks, no flags, closed loop</div>
-  <div><span class="n">about 0.5</span>official judge noise on a six-task family mean (1 to 5 scale)</div>
+<div class="lede">
+
+Research agents proposed changes as pull requests and GitHub held the state. The subject: steering LingBot-World v2 at inference time on PlayWorld. No leaderboard score.
+
 </div>
 
-<div class="mt-8 text-sm">
+<div class="dg hnums mt-6">
+  <div><span class="n">157</span>pull requests, as of #176</div>
+  <div><span class="n">36</span>proposals</div>
+  <div><span class="n">101</span>runs logged</div>
+  <div><span class="n">26</span>hours</div>
+</div>
+
+<div class="mt-5 text-sm muted">
+
+Genie 3: 2.12 (PlayWorld paper, 171 tasks). Ours: 1.64 ± 0.13 (24 dev tasks, no flags).
+
+</div>
+
+<div class="mt-6 text-sm">
 
 github.com/benceruleanlu/playworld-advancement
 
 </div>
 
 <style>
-.hnums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; font-size: 15px; }
+.muted { opacity: 0.75; }
+.lede { font-size: 20px; line-height: 1.4; max-width: 760px; opacity: 0.8; margin-top: 4px; }
+.hnums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; font-size: 15px; }
 .hnums .n { display: block; font-size: 34px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: #2f6fd6; }
 html.dark .hnums .n { color: #7fa8ee; }
 </style>
@@ -37,22 +52,25 @@ html.dark .hnums .n { color: #7fa8ee; }
 <!--
 One sentence version: we built a harness and more than 30 opt-in inference-time flags for LingBot-World v2, but no 171-task run was launched, so there is no leaderboard score; on six-task comparisons the official judge (Gemini 3.1 Pro) disagrees with itself on identical videos by about as much as the effects we measured; the one result that needs no judge is a yaw servo that cut the end-heading error on turning GC tasks.
 
+Setup counts (as of #176, snapshot 21:40 UTC Nov 15, GitHub pull request API and results/experiments.csv): 157 pull requests (#1 to #176 minus issue numbers), 36 proposals (proposal/* branches), 101 runs logged (105 rows minus 4 fake_runner pipeline tests), 26 hours from the first pull request (19:22 UTC Nov 14) to #176 (21:32 UTC Nov 15). Rules are in the timeline slide's notes.
+
 Numbers: 2.12 is Genie 3 overall in the PlayWorld paper (AGENTS.md "Reference scores"). 1.64 +/- 0.13 is lb14-session-agent-dev-v1 (results/experiments.csv: overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing), every flag off. About 0.5 is the official judge's swing on a six-task family mean for the same videos (AGENTS.md "Status against the timeline", "What is measured and what is a lead").
 
 Site: benceruleanlu.github.io/playworld-advancement (results, Pairs, blind review page). Hackathon entry, November 2026.
 
-DEMO CUT (8 slides, about two minutes), by title:
+DEMO CUT (9 slides, about two minutes), by title:
 1. this title slide;
 2. "One coordinating agent session ran the proposal flow, and GitHub held the state";
-3. "A task is an image, a goal and actions, played out by LingBot-World v2 and scored 1 to 5";
-4. "In the PlayWorld paper Genie 3 scores 2.12; our only official closed-loop dev score is 1.64 on 24 tasks";
-5. "The official judge scored the same video 1.3 apart, and the seed alone changes the video";
-8. "A yaw servo cut the end-heading error on turning GC tasks; it has no official judge score";
-9. "A stack of six flags scored about a point higher on out-of-sight, under the proxy judge only";
-11. "No 171-task run was launched, so there is no leaderboard score".
+3. "157 pull requests, 36 proposals and 101 runs in 26 hours; every one is on GitHub";
+4. "A task is an image, a goal and actions, played out by LingBot-World v2 and scored 1 to 5";
+5. "In the PlayWorld paper Genie 3 scores 2.12; our only official closed-loop dev score is 1.64 on 24 tasks";
+6. "The official judge scored the same video 1.3 apart, and the seed alone changes the video";
+9. "A yaw servo cut the end-heading error on turning geometry consistency (GC) tasks; it has no official judge score";
+10. "A stack of six flags scored about a point higher on out-of-sight, under the proxy judge only";
+12. "No 171-task run was launched, so there is no leaderboard score".
 Skip in the demo: the flags and adoption rule slide, the attention cache slide, the per-flag results slide, credits.
 
-Every number in this deck comes from AGENTS.md, README.md, results/experiments.csv, results/media/ or results/reports/ on main; the pull request counts on the coordinator slide come from the pull request record as of PR #169. Each slide's notes name the source.
+Every number in this deck comes from AGENTS.md, README.md, results/experiments.csv, results/media/ or results/reports/ on main; the pull request counts on the title, coordinator and timeline slides come from the pull request record as of PR #176. Each slide's notes name the source.
 -->
 
 ---
@@ -119,7 +137,7 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 </svg>
 </div>
 <div class="dg nums">
-  <div><span class="n">150</span>pull requests in 24 hours, as of #169</div>
+  <div><span class="n">157</span>pull requests in 26 hours, as of #176</div>
   <div><span class="n">36</span>proposal pull requests</div>
   <div><span class="n">33</span>proposals on main, off by default, 0 adopted</div>
   <div><span class="n">101</span>runs logged, excluding 4 pipeline tests</div>
@@ -169,7 +187,7 @@ The loop on the slide, as the pull request record shows it:
 
 The first version was an hourly "autoresearch loop" in a fresh session, whose only memory was the ledger in issue #24. It could not dispatch GPU runs, so in its first hours its 4 ideas got 0 evaluations; AR-002 to AR-004 were later folded into the integration branch (#63), and the caption prompt and re-anchor ran in sp14-gc-v1. It was paused with a PAUSE line in #24 at 00:50 UTC Nov 15 "at the owner's direction", and the proposal PRs took over (research/autoresearch-loop.md).
 
-Counts. 150 pull requests: #1 to #169 minus 19 issue numbers, first opened 19:22 UTC Nov 14, last (#169) opened 19:21 UTC Nov 15; 110 merged, 27 closed unmerged, 13 open. 36 proposal PRs (proposal/* branches, #75 to #147): 15 merged directly, 18 closed and landed through batch PRs #90, #100, #104 and #112, and 3 closed without landing (#114, #117, #126), so 33 reached main as off-by-default flags. 105 rows in results/experiments.csv on main: 101 real runs and 4 pipeline tests (fake_runner); the slide counts the 101. 0 adopted: AGENTS.md "Status against the timeline" ("Nothing is adopted on official scores").
+Counts (recounted as of #176). 157 pull requests: #1 to #176 minus 19 issue numbers, first opened 19:22 UTC Nov 14, last (#176) opened 21:32 UTC Nov 15; 116 merged, 27 closed unmerged, 14 open. No proposal/* branch was opened after #147, so the proposal counts are unchanged. 36 proposal PRs (proposal/* branches, #75 to #147): 15 merged directly, 18 closed and landed through batch PRs #90, #100, #104 and #112, and 3 closed without landing (#114, #117, #126), so 33 reached main as off-by-default flags. 105 rows in results/experiments.csv on main: 101 real runs and 4 pipeline tests (fake_runner); the slide counts the 101. 0 adopted: AGENTS.md "Status against the timeline" ("Nothing is adopted on official scores").
 
 Who is who. 143 of the 150 PRs were opened under one shared bot login. Session links do not tell research agents apart: most proposal PR bodies carry none, and those that do (#103, #105, #108, #119, #123) carry the coordinator's. Main's commit messages carry 24 distinct session links, 35 across all branches, both lower bounds because squash merges drop branch trailers. #125 is the owner's servo PR; #131 carried its result to main.
 
@@ -217,6 +235,34 @@ The 30 rollouts before the fix are also the "Unverified launches" cost listed ab
 
 ---
 
+# 157 pull requests, 36 proposals and 101 runs in 26 hours; every one is on GitHub
+
+<div class="dg mt-1">
+<Timeline />
+</div>
+
+<div class="text-sm mt-1">
+
+One dot per item, stacked per half hour. Runs stopped when the GPU workspace was disabled.
+
+</div>
+
+<!--
+Snapshot: 21:40 UTC Nov 15, as of PR #176. Times are UTC.
+
+Sources and rules:
+- Pull requests: GitHub REST API, GET repos/benceruleanlu/playworld-advancement/pulls?state=all, all 157 (#1 to #176; the other numbers are issues). Each dot is one pull request at its created_at. 116 merged, 27 closed unmerged, 14 open.
+- Proposals: pull requests whose head branch starts with proposal/ (the same rule as the coordinator slide), 36, #75 to #147, created_at. 15 merged directly, 18 landed through batch PRs #90, #100, #104 and #112, 3 closed without landing (#114, #117, #126); 33 reached main. Proposals are also counted in the pull request track.
+- Runs: rows of results/experiments.csv on main, at the row's timestamp column (the time the row was written), excluding the 4 fake_runner pipeline tests: 101 rows, first 20:44 UTC Nov 14, last 09:29 UTC Nov 15. A run that was relaunched under the same name is one row.
+- Hours: 26, from the first pull request (19:22 UTC Nov 14) to #176 (21:32 UTC Nov 15).
+
+Markers: the official judge's prepaid credits ran out about 03:55 UTC Nov 15, were topped up, and ran out for good about 06:14; the GPU provider workspace was disabled at 09:01; the plan's code freeze was 20:00 (AGENTS.md "Plan", hour 20). No run row was written after 09:29; pull requests after that are docs, site and slides.
+
+The chart was generated by a one-off script into slides/components/Timeline.vue (inline SVG, colours as CSS variables, text in currentColor so it reads in light and dark).
+-->
+
+---
+
 # A task is an image, a goal and actions, played out by LingBot-World v2 and scored 1 to 5
 
 <div class="dg mt-3">
@@ -233,10 +279,10 @@ The 30 rollouts before the fix are also the "Unverified launches" cost listed ab
 </div>
 <div class="mt-4">
 <ClipRow :items="[
-  { exp: 'lb14-session-agent-dev-v1', task: 'GC033', head: 'Geometry consistency', sub: 'Watch: is the room the same when the camera comes back?' },
-  { exp: 'lb14-session-agent-dev-v1', task: 'IF002', head: 'Interaction fidelity', sub: 'Watch: does the subject do what each key asks?' },
-  { exp: 'lb14-session-agent-dev-v1', task: 'OE001', head: 'Insight evolution', sub: 'Watch: does the process on screen keep going?' },
-  { exp: 'lb14-session-agent-dev-v1', task: 'OE039', head: 'Out-of-sight evolution', sub: 'Watch: what changed while it was out of view?' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'GC033', head: 'Geometry consistency (GC)', sub: '48 tasks. Move away and back: is it still the same place?' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'IF002', head: 'Interaction fidelity (IF)', sub: '50 tasks. Press a key: does the subject do what was asked?' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'OE001', head: 'Insight evolution', sub: '30 tasks. Wait and watch: does a process keep going sensibly?' },
+  { exp: 'lb14-session-agent-dev-v1', task: 'OE039', head: 'Out-of-sight evolution', sub: '43 tasks. Look away and back: did the hidden part move on sensibly?' },
 ]" />
 </div>
 </div>
@@ -248,7 +294,7 @@ The 30 rollouts before the fix are also the "Unverified launches" cost listed ab
 </div>
 
 <!--
-The boxes are the path one task takes; the clips are one control task per family from lb14-session-agent-dev-v1 (closed loop, no flags; CC BY-NC-SA 4.0, generated with LingBot-World v2). Clip list: results/media/lb14-session-agent-dev-v1.json. Clips load from GitHub Releases (run-lb14-session-agent-dev-v1) and do not autoplay. The watch cues are the family questions (site/src/scripts/families.js), not descriptions of what these clips show.
+The boxes are the path one task takes; the clips are one control task per family from lb14-session-agent-dev-v1 (closed loop, no flags; CC BY-NC-SA 4.0, generated with LingBot-World v2). Clip list: results/media/lb14-session-agent-dev-v1.json. Clips load from GitHub Releases (run-lb14-session-agent-dev-v1) and do not autoplay. The captions are PlayWorld's four task families with their task counts (171 in all); the questions follow FAMINFO in site/src/scripts/families.js and describe the family, not what these clips show.
 
 Benchmark: PlayWorld (Ding et al.), 171 tasks: GC 48, IF 50, insight 30, out-of-sight 43. Splits: dev and dev2, 24 each with 6 per family; heldout 123, unscored. A task with a gate (for example, return to the start view) scores 1.0 if the gate fails. Insight and out-of-sight task IDs both start with OE; the family is in the task JSON.
 
@@ -449,7 +495,7 @@ Two flags change this window: keep-first 10 (sink 10) and attention window 22. B
 
 ---
 
-# A yaw servo cut the end-heading error on turning GC tasks; it has no official judge score
+# A yaw servo cut the end-heading error on turning geometry consistency (GC) tasks; it has no official judge score
 
 <div class="grid gap-6 mt-2" style="grid-template-columns: 1fr 400px;">
 <div class="dg">
@@ -495,7 +541,7 @@ The chart's runs replay fixed actions. Other servo runs: sv14-fx-v1 and sv14-fx-
     <div class="drow"><span class="dl">dev2, other tasks</span><span class="db" style="width: 81.7%"></span><span class="dv" style="left: 81.7%">+0.98</span></div>
   </div>
   <div class="daxis"><span style="left:0%">0</span><span style="left:25%">0.3</span><span style="left:50%">0.6</span><span style="left:75%">0.9</span><span style="left:100%">1.2</span></div>
-  <div class="small mt-4">Stack: turn calibration, caption prompt, insight director, IF slow translation, sink 10, window 22</div>
+  <div class="small mt-4">Stack: turn calibration, caption prompt, insight director, interaction fidelity (IF) slow translation, sink 10, window 22</div>
 </div>
 <div class="dg flex flex-col gap-1">
   <div class="small muted">Watch: what the hidden part looks like on return. Clips not scored by the official judge.</div>
@@ -556,7 +602,7 @@ Official judge and one seed unless marked. Each comparison covers 15 tasks or fe
 <!--
 Sources: AGENTS.md "Status against the timeline": the yaw servo and stack bullets under the proxy judge findings, the sks14-fx-v1, dec14-ins-v1, win14-fx-v1 and pose memory bullets, and "What the fixed-action results say so far"; results/experiments.csv for the sink key scale rows.
 
-Measured: the yaw servo's end heading, geometry with no official judge score (the slide "A yaw servo cut the end-heading error on turning GC tasks; it has no official judge score").
+Measured: the yaw servo's end heading, geometry with no official judge score (the slide "A yaw servo cut the end-heading error on turning geometry consistency (GC) tasks; it has no official judge score").
 
 Lead: the stack, about +1 on out-of-sight under the proxy judge (the stack slide).
 
