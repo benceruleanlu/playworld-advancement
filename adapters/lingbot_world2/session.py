@@ -247,7 +247,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None):
+                 cond_sched=None, ou_noise=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -264,6 +264,7 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        self.ou_noise, self.ou_chunks = ou_noise, 0
         self._free()
 
     def _free(self):
@@ -274,6 +275,8 @@ class LingBotSession:
         self._last_frame = None
         self._anchor = None
         self.detector = None
+        if self.ou_noise is not None:
+            self.ou_noise.reset()
 
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
@@ -497,6 +500,9 @@ class LingBotSession:
                     emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
                                      generator=self.gen, device=pipe.device)
+                if self.ou_noise is not None:
+                    self.ou_noise.apply(latent)
+                    self.ou_chunks += 1
                 kwargs = {
                     "context": [self.context[0]],
                     "seq_len": self.max_seq_len,
