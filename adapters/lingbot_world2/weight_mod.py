@@ -60,7 +60,13 @@ class WeightModulator:
                                            else (self.cam_3p, self.text_gain) if third_person else (self.cam_move, self.text_move))
         self._regime = "static" if is_stationary(rel) else "3p" if third_person else "move"
         self._base_cam = self.cam_scale
-        return self.cam_scale != 1.0 or self.text_scale != 1.0
+        late = self.cam_static_late if self._regime == "static" else self.cam_3p_late
+        rescheduled = bool(self.late_steps) and self._regime != "move" and late != 1.0
+        return self.cam_scale != 1.0 or self.text_scale != 1.0 or rescheduled
+
+    def late_schedule(self) -> str:
+        """'' with no late-step schedule, else e.g. '2:static=1.0,3p=0.85' (for lingbot_flags)."""
+        return f"{self.late_steps}:static={self.cam_static_late},3p={self.cam_3p_late}" if self.late_steps else ""
 
     def denoise_step(self, i: int, total: int) -> float:
         """Per-denoising-step cam scale: the chunk's base scale, except in the last

@@ -61,6 +61,7 @@ class FlagStats:
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False):
         self.weight_mod = bool(weight_mod)
+        self.weight_mod_late = ""  # set by the engine: WeightModulator.late_schedule()
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -203,6 +204,8 @@ class FlagStats:
             s.update(if_subject="on", if_subject_prompts=self.if_subject_prompts)
         if self.weight_mod:
             s.update(weight_mod="on", weight_mod_steps=self.weight_mod_steps, weight_mod_chunks=self.weight_mod_chunks)
+            if self.weight_mod_late:  # LINGBOT_CAM_LATE_STEPS > 0 only, so #87-only arms keep their line
+                s.update(weight_mod_late=self.weight_mod_late)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,

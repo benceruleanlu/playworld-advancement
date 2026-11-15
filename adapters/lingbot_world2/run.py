@@ -350,6 +350,8 @@ class LingBotWorld2Engine:
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         WM.detach_model(getattr(self.pipe, "model", None))  # an earlier arm's modulator in this process
         self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
+        if self.weight_mod is not None:
+            STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
