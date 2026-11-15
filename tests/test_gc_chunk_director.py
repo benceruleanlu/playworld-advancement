@@ -57,7 +57,7 @@ def test_generate_caption_scope_and_default(monkeypatch):
 def test_continuation_refresh_is_wired_and_counted(monkeypatch, tmp_path):
     engine = R.LingBotWorld2Engine.__new__(R.LingBotWorld2Engine)
     calls = []
-    engine.session = SimpleNamespace(started=True, chunk_id=2, reanchor_events=0,
+    engine.session = SimpleNamespace(started=True, chunk_id=2, reanchor_events=0, track=S.PoseTrack(),
         update_prompt=lambda p: calls.append(p) or True, step=lambda k: np.zeros((1, 2, 2, 3)))
     engine._last_chunk, engine.args = ("GC033", 1), SimpleNamespace(fps=16)
     monkeypatch.setattr(engine, "_calibrate", lambda *a: None)

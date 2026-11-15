@@ -1,0 +1,63 @@
+{
+ "exp": "pfix14-gc-c10-v1",
+ "release_tag": "run-pfix14-gc-c10-v1",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pfix14-gc-c10-v1",
+ "generated": "2026-11-15T02:28:07Z",
+ "git_sha": "2bb23747427984f2a79f9f991dcf0e599569578a",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "agent",
+ "scored": false,
+ "max_chunks": 10,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-turn-cal",
+  "--lingbot-player-hint",
+  "--agent-model",
+  "gpt-6-luna"
+ ],
+ "player_model": "gpt-6-luna",
+ "notes": "14B check of the player empty-reply fix: read the player counters (decisions, empty, retries, fallbacks)",
+ "labels": [
+  "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+  "not scored"
+ ],
+ "report": "pfix14-gc-c10-v1.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pfix14-gc-c10-v1/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pfix14-gc-c10-v1/GC031.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pfix14-gc-c10-v1/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pfix14-gc-c10-v1/GC036.jpg"
+  }
+ ]
+}
