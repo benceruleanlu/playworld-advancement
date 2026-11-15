@@ -405,42 +405,43 @@ import * as RunInfo from "./runinfo.js";
   };
   // group: now (model-side A/B) | parked (player-side, tried) | cand (merged or proposed, unscored)
   // arms: [label, exp] pairs read from results/experiments.csv; the first is the control. cells: per-task readout from results/reports/.
+  // pending: shown while not every arm has a score (the CSV says "failed" for an arm whose clips exist but whose scoring failed).
   var METHODS = [
     { group: "now", title: "Turn calibration", arms: [["off", "fx14-model-dev-v2-a1"], ["on", "fx14-model-dev-v2-a2"]],
-      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11.",
-      links: [["#23", PR + "23"]] },
+      cells: "of 15 tasks scored in both arms, 0 up a full point and 1 down; 8 and 9 of 24 clips missing and counted as 1.0",
+      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11. The same comparison on the 6 GC tasks alone (orc14-gc-v1) moved 2 tasks up a full point and none down; one of them, GC031, gained 1.95 there and 0.35 here.",
+      also: ["orc14-gc-v1-a1", "orc14-gc-v1-a2"], links: [["#23", PR + "23"]] },
     { group: "now", title: "Caption prompt", arms: [["off", "fx14-model-dev-v2-a2"], ["on", "fx14-model-dev-v2-a3"]], also: ["ins14-base-v2", "ins14-caption-v1"],
-      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. Earlier ins14 runs (closed-loop harness, but insight tasks are wait-only, so the player is never called): the control ins14-base-v2 was generated, and the caption arm ins14-caption-v1 was cancelled.",
-      links: [["#32", PR + "32"], ["#63", PR + "63"]] },
+      cells: "of 14 tasks scored in both arms, 2 up a full point and 2 down; no insight clip in either arm",
+      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. It was aimed at insight, and these runs have no insight clips: every insight task ran out of memory in the decode step, fixed since (#120). Earlier ins14 runs: the control ins14-base-v2 was generated and not scored, and the caption arm ins14-caption-v1 was cancelled.",
+      links: [["#32", PR + "32"], ["#63", PR + "63"], ["#120", PR + "120"]] },
     { group: "now", title: "Insight director, IF slow translation (re-anchor on, cannot fire with fixed actions)", arms: [["without", "fx14-model-dev-v2-a3"], ["with", "fx14-model-dev-v2-a4"]],
-      body: "Adds an insight prompt cue and half-speed camera translation on IF tasks, on top of the caption prompt. Re-anchoring is switched on in the second arm, but fixed action scripts replay each task as one call, so it never fires there; its test is the scripted-player GC A/B below.",
+      cells: "of 11 tasks scored in both arms, 1 up a full point and 0 down; no insight clip in either arm, 10 and 13 of 24 clips missing",
+      body: "Adds an insight prompt cue and half-speed camera translation on IF tasks, on top of the caption prompt. The one task that moved a full point is a GC task (GC031), which none of the added flags should change with fixed actions, so that move is unexplained. Re-anchoring is switched on in the second arm, but fixed action scripts replay each task as one call, so it never fires there; its test is the scripted-player GC A/B below.",
       links: [["#46", PR + "46"], ["#90", PR + "90"]] },
     { group: "now", title: "Conditioning strength per denoising step", arms: [["control", "cs14-fx-v1-a1"], ["schedule", "cs14-fx-v1-a2"], ["+ text 1.0", "cs14-fx-v1-a3"], ["early 4", "cs14-fx-v1-a4"]],
-      body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on.",
+      cells: "3 of 7 tasks scored, all 4 insight clips missing and counted as 1.0; the GC task lost a full point in 2 of 3 schedule arms, the 2 IF tasks gained less than a point",
+      body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on. On insight tasks (dec14-ins-v1, OE001 and OE018, after the decode fix) the schedule lowered both: 3.00 to 1.50 overall. Dropped.",
       links: [["#101", PR + "101"]] },
-    { group: "now", title: "Camera-conditioning weight modulation", arms: [["control", "wm14-fx-v1-a1"], ["weight-mod", "wm14-fx-v1-a2"]], also: ["wm14-ctl-c10-v1", "wm14-arm-c10-v1"],
-      body: "Scales how strongly the model follows the camera command, per chunk: off on still chunks, slightly lower on moving third-person chunks. Both arms have the caption prompt and turn calibration on. The earlier c10 runs were capped smoke checks from the PR branch.",
-      links: [["#87", PR + "87"], ["#104", PR + "104"]] },
-    { group: "now", title: "IF identity cue", arms: [["control", "wm14-fx-v1-a1"], ["cue", "wm14-fx-v1-a3"]],
-      body: "Appends a fixed sentence about keeping each subject's identity to the model prompt on third-person IF tasks.",
+    { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
+      pending: "control and sink 12 scored (2.35, 2.17); the two local 36 arms failed",
+      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. Control and sink 12 are scored and single tasks move both ways by up to 1.9 points (OE039 up, OE048 down); a repeat measurement found 12 sink latents changed nothing, so these are spread, not an effect. The local 36 arms produced no clips.",
       links: [["#104", PR + "104"]] },
-    { group: "now", title: "Attention window: larger sink", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"]], also: ["mem14-fx-v1-a3", "mem14-fx-v1-a4"],
-      cells: "OE039 up 1.5, OE048 down 1.9",
-      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Both arms have the caption prompt and turn calibration on. The two arms with a local window of 36 failed and have no score.",
-      links: [["#104", PR + "104"]] },
-    { group: "now", title: "Pose memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory, wider window", "pm14-fx-v1-a3"], ["wider window only", "pm14-fx-v2-a4"]],
-      also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3"],
-      body: "Stores each generated chunk by its commanded camera pose and re-inserts the most recent matching view into the attention sink when the camera comes back to it. The wider window (sink 10, local 22) is the control for the arm that recalls two chunks. Three more variants (opening kept to 1 latent, re-timed memory, yaw gain 0.85) ran against the same control.",
-      links: [["findings", "#story-memory"]] },
     { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
-      body: "Scales down the attention keys of the pinned opening frames on later chunks. Out-of-sight tasks only; every arm scored below control.",
-      links: [["findings", "#story-sink"]] },
+      cells: "every scaled arm is lower than the control; dropped",
+      body: "Turns down how strongly later chunks attend to the pinned first frames, to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed actions. Weakening the sink lowered out-of-sight from 2.10 to between 1.25 and 1.65, which fits returns to the start view being served by the sink.",
+      links: [["#112", PR + "112"]] },
     { group: "now", title: "Insight prompt: goal, caption, caption with cue", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption + director", "ins14-fx-v2-a3"]],
       body: "All six insight dev tasks. Insight tasks are wait-only, so the fixed-action rollout equals the closed-loop one.",
       links: [["#32", PR + "32"], ["#90", PR + "90"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
-      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. Not a closed-loop score.",
+      cells: "chunk director lowered 3 of 6 tasks by a full point and raised 1; re-anchor raised none by a full point except GC033; one seed",
+      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on a repeat measurement; re-anchor is a weak lead. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
+    { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
+      cells: "6 tasks, one seed; the first run changed no frame, so differences are spread",
+      body: "Re-inserts past views into the attention sink when the camera returns near them. In the first run the memory never inserted anything, so its arms are the control plus judge spread; a fixed version is in progress (pm14-fx-v2 tests variants). Not a result.",
+      also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4"], links: [["#123", PR + "123"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
       links: [["#75", PR + "75"]] },
@@ -450,15 +451,22 @@ import * as RunInfo from "./runinfo.js";
     { group: "parked", title: "Player hint", arms: [["no flags", "smk14-arms-gc-v2-a1"], ["turn cal + hint", "smk14-arms-gc-v2-a2"]],
       body: "Tells the player how far one action turns the camera and where the commanded camera is. Turn calibration is also on in the second arm. Only capped smoke runs exist, which never count as scores.",
       links: [["#59", PR + "59"]] },
+    { group: "cand", title: "Camera-conditioning weight modulation, IF identity cue",
+      body: "Weight modulation scales how strongly the model follows the camera command, per chunk; the identity cue adds a sentence about keeping each subject's identity on third-person IF tasks. Both fixed-action runs (wm14-fx-v1, wm14-fx-a100-v1) were cancelled before finishing; only a capped smoke check of weight modulation exists.",
+      also: ["wm14-arm-c10-v1"], links: [["#87", PR + "87"], ["#104", PR + "104"]] },
     { group: "cand", title: "Proposal batch 2: IF horizon, IF camera hint, history endpoints, IF repeat check",
       body: "Merged behind opt-in flags. Its insight director and IF slow translation are in the model-side runs above.", links: [["#90", PR + "90"]] },
     { group: "cand", title: "Proposal batch 3: IF subject director",
       body: "Merged behind opt-in flags. The batch's GC chunk director and GC ease turns are in the scripted-player GC A/B above.", links: [["#100", PR + "100"]] },
     { group: "cand", title: "Proposal batch 4: weight-modulation knobs, measured turn",
-      body: "Merged behind opt-in flags and not run yet. Weight modulation, the IF identity cue and the attention window are under test above.", links: [["#104", PR + "104"]] }
+      body: "Merged behind opt-in flags and not run yet. The attention window is under test above.", links: [["#104", PR + "104"]] },
+    { group: "cand", title: "Camera rates: turn step, yaw gain",
+      body: "Turn step sets how many degrees one closed-loop turn covers, so an out-and-back fits inside the model's attention window. Yaw gain scales the yaw sent to the model. Merged behind opt-in flags and not run yet.", links: [["#105", PR + "105"], ["#119", PR + "119"]] },
+    { group: "cand", title: "Sampling: noise mean coupling, noisy KV writes, early-step self-guidance",
+      body: "Three changes to how each chunk is sampled or written to the model's memory. Merged behind opt-in flags and not run yet.", links: [["#103", PR + "103"], ["#112", PR + "112"]] }
   ];
   var GROUPS = [
-    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes."],
+    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes, one run per arm. The overall figures count missing clips as 1.0, so read the per-task counts."],
     ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. Not adopted."],
     ["cand", "Candidates, not yet scored", "Off by default. Not results."]
   ];
@@ -477,6 +485,7 @@ import * as RunInfo from "./runinfo.js";
       return { text: s + (m.cells ? "; " + m.cells : ""), none: false };
     }
     if (rows.some(function (r) { return r && isCapped(r); })) return { text: "capped smoke only, no decision", none: true };
+    if (m.pending) return { text: m.pending, none: true };
     if (rows.some(function (r) { return r && r.status === "running" && !isStale(r); })) return { text: "running", none: true, run: true };
     if (rows.some(function (r) { return r && r.status === "generated"; })) return { text: "generated, not scored", none: true };
     if (rows.some(function (r) { return r && isEnded(r); })) return { text: "no result yet", none: true };
@@ -520,7 +529,7 @@ import * as RunInfo from "./runinfo.js";
       scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch the baseline player on GC036",
       links: [["baseline census", BLOB + "research/baseline-census.md"]] },
     { id: "noise", kind: "repeat", kicker: "Noise floor", title: "The same settings, scored three times, do not give the same score",
-      body: "Three control arms ran the same flags and the same fixed action scripts, at different commits. Their per-task means over four judge passes still differ. So a task counts as moved only at a full point, and a change is adopted only if the gain repeats on a second seed.",
+      body: "Three control arms ran the same flags and the same fixed action scripts. Generation is deterministic, so the judge saw the same video each time, and the per-task means over four passes still differ. So a task counts as moved only at a full point, and a change is adopted only if the gain repeats on a second seed.",
       say: "Three identical controls disagree. That sets the bar: a full point, twice.",
       runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
       watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" }, watchLabel: "Watch two identical controls on OE047" },
@@ -529,13 +538,13 @@ import * as RunInfo from "./runinfo.js";
       say: "Calibrated turns: two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", kicker: "Memory", title: "Pose memory did not beat its control. A wider attention window did, on one task",
-      body: "The model attends to about two seconds of recent frames plus its opening frames. Pose memory re-inserts an earlier view when the camera comes back to it. Alone it moved no task up. Widening the window moved OE039 up by 1.9, with or without the memory, and a third run with a larger sink moved it by 1.5. The larger sink also dropped OE048 in two of those three runs.",
-      say: "Our memory mechanism did not help. Simply widening the window did, on one task.",
-      ctl: "pm14-fx-v1-a1", arms: [["memory", "pm14-fx-v1-a2", "pose memory"], ["window", "pm14-fx-v2-a4", "wider window (sink 10, local 22)"], ["both", "pm14-fx-v1-a3", "pose memory in the wider window"]],
-      watch: { task: "OE039", b: "pm14-fx-v1-a1", c: "pm14-fx-v2-a4" } },
+    { id: "memory", kind: "repeat", kicker: "A test that did not run", title: "Our pose memory never fired in its first run, and its score still moved",
+      body: "Pose memory re-inserts an earlier view into the model's attention when the camera comes back to it. In the first run it never inserted anything and no frame changed, so the memory arm is the control scored again. One task still moved 1.3 points and failed a gate. There is no pose-memory result yet; a fixed version is being rerun.",
+      say: "Our own memory mechanism never fired. The flag counters caught it; the scores alone would have looked like an effect.",
+      runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Mean of the official judge's passes per task. The memory arm changed no frame, so both columns score the same video.",
+      watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
     { id: "sink", kicker: "Negative result", title: "Damping attention to the opening frames made out-of-sight worse",
-      body: "Hypothesis: the pinned opening frames pull the scene back to its first state when the camera returns, which the rubric scores lowest. Scaling their attention keys down did not help in any of three arms.",
+      body: "Hypothesis: the pinned opening frames pull the scene back to its first state when the camera returns, which the rubric scores lowest. Turning their attention down lowered out-of-sight in all three arms. That fits the opposite reading: a return to the start view is served by those frames. Dropped.",
       say: "A hypothesis that failed: every arm scored lower than control.",
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
       watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
@@ -654,7 +663,7 @@ import * as RunInfo from "./runinfo.js";
     var sum = el("ul", { class: "tally" }, [el("li", null, [document.createTextNode("Largest spread "), el("b", { text: fmt(worst.sp) }),
       document.createTextNode(" on " + worst.k + "; " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: "Mean of the official judge's passes per task, for runs with identical settings." };
+      cap: s.cap || "Mean of the official judge's passes per task, for runs with identical settings." };
   }
   function storyState(s) {
     if (s.kind === "note") return "ok";
