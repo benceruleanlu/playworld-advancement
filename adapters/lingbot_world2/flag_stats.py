@@ -41,11 +41,12 @@ class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
                  return_stop: bool = False, gc_completion: bool = False,
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
-                 insight_director: bool = False):
+                 insight_director: bool = False, if_repeat: bool = False):
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
         self.insight_director = bool(insight_director)
+        self.if_repeat = bool(if_repeat)
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
@@ -53,7 +54,8 @@ class FlagStats:
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
                        "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
-                       "player_frames_removed": 0, "insight_director_prompts": 0}
+                       "player_frames_removed": 0, "insight_director_prompts": 0,
+                       "if_repeat_checks": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -61,6 +63,7 @@ class FlagStats:
         self.if_camera_hints = 0
         self.player_frames_removed = 0
         self.insight_director_prompts = 0
+        self.if_repeat_checks = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -89,6 +92,8 @@ class FlagStats:
         self.player_frames_removed += n
     def director_prompt(self, used):
         self.insight_director_prompts += int(used)
+    def if_repeat_hint(self):
+        self.if_repeat_checks += 1
 
     def hint(self):
         self.player_hints += 1
@@ -138,6 +143,8 @@ class FlagStats:
             s.update(history_endpoints="on", player_frames_removed=self.player_frames_removed)
         if self.insight_director:
             s.update(insight_director="on", insight_director_prompts=self.insight_director_prompts)
+        if self.if_repeat:
+            s.update(if_repeat="on", if_repeat_checks=self.if_repeat_checks)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -156,6 +163,7 @@ class FlagStats:
                 + (f" if_camera_hints={t['if_camera_hints']}" if self.if_camera else "")
                 + (f" player_frames_removed={t['player_frames_removed']}" if self.history_endpoints else "")
                 + (f" insight_director_prompts={t['insight_director_prompts']}" if self.insight_director else "")
+                + (f" if_repeat_checks={t['if_repeat_checks']}" if self.if_repeat else "")
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
                 + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
@@ -167,6 +175,7 @@ class FlagStats:
         t["if_camera_hints"] += self.if_camera_hints
         t["player_frames_removed"] += self.player_frames_removed
         t["insight_director_prompts"] += self.insight_director_prompts
+        t["if_repeat_checks"] += self.if_repeat_checks
         t["tasks"] += 1
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
