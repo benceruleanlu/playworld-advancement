@@ -965,7 +965,8 @@ import * as RunInfo from "./runinfo.js";
     fig.appendChild(cap);
   }
 
-  /* ---------- timeline: every logged run by launch time ---------- */
+  /* ---------- timeline: every logged run by its CSV timestamp. That is the last write of the row: report time for a scored run,
+     end time for a generated, failed or cancelled one, launch time only while it is still running. ---------- */
   function renderTimeline() {
     var card = $("tl"), host = $("tl-chart"); if (!card || !host) return;
     var rows = realRows().filter(function (r) { return r.t !== null; }).sort(function (a, b) { return a.t - b.t; });
@@ -981,7 +982,7 @@ import * as RunInfo from "./runinfo.js";
     });
     var top = 8, base = top + maxStack * step, H = base + 26;
     var x = function (c) { return m.l + R + c * ((W - m.l - m.r - 2 * R) / (cols - 1)); };
-    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": rows.length + " runs by launch time" });
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": rows.length + " runs by the time their row was last written" });
     svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: base + 4, y2: base + 4, stroke: "var(--axis)" }));
     var hour = 3600000, first = Math.ceil(t0 / hour) * hour, every = span / hour > 12 ? 3 : span / hour > 6 ? 2 : 1;
     for (var h = first; h <= t1; h += hour * every) {
@@ -1002,7 +1003,7 @@ import * as RunInfo from "./runinfo.js";
     host.appendChild(svg);
     var hrs = span / hour, cap = $("tl-cap"); clear(cap);
     function key(col, fill, text) { return el("span", { class: "tl-key" }, [el("i", { style: "border-color:" + col + ";background:" + (fill ? col : "transparent") }), document.createTextNode(text)]); }
-    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). Each dot opens its Actions job. "));
+    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). A scored run sits at its report time, a failed one at its end, a running one at its launch. Each dot opens its Actions job. "));
     cap.appendChild(key("var(--s1)", true, n.scored + " scored"));
     cap.appendChild(key("var(--ref)", false, n.generated + " not scored"));
     if (n.running) cap.appendChild(key("var(--warn)", false, n.running + " running"));
