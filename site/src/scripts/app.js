@@ -560,7 +560,7 @@ import * as RunInfo from "./runinfo.js";
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } }
     ,{ id: "window", kicker: "Second seed", title: "Does a larger attention cache help the camera come back?", pending: true,
       body: "On the first seed, three arms with a larger cache scored OE039 between 3.0 and 3.1, against 1.25 to 2.0 for three controls, and two of the three lost more than a point on OE048. This run repeats the control and the larger cache on a second seed, which is what the adoption rule asks for.",
-      say: "The one lead that survived is being repeated on a second seed right now.",
+      say: "One lead is being repeated on a second seed right now.",
       ctl: "win14-fx-v1-a3", arms: [["larger cache", "win14-fx-v1-a4", "sink 10, cache 22, seed 1"]],
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
     { id: "open", kind: "note", kicker: "Still open", title: "What this page cannot show yet",
