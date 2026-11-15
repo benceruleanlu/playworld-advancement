@@ -14,7 +14,13 @@ drawings:
   enabled: false
 ---
 
-# No leaderboard score: the official judge's noise matched our effects; a yaw servo cut the end-heading error
+# Steering a world model at inference time, scored on PlayWorld
+
+<div class="lede">
+
+No leaderboard score. The official judge's noise is as large as the effects we measured. One fix, a yaw servo, is measured without a judge.
+
+</div>
 
 <div class="dg hnums mt-6">
   <div><span class="n">2.12</span>Genie 3, PlayWorld paper, 171 tasks</div>
@@ -29,6 +35,7 @@ github.com/benceruleanlu/playworld-advancement
 </div>
 
 <style>
+.lede { font-size: 20px; line-height: 1.4; max-width: 760px; opacity: 0.8; margin-top: 4px; }
 .hnums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; font-size: 15px; }
 .hnums .n { display: block; font-size: 34px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: #2f6fd6; }
 html.dark .hnums .n { color: #7fa8ee; }
