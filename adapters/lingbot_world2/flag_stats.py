@@ -44,6 +44,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       chunk: 0 or 1 per task in dataset mode), weight_mod_chunks (latent chunks
                                       whose camera or text scale was not 1.0; stateless: 1 per modulated rollout)
 
+  --lingbot-if-identity-cue           if_identity=on, if_identity_prompts (prompts encoded with the cue: one per
+                                      session reset, every call when stateless; third-person IF only)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
 
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
@@ -61,7 +63,9 @@ class FlagStats:
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
-                 if_subject: bool = False, weight_mod: bool = False, window: str = ""):
+                 if_subject: bool = False, weight_mod: bool = False, window: str = "",
+                 if_identity: bool = False):
+        self.if_identity = bool(if_identity)
         self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
         self.weight_mod = bool(weight_mod)
         self.weight_mod_late = ""  # set by the engine: WeightModulator.late_schedule()
@@ -84,7 +88,8 @@ class FlagStats:
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
-                       "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0}
+                       "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
+                       "if_identity_prompts": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -98,6 +103,7 @@ class FlagStats:
         self.gc_eased_turns = 0
         self.if_subject_prompts = 0
         self.weight_mod_steps = self.weight_mod_chunks = 0
+        self.if_identity_prompts = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -211,6 +217,8 @@ class FlagStats:
                 s.update(weight_mod_late=self.weight_mod_late)
         if self.window:
             s.update(window=self.window)
+        if self.if_identity:
+            s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -240,7 +248,8 @@ class FlagStats:
                 + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
                 + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
                    if self.weight_mod else "")
-                + (f" window={self.window}" if self.window else ""))
+                + (f" window={self.window}" if self.window else "")
+                + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -257,6 +266,7 @@ class FlagStats:
         t["if_subject_prompts"] += self.if_subject_prompts
         t["weight_mod_steps"] += self.weight_mod_steps
         t["weight_mod_chunks"] += self.weight_mod_chunks
+        t["if_identity_prompts"] += self.if_identity_prompts
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
