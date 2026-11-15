@@ -456,3 +456,60 @@ def test_split_at_gain_one_is_the_single_step(monkeypatch, kv_noise):
     assert n0 == n1 == 6 and g0 == g1 and np.array_equal(d0, d1)
     assert len(c0) == len(c1) and all(a[0] == b[0] and np.array_equal(a[1], b[1]) for a, b in zip(c0, c1))
     assert len(r0) == len(r1) == 6 and all(np.array_equal(a, b) for a, b in zip(r0, r1))
+
+
+def _numbered_decode(sess):
+    """Causal-VAE-shaped fake decode: 4L-3 frames on the first call, 4L after, each frame numbered globally."""
+    from tests.test_lingbot_kv_noise import _T
+    count = [0]
+
+    def decode(lat):
+        n = 4 * lat.shape[1] - (3 if count[0] == 0 else 0)
+        ids = np.arange(count[0], count[0] + n, dtype=np.float64)
+        count[0] += n
+        return _T(np.broadcast_to(ids[None, :, None, None], (3, n, 2, 2)).copy())
+    sess._decode = decode
+
+
+def test_split_returns_the_single_step_frames(monkeypatch):
+    """Returned frames (stitching, first-step count, shapes) equal the unsplit step: one dataset-mode <task>_full
+    step, and a closed-loop 28/32/32 sequence with a combo call."""
+    from tests.test_lingbot_kv_noise import _session, _torch
+    _torch(monkeypatch)
+    for calls in ([["j"] * 44 + ["l"] * 48], [["l"] * 28, ["w+l"] * 32, ["j"] * 32]):
+        outs = []
+        for split in (False, True):
+            sess, _c, _d = _session()
+            _numbered_decode(sess)
+            servo = YS.YawServo(k=0.0)
+            got = [YS.step(sess, servo, keys, RATE, lambda f: (0.0, 0.0, 1.0), rigid=None) if split else sess.step(keys)
+                   for keys in calls]
+            outs.append(got)
+        for a, b in zip(*outs):
+            assert a.shape == b.shape and np.array_equal(a, b)
+        assert [len(f) for f in outs[0]] == ([93] if len(calls) == 1 else [29, 33, 33])
+
+
+def test_reading_against_the_command_does_not_teach():
+    """A trusted reading of the wrong sign (lag or noise on a turn shrunk to gain 0.5) is booked in the heading
+    but rejected by the estimate gate instead of being learned as a positive ratio."""
+    s = YS.YawServo()
+    s.observe(["l"] * 16, 1.406, (1.0, 0.5), [(-11.0, True)])
+    assert s.est["l"] == 1.0 and s.heading == -11.0
+    s.observe(["j"] * 16, 1.406, (0.5, 1.0), [(11.0, True)])
+    assert s.est["j"] == 1.0 and s.heading == 0.0
+
+
+def test_corrected_counts_gains_away_from_one():
+    s = YS.YawServo()
+    s.observe(["l"] * 16, RATE, (1.0, 1.005), [(18.0, True)])
+    s.observe(["l"] * 16, RATE, (1.0, 1.3), [(18.0, True)])
+    assert s.chunks == 2 and s.corrected == 1
+
+
+def test_non_streaming_decode_refused():
+    from adapters.lingbot_world2 import run as R
+    with pytest.raises(SystemExit, match="LINGBOT_STREAM_DECODE=0"):
+        R.configure(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"], environ={"LINGBOT_STREAM_DECODE": "0"})
+    flags, _ = R.configure(["run.py", "--lingbot-turn-cal"], environ={"LINGBOT_STREAM_DECODE": "0"})
+    assert flags["yaw_servo"] is False

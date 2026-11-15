@@ -205,7 +205,7 @@ class YawServo:
     def observe(self, keys: list[str], rate_deg: float, gain: tuple[float, float], measured: list[tuple[float, bool]]) -> None:
         """After the chunk: `measured` gives (yaw degrees right positive, trusted) for each run of runs(keys)."""
         self.chunks += 1
-        self.corrected += gain != (1.0, 1.0)
+        self.corrected += any(abs(g - 1.0) > 0.01 for g in gain)   # chunks sent at a gain outside 1 +- 0.01
         for (key, a, b), (yaw, trusted) in zip(runs(keys), measured):
             n, y = b - a, yaw_part(key)
             asked = SIGN[y] * n * rate_deg if y else 0.0
@@ -227,8 +227,10 @@ class YawServo:
                 continue
             if y and n >= MIN_FRAMES:
                 commanded = n * rate_deg * gain[0 if y == "j" else 1]
-                ratio = abs(yaw) / commanded if commanded > 0 else 0.0
-                if 0.2 <= ratio <= 5.0:          # ignore a wild chunk rather than chase it
+                # signed: a reading against the command (lag or noise on a small shrunk turn) gives a negative
+                # ratio, which the gate below rejects; the heading above still takes the signed yaw
+                ratio = SIGN[y] * yaw / commanded if commanded > 0 else 0.0
+                if 0.2 <= ratio <= 5.0:          # ignore a wild or reversed chunk rather than chase it
                     self.est[y] = (1 - self.beta) * self.est[y] + self.beta * ratio
 
     def describe(self) -> str:

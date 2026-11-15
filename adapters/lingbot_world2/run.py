@@ -82,8 +82,8 @@ chunk's gain within 0.5 to 2.0. Knobs: --lingbot-yaw-servo-k (LINGBOT_YAW_SERVO_
 and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
 them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). GC call names
 only unless LINGBOT_YAW_SERVO_TASKS (a regex) says otherwise. Refused with
---lingbot-yaw-gain (both set the model-track gain), --lingbot-gc-ease-turns and --lingbot-reanchor (per-chunk
-steps change which latent a return spanning chunks anchors). Weight mod, cond schedule, STG, KV noise, sink
+--lingbot-yaw-gain (both set the model-track gain), --lingbot-gc-ease-turns, --lingbot-reanchor (per-chunk
+steps change which latent a return spanning chunks anchors) and LINGBOT_STREAM_DECODE=0 (quadratic re-decode). Weight mod, cond schedule, STG, KV noise, sink
 scale, noise-mean coupling and pose memory act per latent chunk inside session.step, so per-chunk steps leave
 them unchanged (weight_mod_steps still counts generate calls). See yaw_servo.py; the study is in PR #125.
 
@@ -440,6 +440,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
             raise SystemExit("--lingbot-yaw-servo and --lingbot-yaw-gain both set the model-track yaw gain; use one")
         if flags["gc_ease_turns"]:
             raise SystemExit("--lingbot-yaw-servo steps chunk by chunk; it cannot run with --lingbot-gc-ease-turns")
+        if environ.get("LINGBOT_STREAM_DECODE", "1") == "0":
+            # the non-streaming decode re-decodes every latent so far on each step(); per-chunk steps make that
+            # quadratic in the rollout length (a 280-latent dataset step: ~35x the decode work)
+            raise SystemExit("--lingbot-yaw-servo steps per chunk; with LINGBOT_STREAM_DECODE=0 every chunk "
+                             "re-decodes the whole rollout")
         if flags["reanchor"]:
             # ReturnDetector closes a return visit at the end of each session.step(); stepping per chunk would
             # anchor a different latent when a visit spans chunks, so the arm would not be re-anchor plus servo
