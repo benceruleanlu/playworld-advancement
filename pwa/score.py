@@ -19,39 +19,98 @@ OFFICIAL_MODEL = "gemini-3.1-pro-preview"
 THINKING_LEVELS = ("minimal", "low", "medium", "high")
 
 
+PROVIDERS = ("gemini", "openai")
+
+
 @dataclass(frozen=True)
 class Judge:
-    """A screening judge: same upstream verifier, another Gemini model (and optionally a thinking level).
+    """A screening judge: the same upstream verifier with another model (and optionally a thinking level).
+    provider "gemini" calls Gemini as upstream does; "openai" runs upstream through pwa.judge_shim with its
+    Gemini client swapped for an OpenAI-compatible chat client (same prompts, contact sheets, parsing).
     Its scores live in runs/EXP/eval-<slug>/ and never reach eval/, report.json or results/experiments.csv."""
     model: str
     thinking: str | None = None
+    provider: str = "gemini"
 
     def __post_init__(self):
         if not self.model.strip():
             raise PwaError("--judge-model must not be empty")
         if self.thinking is not None and self.thinking not in THINKING_LEVELS:
             raise PwaError(f"--judge-thinking must be one of {', '.join(THINKING_LEVELS)}")
+        if self.provider not in PROVIDERS:
+            raise PwaError(f"judge provider must be one of {', '.join(PROVIDERS)}")
+
+    @classmethod
+    def parse(cls, spec: str, thinking: str | None = None) -> "Judge":
+        """`[openai:|gemini:]MODEL[:THINKING]`. No prefix = Gemini (unchanged behaviour); `openai:` = the
+        OpenAI-compatible chat API. A trailing `:minimal|low|medium|high` is the thinking level (Gemini
+        thinking_level, OpenAI reasoning_effort); --judge-thinking may give it instead, not both."""
+        s = spec.strip()
+        head, sep, tail = s.rpartition(":")
+        if sep and tail in THINKING_LEVELS:
+            if thinking and thinking != tail:
+                raise PwaError(f"judge {spec!r}: thinking given twice ({tail} and --judge-thinking {thinking})")
+            s, thinking = head, tail
+        provider = "gemini"
+        for p in PROVIDERS:
+            if s.startswith(p + ":"):
+                provider, s = p, s[len(p) + 1:]
+                break
+        return cls(s, thinking, provider)
+
+    @property
+    def spec(self) -> str:
+        return ("openai:" if self.provider == "openai" else "") + self.model + (f":{self.thinking}" if self.thinking else "")
+
+    @property
+    def upstream_model(self) -> str:
+        """--model passed to upstream; recorded as `gemini_model` in each result. The shim strips `openai:`."""
+        return f"openai:{self.model}" if self.provider == "openai" else self.model
+
+    @property
+    def needs_shim(self) -> bool:
+        return self.provider == "openai" or bool(self.thinking)
 
     @property
     def slug(self) -> str:
-        s = re.sub(r"[^A-Za-z0-9._-]", "-", self.model)
+        s = re.sub(r"[^A-Za-z0-9._-]", "-", self.upstream_model)
         return f"{s}-think-{self.thinking}" if self.thinking else s
 
     @property
+    def name(self) -> str:
+        return self.upstream_model + (f", thinking {self.thinking}" if self.thinking else "")
+
+    @property
     def label(self) -> str:
-        name = self.model + (f", thinking {self.thinking}" if self.thinking else "")
-        return f"screening judge: {name}, not comparable to the leaderboard"
+        return f"screening judge: {self.name}, not comparable to the leaderboard"
+
+
+def judges_of(a) -> list[Judge]:
+    """Screening judges from parsed args (--judge-model, repeatable; --judge-thinking for a single judge).
+    Empty list = the official judge."""
+    models = getattr(a, "judge_model", None) or []
+    if isinstance(models, str):
+        models = [models]
+    thinking = getattr(a, "judge_thinking", None)
+    if not models:
+        if thinking:
+            raise PwaError("--judge-thinking needs --judge-model (the official judge runs at upstream settings)")
+        return []
+    if thinking and len(models) > 1:
+        raise PwaError("--judge-thinking applies to one judge; in a panel write MODEL:THINKING per --judge-model")
+    judges = [Judge.parse(m, thinking) for m in models]
+    slugs = [j.slug for j in judges]
+    if len(set(slugs)) != len(slugs):
+        raise PwaError(f"duplicate screening judge in {' '.join(models)}")
+    return judges
 
 
 def judge_of(a) -> Judge | None:
-    """Judge from parsed args (--judge-model / --judge-thinking), or None for the official judge."""
-    model = getattr(a, "judge_model", None)
-    thinking = getattr(a, "judge_thinking", None)
-    if not model:
-        if thinking:
-            raise PwaError("--judge-thinking needs --judge-model (the official judge runs at upstream settings)")
-        return None
-    return Judge(model, thinking)
+    """The single judge from parsed args, or None for the official judge. Commands that read one judge."""
+    judges = judges_of(a)
+    if len(judges) > 1:
+        raise PwaError(f"`pwa {getattr(a, 'cmd', '')}` takes one --judge-model (panels: report, cells, judges, score)")
+    return judges[0] if judges else None
 
 
 def eval_dir(exp: str, dry: bool = False, judge: Judge | None = None) -> Path:
@@ -68,8 +127,8 @@ def passes_present(exp: str, judge: Judge | None = None) -> list[int]:
 def verifier_cmd(mode: str, info: dict, video: Path, out: Path, dry: bool,
                  sampling_dir: Path | None = None, context: Path | None = None,
                  judge: Judge | None = None) -> list[str]:
-    module = "pwa.judge_shim" if judge and judge.thinking else "metrics.vqa.score"
-    model = judge.model if judge else os.environ.get("GEMINI_MODEL", OFFICIAL_MODEL)
+    module = "pwa.judge_shim" if judge and judge.needs_shim else "metrics.vqa.score"
+    model = judge.upstream_model if judge else os.environ.get("GEMINI_MODEL", OFFICIAL_MODEL)
     cmd = [sys.executable, "-m", module, "--mode", mode, "--dataset", info["dataset"],
            "--task-id", info["task_id"], "--video", str(video), "--world-model", WORLD_MODEL,
            "--model", model, "--output", str(out)]
@@ -82,12 +141,21 @@ def verifier_cmd(mode: str, info: dict, video: Path, out: Path, dry: bool,
     return cmd + (["--dry-run"] if dry else [])
 
 
+SHIM_VARS = ("PWA_JUDGE_THINKING", "PWA_JUDGE_PROVIDER")
+# upstream main() exits unless GEMINI_API_KEY is set; an openai: judge never builds a Gemini client
+GEMINI_KEY_PLACEHOLDER = "unused-by-openai-judge"
+
+
 def verifier_env(judge: Judge | None = None) -> dict:
     paths = [str(PLAYWORLD), os.environ.get("PYTHONPATH")]
-    env = {k: v for k, v in os.environ.items() if k != "PWA_JUDGE_THINKING"}
-    if judge and judge.thinking:  # pwa.judge_shim must be importable from the PlayWorld cwd
+    env = {k: v for k, v in os.environ.items() if k not in SHIM_VARS}
+    if judge and judge.needs_shim:  # pwa.judge_shim must be importable from the PlayWorld cwd
         paths.insert(1, str(ROOT))
-        env["PWA_JUDGE_THINKING"] = judge.thinking
+        if judge.thinking:
+            env["PWA_JUDGE_THINKING"] = judge.thinking
+    if judge and judge.provider == "openai":
+        env["PWA_JUDGE_PROVIDER"] = "openai"
+        env["GEMINI_API_KEY"] = GEMINI_KEY_PLACEHOLDER  # the real Gemini key stays out of this process
     return {**env, "PYTHONPATH": os.pathsep.join(filter(None, paths))}
 
 
@@ -152,11 +220,33 @@ def score_task(exp: str, info: dict, k: int, a, judge: Judge | None = None) -> l
 
 
 def score(a, sel: list[dict]) -> dict:
-    judge = judge_of(a)
+    """Score with the official judge, or with each --judge-model in turn. One judge (or none) returns its
+    summary; a panel returns {"judges": [summary, ...], "failed": [...all failed events...]}."""
+    judges = judges_of(a)
+    if len(judges) <= 1:
+        return score_one(a, sel, judges[0] if judges else None)
+    out = [score_one(a, sel, j) for j in judges]
+    return {"exp": a.exp, "judges": out, "failed": [e for s in out for e in s["failed"]]}
+
+
+def check_keys(judge: Judge | None) -> None:
+    if judge and judge.provider == "openai":
+        from .judge_openai import judge_api  # noqa: PLC0415
+        try:
+            _, key = judge_api()
+        except ValueError as e:
+            raise PwaError(str(e)) from e
+        if not key:
+            raise PwaError("an openai: judge needs JUDGE_API_KEY or PLAYER_API_KEY (config/env.sh)")
+    elif not os.environ.get("GEMINI_API_KEY"):
+        raise PwaError("GEMINI_API_KEY is not set (config/env.sh); use --dry-run to test sampling only")
+
+
+def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
     if judge:
         log(f"[pwa] {judge.label}; writing {eval_dir(a.exp, a.dry_run, judge)}")
-    if not a.dry_run and not os.environ.get("GEMINI_API_KEY"):
-        raise PwaError("GEMINI_API_KEY is not set (config/env.sh); use --dry-run to test sampling only")
+    if not a.dry_run:
+        check_keys(judge)
     with_video = [t for t in sel if video_path(a.exp, t["task_id"]).is_file()]
     no_video = [t["task_id"] for t in sel if t not in with_video]
     if no_video:
@@ -176,7 +266,8 @@ def score(a, sel: list[dict]) -> dict:
                "no_video": no_video, "ran": sum(e["status"] == "ok" for e in events),
                "skipped": sum(e["status"] == "skipped" for e in events), "failed": failed,
                "dir": str(eval_dir(a.exp, a.dry_run, judge)),
-               "judge": {"model": judge.model, "thinking": judge.thinking, "slug": judge.slug} if judge else None}
+               "judge": {"model": judge.model, "thinking": judge.thinking, "provider": judge.provider,
+                         "slug": judge.slug} if judge else None}
     log(f"[pwa] score {a.exp}: ran={summary['ran']} skipped={summary['skipped']} failed={len(failed)}")
     return summary
 

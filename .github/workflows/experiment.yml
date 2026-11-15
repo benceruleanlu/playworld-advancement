@@ -48,7 +48,7 @@ on:
         description: Verifier passes
         default: "2"
       judge_model:
-        description: "Screening judge for dev loops, e.g. gemini-4-hydrogen or gemini-4-hydrogen:low (thinking level). Empty = official judge. Never writes the results csv row."
+        description: "Screening judge(s) for dev loops, comma-separated [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna. Empty = official judge. Never writes the results csv row."
         default: ""
       notes:
         default: ""
@@ -65,6 +65,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read  # screening runs fetch the official eval/ from an earlier run-EXP artifact for judge calibration
 
 env:
   EXP: ${{ inputs.exp }}
@@ -94,14 +95,24 @@ jobs:
           JUDGE_IN: ${{ inputs.judge_model }}
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
-          # judge_model: MODEL or MODEL:THINKING (minimal|low|medium|high); exported to later steps as JUDGE_MODEL / JUDGE_THINKING
-          [[ "$JUDGE_IN" =~ ^[A-Za-z0-9._:-]*$ ]] || { echo "judge_model must match [A-Za-z0-9._:-]*" >&2; exit 2; }
+          # judge_model: comma-separated [openai:|gemini:]MODEL[:minimal|low|medium|high]; exported to later steps
+          # as JUDGE_SPECS (space-separated; each is one `pwa score|report --judge-model` value)
+          JUDGE_IN="${JUDGE_IN// /}"
+          [[ "$JUDGE_IN" =~ ^[A-Za-z0-9._:,-]*$ ]] || { echo "judge_model must match [A-Za-z0-9._:,-]*" >&2; exit 2; }
           if [[ -n "$JUDGE_IN" ]]; then
-            model="${JUDGE_IN%%:*}"; thinking=""; [[ "$JUDGE_IN" == *:* ]] && thinking="${JUDGE_IN#*:}"
-            [[ -n "$model" ]] || { echo "judge_model needs a model id" >&2; exit 2; }
-            [[ -z "$thinking" || "$thinking" =~ ^(minimal|low|medium|high)$ ]] || { echo "judge thinking must be minimal|low|medium|high" >&2; exit 2; }
-            { echo "JUDGE_MODEL=$model"; echo "JUDGE_THINKING=$thinking"; } >> "$GITHUB_ENV"
-            echo "::notice title=screening judge::$JUDGE_IN (dev screening; no results csv row)"
+            specs=()
+            IFS=',' read -ra items <<< "$JUDGE_IN"
+            for raw in "${items[@]}"; do
+              m="$raw"
+              [[ "$m" =~ :(minimal|low|medium|high)$ ]] && m="${m%:*}"
+              m="${m#openai:}"; m="${m#gemini:}"
+              [[ "$m" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "judge_model entry '$raw' must be [openai:]MODEL[:minimal|low|medium|high] with MODEL in [A-Za-z0-9._-]" >&2; exit 2; }
+              [[ " ${specs[*]} " != *" $raw "* ]] || { echo "judge_model lists '$raw' twice" >&2; exit 2; }
+              specs+=("$raw")
+            done
+            (( ${#specs[@]} > 0 )) || { echo "judge_model has no entries" >&2; exit 2; }
+            echo "JUDGE_SPECS=${specs[*]}" >> "$GITHUB_ENV"
+            echo "::notice title=screening judge::${specs[*]} (dev screening; no results csv row)"
           fi
       - uses: actions/setup-python@v5
         with:
@@ -206,20 +217,60 @@ jobs:
         if: inputs.stage != 'gen-only'
         env:
           PASSES: ${{ inputs.passes }}
+          # openai: screening judges; empty falls back to PLAYER_API_KEY / PLAYER_API_URL (pwa/judge_openai.py)
+          JUDGE_API_KEY: ${{ secrets.JUDGE_API_KEY }}
+          JUDGE_API_URL: ${{ vars.JUDGE_API_URL }}
         run: |
-          judge=(); [[ -n "${JUDGE_MODEL:-}" ]] && judge=(--judge-model "$JUDGE_MODEL" ${JUDGE_THINKING:+--judge-thinking "$JUDGE_THINKING"})
-          pwa score "$EXP" "${judge[@]}" --passes "$PASSES" --workers 6
+          if [[ -z "${JUDGE_SPECS:-}" ]]; then
+            pwa score "$EXP" --passes "$PASSES" --workers 6
+            exit 0
+          fi
+          # screening judges in turn; one judge failing does not skip the next, but the step still fails at the end
+          rc=0
+          for spec in $JUDGE_SPECS; do
+            pwa score "$EXP" --judge-model "$spec" --passes "$PASSES" --workers 6 || rc=1
+          done
+          exit "$rc"
 
       - name: Report
         if: inputs.stage != 'gen-only'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ -n "${JUDGE_MODEL:-}" ]]; then
-            # screening judge: report and all-task table to the summary and results/reports/EXP.<slug>.md, no csv row
-            judge=(--judge-model "$JUDGE_MODEL" ${JUDGE_THINKING:+--judge-thinking "$JUDGE_THINKING"})
-            pwa report "$EXP" "${judge[@]}" --md | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
-            { echo; echo '### Tasks'; echo; pwa failures "$EXP" "${judge[@]}" --all --md; } | tee -a "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY" || true
-            slug=$(pwa report "$EXP" "${judge[@]}" --json | python -c 'import json, sys; print(json.load(sys.stdin)["judge"]["slug"])')
-            echo "JUDGE_SLUG=$slug" >> "$GITHUB_ENV"
+          if [[ -n "${JUDGE_SPECS:-}" ]]; then
+            # screening judges: per judge, report + all-task table (+ calibration when official scores exist) to the
+            # summary and results/reports/EXP.<slug>.md; with two or more, a panel table too. No csv row.
+            if [[ ! -d "runs/$EXP/eval/pass1" ]]; then
+              # best effort: the official eval/ of these videos from the newest unexpired run-EXP artifact holding one
+              ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=run-$EXP&per_page=20" \
+                      --jq '.artifacts[] | select(.expired | not) | .id' 2>/dev/null || true)
+              for id in $ids; do
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/official.zip" || continue
+                if unzip -Z1 "$RUNNER_TEMP/official.zip" | grep -q '^eval/pass1/'; then
+                  unzip -qo "$RUNNER_TEMP/official.zip" 'eval/*' -d "runs/$EXP" && echo "official eval/ from artifact $id"
+                  break
+                fi
+              done
+              rm -f "$RUNNER_TEMP/official.zip"
+            fi
+            official=0; [[ -d "runs/$EXP/eval/pass1" ]] && official=1
+            mkdir -p "$RUNNER_TEMP/screening"
+            slugs=(); panel=()
+            for spec in $JUDGE_SPECS; do
+              slug=$(pwa report "$EXP" --judge-model "$spec" --json | python -c 'import json, sys; print(json.load(sys.stdin)["judge"]["slug"])')
+              md="$RUNNER_TEMP/screening/$slug.md"
+              pwa report "$EXP" --judge-model "$spec" --md > "$md" || true
+              { echo; echo '### Tasks'; echo; pwa failures "$EXP" --judge-model "$spec" --all --md; } >> "$md" || true
+              if (( official )); then { echo; pwa judges "$EXP" --judge-model "$spec" --md; } >> "$md" || true; fi
+              cat "$md" >> "$GITHUB_STEP_SUMMARY"
+              slugs+=("$slug"); panel+=(--judge-model "$spec")
+            done
+            if (( ${#slugs[@]} > 1 )); then
+              { echo; pwa report "$EXP" "${panel[@]}" --md; } >> "$GITHUB_STEP_SUMMARY" || true
+              if (( official )); then { echo; pwa judges "$EXP" "${panel[@]}" --md; } >> "$GITHUB_STEP_SUMMARY" || true; fi
+            fi
+            (( official )) || echo "No official eval/ for $EXP on this runner: calibration skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "JUDGE_SLUGS=${slugs[*]}" >> "$GITHUB_ENV"
             exit 0
           fi
           site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
@@ -256,12 +307,14 @@ jobs:
           touch "$out/.published"
 
       - name: Commit screening report
-        # Screening judge: only results/reports/EXP.<slug>.md reaches main; never the results csv row or media.
+        # Screening judges: only results/reports/EXP.<slug>.md per judge reaches main; never the results csv row or media.
         if: inputs.stage != 'gen-only' && inputs.judge_model != ''
         run: |
-          .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUG" '
+          .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUGS" '
             mkdir -p "$MAIN_DIR/results/reports"
-            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.$JUDGE_SLUG.md"'
+            for slug in $JUDGE_SLUGS; do
+              cp "$RUNNER_TEMP/screening/$slug.md" "$MAIN_DIR/results/reports/$EXP.$slug.md"
+            done'
 
       - name: Commit experiment log
         if: inputs.stage != 'gen-only' && inputs.judge_model == ''

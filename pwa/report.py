@@ -80,7 +80,8 @@ def judge_json(judge: Judge | None) -> dict | None:
     """None = official judge. Screening reports carry the model and a label saying they are not comparable."""
     if judge is None:
         return None
-    return {"model": judge.model, "thinking": judge.thinking, "slug": judge.slug, "label": judge.label}
+    return {"model": judge.model, "thinking": judge.thinking, "provider": judge.provider, "slug": judge.slug,
+            "name": judge.name, "spec": judge.spec, "label": judge.label}
 
 
 def _avg(xs):
@@ -306,7 +307,7 @@ def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: boo
     rep = build(exp, sel, strict, split_label, judge)
     rep["split"] = split_label
     if not rep["passes"]:
-        hint = f" --judge-model {judge.model}" + (f" --judge-thinking {judge.thinking}" if judge.thinking else "") if judge else ""
+        hint = f" --judge-model {judge.spec}" if judge else ""
         log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}{hint}`)")
     elif judge:
         # screening judge: never the official report.json, never the results csv
