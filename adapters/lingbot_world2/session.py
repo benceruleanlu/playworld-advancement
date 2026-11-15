@@ -131,7 +131,8 @@ class PoseTrack:
     """Absolute camera track across steps. advance(keys) -> normalised relative
     poses for the new latent frames (one per 4 pixel frames)."""
 
-    def __init__(self):
+    def __init__(self, translation_gain: float = 1.0):
+        self.translation_gain = translation_gain
         self.last = np.eye(4)        # absolute pose of the latest pixel frame
         self.prev_latent = None      # absolute pose of the latest latent frame
         self.latents = None          # absolute poses of the last advance()'s latents (one per rel)
@@ -143,7 +144,7 @@ class PoseTrack:
         cur = self.last
         lat = [cur] if first else []  # latent 0 is pixel frame 0
         for i, k in enumerate(keys, 1):
-            cur = cur @ P.key_delta(k)
+            cur = cur @ P.key_delta(k, self.translation_gain)
             if i % 4 == 0:
                 lat.append(cur)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
