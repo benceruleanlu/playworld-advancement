@@ -473,9 +473,19 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on a repeat measurement; re-anchor is a weak lead. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
-      cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread",
-      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. After the fix (#129), pm14-fx-v3 is the first run that can fire; it is generated and not scored. No result.",
-      also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4"], links: [["#123", PR + "123"]] },
+      cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread; dropped",
+      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. After the fix (#129), pm14-fx-v3 retrieves as planned and shows no geometric gain. Under the proxy judge (Luna, not comparable to the paper's table) it scored +0.20 against a bar of 0.34, and it added nothing on top of the yaw servo. It has no official score. Dropped.",
+      also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4", "pm14-fx-v3-a1", "pm14-fx-v3-a2", "pm14-fx-v3-a3"], links: [["#123", PR + "123"], ["#129", PR + "129"]] },
+    { group: "now", title: "The stack: six flags together", arms: [["no flags", "stk14-fx-dev-v1-a1"], ["stack", "stk14-fx-dev-v1-a2"]],
+      pending: "no official score; proxy judge (Luna) only: out-of-sight up about a point in all three pairs",
+      also: ["stk14-fx-dev-v1-a3", "stk14-fx-dev-v1-a4", "stk14-fx-dev2-v1-a1", "stk14-fx-dev2-v1-a2"],
+      body: "Turn calibration, caption prompt, insight director, IF slow translation, and a sink of 10 in a window of 22, against no flags. 24 dev tasks at two seeds and the 24 dev2 tasks, fixed moves. Proxy judge (Luna), not comparable to the paper's table: out-of-sight +1.02, +0.92 and +0.98 (dev seed 0, dev seed 1, dev2), the only family that clears the noise bar of about 0.6 in all three. Not confirmed by Gemini.",
+      links: [["findings", "#story-stack"]] },
+    { group: "now", title: "Yaw servo", arms: [["control", "svgc14-fx-v1-a1"], ["servo", "svgc14-fx-v1-a2"], ["servo + memory", "svgc14-fx-v1-a3"]],
+      pending: "no official score; end heading measured from the video: closer to the start on all six GC tasks checked",
+      also: ["stksv14-fx-gc-v1-a1", "stksv14-fx-gc-v1-a2", "stksv14-cl-gc-v1-a1", "stksv14-cl-gc-v1-a2"],
+      body: "Measures how far each chunk turned in the rendered frames and corrects the next chunk's camera command, so a turn out and back ends at the start heading. Design by Benjamin Lu (PR #125), merged in #131. End-heading error fell from 28 to 0.3 degrees on GC033 and from 70 to 5.6 on GC036. Under the proxy judge (Luna, not comparable to the paper's table) the same-run deltas are noise. Both arms of sv14-fx-v1 and sv14-fx-v2 run the servo (seeds 0 and 1), so neither has its own control. On out-of-sight tasks (sv14-fx-v2) a gain is not supported. svgc14-fx-v1 is missing GC035 in all three arms and GC002 and GC022 in the servo arms.",
+      links: [["findings", "#story-servo"], ["#125", PR + "125"], ["#131", PR + "131"], ["#138", PR + "138"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
       links: [["#75", PR + "75"]] },
@@ -496,11 +506,14 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       body: "Merged behind opt-in flags and not run yet. The attention window is under test above.", links: [["#104", PR + "104"]] },
     { group: "cand", title: "Camera rates: turn step, yaw gain",
       body: "Turn step sets how many degrees one closed-loop turn covers, so an out-and-back fits inside the model's attention window. Yaw gain scales the yaw sent to the model. Merged behind opt-in flags and not run yet.", links: [["#105", PR + "105"], ["#119", PR + "119"]] },
+    { group: "cand", title: "Merged, not run: split sink, turntable poses, warp re-anchor, query temperature, text steering, IF settle, IF fixed camera, pose-memory motion modes",
+      body: "Eight more opt-in flags. Split sink damps the opening frames only where the scene moved. Turntable poses keep the horizon level on mixed pan and tilt paths. Warp re-anchor guides a returning camera with the opening image warped to the current view. Query temperature sharpens attention as the cache grows. Text steering pushes the prompt embedding toward a dynamic scene. IF settle stops the camera keys after a budget, and IF fixed camera holds the camera still on third-person IF tasks. Motion modes change how recomputed pose memory reads relative motion.",
+      links: [["#132", PR + "132"], ["#133", PR + "133"], ["#139", PR + "139"], ["#116", PR + "116"], ["#115", PR + "115"], ["#121", PR + "121"], ["#147", PR + "147"], ["#144", PR + "144"]] },
     { group: "cand", title: "Sampling: noise mean coupling, noisy KV writes, early-step self-guidance",
       body: "Three changes to how each chunk is sampled or written to the model's memory. Merged behind opt-in flags and not run yet.", links: [["#103", PR + "103"], ["#112", PR + "112"]] }
   ];
   var GROUPS = [
-    ["now", "Testing now: model-side", "Fixed moves (no AI player), 14B, official judge, 2 to 4 passes, one run per arm. Overall figures count a missing clip as 1.0, so read the per-task counts."],
+    ["now", "Testing now: model-side", "Fixed moves (no AI player) unless a row names a closed-loop run, 14B, one run per arm. Official judge at 2 to 4 passes until its credits ran out; later runs have no official score. Overall figures count a missing clip as 1.0, so read the per-task counts."],
     ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. None adopted."],
     ["cand", "Candidates, not yet scored", "Off by default. Not results."]
   ];
@@ -573,9 +586,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       say: "Two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result", kind: "repeat", title: "Pose memory never fired, and the score still moved",
-      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129); its run, pm14-fx-v3, is the first that can fire and is not scored yet.",
-      say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
+    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "dropped", kind: "repeat", title: "Pose memory first never fired, then fired and added nothing",
+      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first runs it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. After the fix (PR #129) it retrieves as planned (pm14-fx-v3), with no geometric gain and +0.20 under the proxy judge (Luna, not comparable to the paper's table) against a 0.34 bar. Dropped.",
+      say: "Our memory first never fired; the flag counters caught it. Once fixed, it fired and added nothing.",
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
     { id: "sink", short: true, prs: [112], label: "Sink key scale", verdict: "dropped", title: "Turning down the opening frames made out-of-sight worse",
@@ -593,19 +606,43 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       say: "The family score did not move the same way twice. One task, OE039, rose every time but once.",
       ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
-    { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "running", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
-      body: "Turn calibration, caption prompt, insight director, slow IF translation and the larger attention window together, against no flags, on every dev task at two seeds (stk14-fx-dev-v1) and on the 24 dev2 tasks (stk14-fx-dev2-v1).",
-      say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is running now.",
-      ctl: "stk14-fx-dev-v1-a1", arms: [["stack", "stk14-fx-dev-v1-a2", "the stack, seed 0"]],
-      watch: { task: "OE039", b: "stk14-fx-dev-v1-a1", c: "stk14-fx-dev-v1-a2" } },
+    { id: "judge", kind: "note", title: "The official judge ran out of credits, and a proxy judge scores later runs",
+      body: "The official judge is Gemini 3.1 Pro. Its AI Studio credits ran out about 03:40 UTC on Nov 15, and the team then scored later runs with a proxy judge, OpenAI gpt-6-luna (Luna) (#146, #150, #156). Luna scores are not comparable to the paper's table or to Genie 3's 2.12, and no chart or headline on this page uses them.",
+      say: "Gemini's credits ran out. Later runs have proxy judge scores only, and those are not leaderboard numbers.",
+      points: ["Luna passes 97% of gated passes. Gemini failed a gate on 23% of tasks.",
+        "45% of Luna's scores are 4 or above (Gemini 9%). On GC it is 83%.",
+        "On 21 clips scored by both, rank correlation is 0.62 (0.41 on out-of-sight). Luna scores 0.89 higher on average.",
+        "On byte-identical clips a task score moved 0.50 on average and a 5-task mean 0.62. Only deltas above about 0.6 on a 6-task family mean, or about 0.35 on 24 tasks, count."],
+      links: [["#146", PR + "146"], ["#150", PR + "150"], ["#156", PR + "156"]] },
+    { id: "stack", label: "The stack, three pairs", verdict: "proxy judge only", kind: "note", title: "The stack lifted out-of-sight in all three pairs, under the proxy judge",
+      body: "Turn calibration, caption prompt, insight director, IF slow translation, and a sink of 10 in a window of 22, against no flags. LingBot-World v2 14B, fixed moves, 24 dev tasks at two seeds (stk14-fx-dev-v1) and the 24 dev2 tasks (stk14-fx-dev2-v1). Every number below is from the proxy judge (Luna), not comparable to the paper's table, and only out-of-sight clears its noise bar in all three pairs.",
+      say: "Proxy judge only: out-of-sight up about a point in all three pairs. Gemini has not confirmed it.",
+      points: ["Change against no flags, as dev seed 0, dev seed 1, dev2.",
+        "Out-of-sight +1.02, +0.92, +0.98.",
+        "Insight +0.48, +0.58, +0.63.",
+        "Overall +0.62, +0.27, +0.59.",
+        "GC +0.59, -0.16, +0.30. IF +0.40, -0.25, +0.45.",
+        "No Gemini score exists for these runs."],
+      scene: ["stk14-fx-dev-v1-a2", "OE039"], sceneLabel: "Watch OE039 with the stack",
+      links: [["compare with no flags", "?compare=OE039&b=stk14-fx-dev-v1-a1&c=stk14-fx-dev-v1-a2#compare-clips"], ["status", BLOB + "AGENTS.md#status-against-the-timeline"]] },
+    { id: "servo", prs: [125, 131], label: "Yaw servo on GC", verdict: "no official score", kind: "note", title: "The yaw servo brings the camera closer to its start heading",
+      body: "The servo reads how far each chunk turned in the rendered frames and corrects the next camera command. Design by Benjamin Lu (PR #125), merged in #131. Measured from the video with no judge, the end-heading error fell on all six GC tasks checked, and end-of-clip similarity to the first frame, the independent check, rose on GC033 and GC036.",
+      say: "Measured without a judge, the servo ends GC turns near the start heading. No judge score shows a gain.",
+      points: ["End-heading error in degrees, without to with the servo: GC033 28 to 0.3, GC036 70 to 5.6, GC031 96 to 0, GC012 8 to 2, GC022 45 to 1 (stack run), GC038 96 to 49.",
+        "End similarity to the first frame: GC033 -0.09 to 0.52, GC036 0.07 to 0.63.",
+        "Proxy judge (Luna), not comparable to the paper's table: the same-run deltas are noise, -0.10 with fixed moves and +0.05 closed loop. No Gemini score exists for a servo clip.",
+        "On out-of-sight tasks (sv14-fx-v2) a gain is not supported."],
+      scene: ["svgc14-fx-v1-a2", "GC033"], sceneLabel: "Watch GC033 with the servo",
+      links: [["compare with control", "?compare=GC033&b=svgc14-fx-v1-a1&c=svgc14-fx-v1-a2#compare-clips"], ["PR #125", PR + "125"], ["PR #131", PR + "131"]] },
     { id: "open", short: true, kind: "note", title: "Still open",
-      say: "No 171-task score yet, and nothing has repeated on two seeds.",
-      points: ["No 171-task score, for the starting model or for a method.",
-        "Every A/B here uses fixed moves, and all but one ran on a single seed. Adoption needs the AI player and two seeds.",
-        "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads: a larger attention window on OE039 only (no family effect on two seeds), the insight director (one up, one down), re-anchoring on GC (weak).",
-        "Pose memory has no result yet: its first run that can fire (pm14-fx-v3) is not scored.",
-        "Running: the stack against no flags on 24 dev tasks (stk14-fx-dev-v1) and on 24 dev2 tasks (stk14-fx-dev2-v1)."],
+      say: "No 171-task score and nothing adopted. The stack's gain has only a proxy judge score.",
+      points: ["Best official score is unchanged: lb14-session-agent-dev-v1, 1.64 +/- 0.13, closed loop, 24 dev tasks, Gemini.",
+        "No 171-task score, for the starting model or for a method. Heldout is unscored. Nothing is adopted.",
+        "Every official-judge A/B here uses fixed moves. Adoption needs the AI player, two seeds and the official judge.",
+        "Closed loop: clstk14-dev-v1 was cut short when the GPU provider workspace was disabled at 09:01 UTC. The no-flag arm has 23 of 24 tasks, stack plus servo 8 of 24, and the third arm never started. No closed-loop comparison of stack plus servo exists.",
+        "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint, pose memory.",
+        "Leads: the stack on out-of-sight (proxy judge only), the yaw servo on GC heading (no judge score), a larger attention window on OE039 only, the insight director (one up, one down), re-anchoring on GC (weak).",
+        "Merged and not run: IF fixed camera (#147) and the flags from #115, #116, #121, #132, #133, #139 and #144."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
@@ -882,7 +919,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         var sb = el("button", { type: "button", class: "cvbtn primary", text: s.sceneLabel || "Watch " + s.scene[1] });
         sb.addEventListener("click", function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }); acts.appendChild(sb);
       }
-      (s.links || []).forEach(function (l) { acts.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: l[0] })); });
+      (s.links || []).forEach(function (l) { acts.appendChild(/^https?:/.test(l[1]) ? el("a", { href: l[1], target: "_blank", rel: "noopener", text: l[0] }) : el("a", { href: l[1], text: l[0] })); });
       if (acts.firstChild) text.appendChild(acts);
       var side = el("div", { class: "st-ev" });
       if (ev) {
@@ -969,12 +1006,12 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         var td = el("td", { class: "num" }); if (!t) dashCell(td); else td.appendChild(el("span", { class: t[k[0]] ? k[1] : "", text: String(t[k[0]]) }));
         tr.appendChild(td);
       });
-      var cls = /dropped/.test(s.verdict) ? "bad" : /running/.test(s.verdict) ? "warn" : "";
+      var cls = /dropped/.test(s.verdict) ? "bad" : /running|proxy|no official/.test(s.verdict) ? "warn" : "";
       tr.appendChild(el("td", null, [el("span", { class: "badge " + cls, text: s.verdict })]));
       tb.appendChild(tr);
     });
     box.appendChild(el("table", { class: "ev vd" }, [el("thead", null, [hr]), tb]));
-    box.appendChild(el("p", { class: "st-cap", text: "Up and down count task-by-arm cells that moved a full point against control. Fixed moves; one seed unless the row says two." }));
+    box.appendChild(el("p", { class: "st-cap", text: "Up and down count task-by-arm cells that moved a full point against control, official judge only; a dash means no count (repeat runs and proxy-only notes). Fixed moves; one seed unless the row says two." }));
   }
 
   /* ---------- hero: verdict line and the project in numbers ---------- */
@@ -1182,7 +1219,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   var LOOP = [
     ["Propose", "A pull request adds one change as a runner flag, off by default, with a counter in the log.", "pull requests", GH + "pulls?q=is%3Apr"],
     ["Run", "A GitHub Actions workflow runs every arm on the same tasks and seed on Modal H100s.", "arms workflow", GH + "actions/workflows/arms.yml"],
-    ["Judge", "The same job scores each clip with PlayWorld's verifier, Gemini 3.1 Pro, two to four passes.", "experiment workflow", GH + "actions/workflows/experiment.yml"],
+    ["Judge", "The same job scores each clip with PlayWorld's verifier, Gemini 3.1 Pro, two to four passes. Since its credits ran out on Nov 15, runs get a proxy judge (Luna) whose scores are never plotted.", "experiment workflow", GH + "actions/workflows/experiment.yml"],
     ["Decide", "A task moves at a full point. Adoption needs it on two seeds with no gate broken.", "plan of record", BLOB + "AGENTS.md#plan-of-record"],
     ["Publish", "The job commits the row, the judge's reasons and the clips to main. This page reads them live.", "results/", GH + "tree/main/results"]
   ];
@@ -1370,8 +1407,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     function A(href, text) { return el("a", { href: href, target: "_blank", rel: "noopener", text: text }); }
     function T(t) { return document.createTextNode(t); }
     f.appendChild(el("h2", { class: "credhead", text: "Method" }));
-    f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown. The judge writes its comments mostly in Chinese; English copies are machine-translated for display after scoring, never feed a score, and the judge's original text is authoritative." }));
-    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 2 to 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
+    f.appendChild(el("p", { text: "Every score in a table or chart comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Proxy judge (Luna) numbers appear only in finding and test text, labelled, and are not comparable to the paper's table. The judge writes its comments mostly in Chinese; English copies are machine-translated for display after scoring, never feed a score, and the judge's original text is authoritative." }));
+    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both got 2 to 4 official judge passes until its credits ran out; later runs have no official score. A task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
     f.appendChild(el("p", null, [T("Rows come from "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "results/experiments.csv"), T(" (" + source + "). "), A("https://github.com/" + REPO, "Repository"), T(".")]));
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
     var ul = el("ul", { class: "credits", "aria-label": "Credits" });
@@ -1379,7 +1416,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., “PlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives”, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources’ terms.")]);
     li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, “Infinite Worlds with Versatile Interactions”, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/" + REPO + "/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
     li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
-    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the 24-task baseline lb14-session-agent-dev-v1 used gpt-4.1-mini.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Runs after about 03:40 UTC on Nov 15: proxy judge OpenAI gpt-6-luna, quoted in finding and test text only. Yaw servo design: Benjamin Lu (PR #125). Agent player: OpenAI gpt-6-luna for compared runs; the 24-task baseline lb14-session-agent-dev-v1 used gpt-4.1-mini.")]);
     li([T("Team: "), A("https://github.com/benceruleanlu", "Benjamin Lu"), T(", "), A("https://github.com/Hcoder10", "Hari Gangadharan"), T(", "), A("https://github.com/jpoehnelt", "Justin Poehnelt"), T(", "), A("https://github.com/kevvzhang", "Kevv"), T(". Built at the "), A("https://iterate.inc/ai-research", "Iterate AI Research Hackathon"), T(", San Francisco, November 2026. Site built with "), A("https://astro.build", "Astro"), T(".")]);
     f.appendChild(ul);
   }

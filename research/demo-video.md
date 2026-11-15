@@ -26,7 +26,7 @@ The short tour on the site is this list. Open `?tour=1&auto=1` and it plays by i
 | 0:36 | The two identical clips playing | Same clip, left and right. Different scores. |
 | 0:48 | Finding: sink key scale, then its clips | A hypothesis that failed. We thought the opening frames reset the scene. Turning them down made every arm worse. Dropped. |
 | 1:07 | Finding: attention window, two seeds | Our best lead moved tasks on both seeds, but not the same tasks. Not repeated, so not adopted. |
-| 1:18 | Still open | No 171-task score yet, and every A/B here uses fixed moves. |
+| 1:18 | Still open | No 171-task score and nothing adopted. The stack's gain has only a proxy judge score. |
 | 1:26 | Method: steps, counts, run chart | Every proposal is a pull request. Every experiment is a GitHub Actions run that generates on Modal, scores with the official judge and publishes the clips. Each dot is a run, each square a merged pull request. |
 | 1:45 | Header again, or the 171-task table if it exists | What comes next, in one sentence. |
 
