@@ -77,7 +77,8 @@ Yaw servo (off by default, session mode with turn calibration): `--lingbot-yaw-s
 generates the rollout one latent chunk at a time, measures the yaw each chunk's frames show (measured_turn.chunk_turn)
 and sets the next chunk's left / right pose gain so the rendered heading follows the intended one: a per-rollout,
 per-direction estimate of rendered / commanded is divided out and the heading error so far is added back, each
-chunk's gain within 0.5 to 2.0. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
+chunk's gain within 0.5 to 2.0. Knobs: --lingbot-yaw-servo-k (LINGBOT_YAW_SERVO_K, 1.0) and
+--lingbot-yaw-servo-beta (LINGBOT_YAW_SERVO_BETA, 0.6), read per main() call. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
 and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
 them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). Refused with
 --lingbot-yaw-gain (both set the model-track gain) and --lingbot-gc-ease-turns. See yaw_servo.py and
@@ -427,7 +428,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["yaw_gain"].enabled and not flags["turn_cal"]:
         raise SystemExit("--lingbot-yaw-gain corrects calibrated turns; it requires --lingbot-turn-cal "
                          "(or --lingbot-turn-step)")
-    flags["yaw_servo"] = YSV.enabled(argv, environ)
+    flags["yaw_servo_cfg"], argv = YSV.parse(argv, environ)
+    flags["yaw_servo"] = flags["yaw_servo_cfg"].enabled
     if flags["yaw_servo"]:
         if flags["stateless"] or not flags["turn_cal"]:
             raise SystemExit("--lingbot-yaw-servo requires session mode and --lingbot-turn-cal (or --lingbot-turn-step)")
@@ -474,6 +476,7 @@ SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
 POSE_MEM = PM.PoseMemoryConfig()  # --lingbot-pose-memory / LINGBOT_POSE_MEMORY=1, session only, off by default
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
 YAW_SERVO = False  # --lingbot-yaw-servo / LINGBOT_YAW_SERVO=1, off by default; session + turn-cal
+YAW_SERVO_CFG = YSV.ServoConfig()  # its knobs (--lingbot-yaw-servo-k / -beta, or env)
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -583,7 +586,8 @@ class LingBotWorld2Engine:
             STATS.stg = "skip"  # stateless or no DiT: the flags line must not read stg=on with 0 calls
         if self.weight_mod is not None:
             STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
-        self.yaw_servo = YSV.YawServo() if YAW_SERVO and not STATELESS else None
+        self.yaw_servo = (YSV.YawServo(k=YAW_SERVO_CFG.k, beta=YAW_SERVO_CFG.beta)
+                          if YAW_SERVO and not STATELESS else None)
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
@@ -601,7 +605,9 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + (f", turn step {P.CHUNK_YAW_DEG:g} deg of yaw per chunk" if P.CHUNK_YAW_DEG else "")
               + (f", {YAW_GAIN.describe()}" if YAW_GAIN.enabled else "")
-              + (", yaw servo on" if self.yaw_servo is not None else "")
+              + ((", yaw servo on" + ("" if (self.yaw_servo.k, self.yaw_servo.beta) == (YSV.K_DEFAULT, YSV.BETA_DEFAULT)
+                                         else f" (k {self.yaw_servo.k:g}, beta {self.yaw_servo.beta:g})"))
+                 if self.yaw_servo is not None else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + ("" if (LOCAL_ATTN, SINK) == (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -859,7 +865,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -879,7 +885,7 @@ def main(argv: list[str] | None = None) -> int:
     STG = flags["stg"]
     stg_mode = "off" if not STG.enabled else ("skip" if STATELESS else "on")
     NOISE_MEAN = flags["noise_mean"]
-    YAW_GAIN, YAW_SERVO = flags["yaw_gain"], flags["yaw_servo"]
+    YAW_GAIN, YAW_SERVO, YAW_SERVO_CFG = flags["yaw_gain"], flags["yaw_servo"], flags["yaw_servo_cfg"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,

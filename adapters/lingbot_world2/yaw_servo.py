@@ -3,7 +3,7 @@
 `--lingbot-yaw-servo` (env LINGBOT_YAW_SERVO=1), session mode with turn calibration only.
 
 Why: on the 14B the rendered rotation is not the commanded one, and not by one constant. Measured with fixed
-scripts on the first-person dev scenes (research/camera-response.md): left turns render more than right turns in
+scripts on the first-person dev scenes (PR #125, research/camera-response.md there): left turns render more than right turns in
 the same rollout, the ratio to the command differs by scene, and "turn out 90, turn back 90" ends far from the
 start heading. A fixed --lingbot-yaw-gain can correct the average; it cannot follow the scene.
 
@@ -22,14 +22,19 @@ booked at what the current estimates predict, so one bad chunk on a static scene
 After LOCK_AFTER untrusted turn runs in one rollout the scene is taken to have a moving subject: the servo locks,
 forgets its estimates and leaves every later chunk at gain 1 (the flags line then says yaw_servo=locked).
 
-Constants (env): LINGBOT_YAW_SERVO_K (1.0: share of the heading error corrected per chunk), LINGBOT_YAW_SERVO_BETA
-(0.6: weight of the newest chunk in the estimates). Pure Python and numpy; the session is passed in.
+Knobs (runner args, else env): --lingbot-yaw-servo-k / LINGBOT_YAW_SERVO_K (1.0: share of the heading error
+corrected per chunk), --lingbot-yaw-servo-beta / LINGBOT_YAW_SERVO_BETA (0.6: weight of the newest chunk in the
+estimates). Pure Python and numpy; the session is passed in.
 """
 from __future__ import annotations
 
+import math
 import os
+from dataclasses import dataclass
 
 FLAG = "--lingbot-yaw-servo"
+K_FLAG, BETA_FLAG = "--lingbot-yaw-servo-k", "--lingbot-yaw-servo-beta"
+K_DEFAULT, BETA_DEFAULT = 1.0, 0.6
 LO, HI = 0.5, 2.0
 SIGN = {"l": 1.0, "j": -1.0}   # right positive, as measured_turn and player_hint
 MIN_FRAMES = 4                 # a run shorter than one latent is not used to update an estimate
@@ -39,6 +44,50 @@ LOCK_AFTER = 2                 # untrusted turn runs in one rollout before the s
 
 def enabled(argv: list[str], environ=os.environ) -> bool:
     return FLAG in argv or environ.get("LINGBOT_YAW_SERVO", "0") == "1"
+
+
+@dataclass(frozen=True)
+class ServoConfig:
+    enabled: bool = False
+    k: float = K_DEFAULT
+    beta: float = BETA_DEFAULT
+
+
+def _check(k: float, beta: float) -> None:
+    if not (math.isfinite(k) and 0.0 <= k <= 2.0) or not (math.isfinite(beta) and 0.0 < beta <= 1.0):
+        raise SystemExit(f"yaw servo: k must be in [0, 2] and beta in (0, 1], got k={k} beta={beta}")
+
+
+def parse(argv: list[str], environ=os.environ) -> tuple[ServoConfig, list[str]]:
+    """The servo flag and its knobs in argv (args win over env), and argv without the knobs. Read once per
+    main() call. A knob arg without the flag is refused: that arm would silently run without the servo."""
+    seen, rest, i = {}, [], 0
+    while i < len(argv):
+        a = argv[i]
+        key = next((n for n in (K_FLAG, BETA_FLAG) if a == n or a.startswith(n + "=")), None)
+        if key is None:
+            rest.append(a)
+            i += 1
+        elif a == key:
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                raise SystemExit(f"{key} needs a number")
+            seen[key], i = argv[i + 1], i + 2
+        else:
+            seen[key], i = a[len(key) + 1:], i + 1
+    on = enabled(rest, environ)
+    if seen and not on:
+        raise SystemExit(f"{', '.join(seen)} without {FLAG} (or LINGBOT_YAW_SERVO=1) has no effect")
+    if not on:
+        return ServoConfig(), rest
+    vals = {}
+    for name, env, default in ((K_FLAG, "LINGBOT_YAW_SERVO_K", K_DEFAULT), (BETA_FLAG, "LINGBOT_YAW_SERVO_BETA", BETA_DEFAULT)):
+        raw = seen.get(name, environ.get(env, "").strip() or None)
+        try:
+            vals[name] = default if raw is None else float(raw)
+        except ValueError:
+            raise SystemExit(f"{name} needs a number, got {raw!r}") from None
+    _check(vals[K_FLAG], vals[BETA_FLAG])
+    return ServoConfig(True, vals[K_FLAG], vals[BETA_FLAG]), rest
 
 
 def split_chunks(keys: list[str], first: bool, chunk: int = 16) -> list[list[str]]:
@@ -104,8 +153,7 @@ class YawServo:
     def __init__(self, k: float | None = None, beta: float | None = None, environ=os.environ):
         self.k = float(environ.get("LINGBOT_YAW_SERVO_K", "1.0")) if k is None else float(k)
         self.beta = float(environ.get("LINGBOT_YAW_SERVO_BETA", "0.6")) if beta is None else float(beta)
-        if not 0.0 <= self.k <= 2.0 or not 0.0 < self.beta <= 1.0:
-            raise SystemExit(f"yaw servo: k must be in [0, 2] and beta in (0, 1], got k={self.k} beta={self.beta}")
+        _check(self.k, self.beta)
         self.reset()
 
     def reset(self) -> None:

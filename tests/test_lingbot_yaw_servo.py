@@ -360,3 +360,50 @@ def test_simulated_14b_camera_heading_converges(segs):
             assert all(YS.LO <= x <= YS.HI for x in g)
             assert not any({a, b} == {YS.LO, YS.HI} for a, b in zip(g, g[1:]))   # never clamp to clamp
     assert np.mean(servo_err) < 0.2 * np.mean(open_err) and max(servo_err) < 10.0
+
+
+# ------------------------------------------------------------ knobs as runner args
+
+def test_knobs_as_args_env_and_refusals():
+    from adapters.lingbot_world2 import run as R
+    base = ["run.py", "--lingbot-turn-cal", "--tasks", "GC033"]
+    flags, rest = R.configure(base + ["--lingbot-yaw-servo"], environ={})
+    assert flags["yaw_servo_cfg"] == YS.ServoConfig(True, 1.0, 0.6) and rest == ["run.py", "--tasks", "GC033"]
+    flags, rest = R.configure(base + ["--lingbot-yaw-servo", "--lingbot-yaw-servo-k", "0.5", "--lingbot-yaw-servo-beta=0.3"],
+                              environ={"LINGBOT_YAW_SERVO_K": "1.5"})
+    assert flags["yaw_servo_cfg"] == YS.ServoConfig(True, 0.5, 0.3) and rest == ["run.py", "--tasks", "GC033"]
+    flags, _ = R.configure(base + ["--lingbot-yaw-servo"], environ={"LINGBOT_YAW_SERVO_K": "1.5"})
+    assert flags["yaw_servo_cfg"].k == 1.5                                         # env still honoured
+    flags, _ = R.configure(base, environ={"LINGBOT_YAW_SERVO_K": "1.5"})
+    assert flags["yaw_servo_cfg"] == YS.ServoConfig() and not flags["yaw_servo"]  # env knob alone: off
+    for bad in (["--lingbot-yaw-servo-k", "0.5"],                                  # knob without the flag
+                ["--lingbot-yaw-servo", "--lingbot-yaw-servo-k", "3"], ["--lingbot-yaw-servo", "--lingbot-yaw-servo-beta=0"],
+                ["--lingbot-yaw-servo", "--lingbot-yaw-servo-k=x"], ["--lingbot-yaw-servo", "--lingbot-yaw-servo-k"]):
+        with pytest.raises(SystemExit):
+            R.configure(base + bad, environ={})
+
+
+def test_knobs_reach_the_engine_per_main_call(monkeypatch, capsys, tmp_path):
+    from adapters.lingbot_world2 import run as R
+    seen = []
+
+    class Engine:
+        def __init__(self, args):
+            seen.append((R.YAW_SERVO, R.YAW_SERVO_CFG))
+
+    def fake_import(fresh=True):
+        ra = SimpleNamespace(main=lambda: ra.SanaWMEngine(None), run_task=lambda *a: None,
+                             decide_action=lambda *a, **kw: "WAIT", to_sana_key=lambda a: "none")
+        return ra
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    monkeypatch.setattr(R, "LingBotWorld2Engine", Engine)
+    monkeypatch.setattr(R.agent_api, "patch", lambda ra, *a: "test")
+    monkeypatch.setattr(R.agent_api, "finish", lambda ra: None)
+    for key in tuple(R.os.environ):
+        if key.startswith("LINGBOT_"):
+            monkeypatch.delenv(key)
+    R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-k", "0.5"])
+    R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"])
+    R.main(["run.py", "--lingbot-turn-cal"])
+    assert [(on, c.k) for on, c in seen] == [(True, 0.5), (True, 1.0), (False, 1.0)]
