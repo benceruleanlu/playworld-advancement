@@ -1,10 +1,10 @@
 // Compare player: one task, up to three runs' clips side by side on one shared clock.
 // Reads the same scenes index and manifests as the Scenes section (results/media on main, or ?media=DIR/),
 // and the CSV rows app.js has loaded (window.PWA_SITE, announced by the "pwa:data" event).
-// Deep link: ?compare=TASK&a=EXP&b=EXP&c=EXP#compare-clips (a = Baseline, b = Before, c = After).
+// Deep link: ?compare=TASK&a=EXP&b=EXP&c=EXP#compare-clips (a = first slot, Reference; b = second, Control; c = third, Treatment).
 "use strict";
 (function () {
-  var SLOTS = ["Baseline", "Before", "After"], QKEYS = ["a", "b", "c"];
+  var SLOTS = ["Reference", "Control", "Treatment"], QKEYS = ["a", "b", "c"];
   // the 14B starting-model run, preferred as the default baseline when it has a clip for the task
   var BASELINES = ["lb14-session-agent-dev-v1"];
   var MAX_RUNS = 80; // manifests fetched, newest first
@@ -97,7 +97,7 @@
     var rest = c.filter(function (e) { return !used[e]; });
     function good(e) { var r = csvRow(e); return !capOf(mans[e], r) && (runScored(mans[e]) || !!(r && r.overall != null)); }
     rest = rest.filter(good).concat(rest.filter(function (e) { return !good(e); }));
-    // two arms of one A/B (shared prefix, -a1 / -a2): control as Before, arm as After
+    // two arms of one A/B (shared prefix, -a1 / -a2): control in the second slot, arm in the third
     if (!out[1] && !out[2]) {
       for (var i = 0; i < rest.length; i++) {
         var mm = /^(.*-a)(\d+)$/.exec(rest[i]); if (!mm || !good(rest[i])) continue;
@@ -177,6 +177,9 @@
         return has(task, e) ? e : "";
       });
     } else slots = task ? defaultsFor(task) : ["", "", ""];
+    // a two-run link (a+b, a+c or b+c) opens as Control and Treatment so the pickers match the cards
+    var f = slots.filter(Boolean);
+    if (f.length === 2) slots = ["", f[0], f[1]];
     render(notes);
   }
 
@@ -189,12 +192,12 @@
     (notes || []).forEach(function (n) { nb.appendChild(el("span", { class: "badge warn", text: n })); });
     var pairs = tasksWithPairs();
     if (!pairs.length || !task) {
-      pick.hidden = true; bar.hidden = true; $("cv-note").hidden = true; empty.hidden = false;
+      pick.hidden = true; $("cv-help").hidden = true; bar.hidden = true; $("cv-note").hidden = true; empty.hidden = false;
       empty.textContent = runs.length ? "Fewer than two runs share a task with a published clip, so there is nothing to compare yet."
         : "No published clips yet. Each run that generates videos adds them to a GitHub Release.";
       return;
     }
-    empty.hidden = true; pick.hidden = false;
+    empty.hidden = true; pick.hidden = false; $("cv-help").hidden = false;
     var ts = $("cv-task"); clear(ts);
     var opts = pairs.slice();
     if (opts.indexOf(task) < 0) opts.push(task);
@@ -229,10 +232,17 @@
     updateBar();
     if (linked && !scrolled) { scrolled = true; var sec = $("compare-clips"); if (sec && sec.scrollIntoView) setTimeout(function () { sec.scrollIntoView(); }, 0); }
   }
+  // card header by what is filled: two clips are always CONTROL then TREATMENT, one clip has no role
+  function roleOf(i) {
+    var f = slots.map(function (e, k) { return e ? k : -1; }).filter(function (k) { return k >= 0; });
+    if (f.length === 1) return "";
+    if (f.length === 2) return f.indexOf(i) === 0 ? "Control" : "Treatment";
+    return SLOTS[i];
+  }
   function dt(k, v) { return v ? [el("dt", { text: k }), el("dd", { text: v })] : []; }
   function slotCard(c, i) {
     var m = c.man, t = c.t, row = csvRow(c.exp), cap = capOf(m, row);
-    var v = el("video", { muted: "", playsinline: "", preload: "auto", src: t.video, poster: t.poster || null, "aria-label": SLOTS[i] + ": " + c.exp + ", " + t.task_id });
+    var v = el("video", { muted: "", playsinline: "", preload: "auto", src: t.video, poster: t.poster || null, "aria-label": (roleOf(i) ? roleOf(i) + ": " : "") + c.exp + ", " + t.task_id });
     v.muted = true; v.loop = false;
     var endEl = el("div", { class: "cvend", hidden: "" });
     var media = el("div", { class: "media" }, [v, endEl]);
@@ -279,7 +289,7 @@
       [el("dt", { text: "Clip" }), lenEl]
     ));
     var kids = [
-      el("div", { class: "cvhead" }, [el("span", { class: "cvlab", text: SLOTS[i] }), el("b", { text: c.exp })]),
+      el("div", { class: "cvhead" }, (roleOf(i) ? [el("span", { class: "cvlab", text: roleOf(i).toUpperCase() })] : []).concat([el("b", { text: c.exp })])),
       media,
       el("div", { class: "cvscore" }, [el("span", { class: "sc", text: score }), el("span", { class: "judge", text: judge })]),
       b, dl
@@ -293,7 +303,7 @@
       cred.appendChild(document.createTextNode((who ? " (" + who + ")" : "") + "."));
       kids.push(cred);
     }
-    return el("article", { class: "cvslot", "data-slot": SLOTS[i].toLowerCase() }, kids);
+    return el("article", { class: "cvslot", "data-slot": roleOf(i).toLowerCase() || "single" }, kids);
   }
   function maxDur() {
     var d = 0; live.forEach(function (s) { if (!s.failed && isFinite(s.d) && s.d > d) d = s.d; });
@@ -418,6 +428,10 @@
       });
     });
     $("cv-loop").addEventListener("change", function (e) { S.loop = e.target.checked; });
+    // switching back to this tab: write the selection to a/b/c again so a copied link opens it
+    document.addEventListener("pwa:mode", function (e) {
+      if (e.detail === "compare" && task) { linked = true; syncUrl(); }
+    });
     $("cv-link").addEventListener("click", function () {
       var url = location.origin + location.pathname + "?" + linkFor().toString() + "#compare-clips", note = $("cv-copied");
       linked = true; syncUrl();

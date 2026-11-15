@@ -496,6 +496,8 @@
       var qs = q.toString();
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + "#" + (m === "scenes" ? "scenes" : "compare-clips"));
     } catch (e) { /* sandboxed */ }
+    // each tab writes its own selection back to the URL
+    if (m === "scenes") syncUrl(); else document.dispatchEvent(new CustomEvent("pwa:mode", { detail: m }));
   }
   function initMode() {
     var q = new URLSearchParams(location.search);
