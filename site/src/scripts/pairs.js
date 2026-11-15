@@ -35,7 +35,8 @@ export function runFacts(exp, man, info, origin) {
   return {
     exp: exp, keys: keys, seed: seed, group: info.group || "", armI: info.armI || 0,
     runner: man.runner || "", size: info.size, driver: info.driver, player: man.player_model || "",
-    cap: info.cap ? 1 : 0, capN: info.cap > 0 ? info.cap : 0, sha: man.git_sha || "", tasks: tasks, named: named
+    // the cap value itself, not just whether one exists: a 10-chunk run never pairs with a 20-chunk one
+    cap: info.cap ? String(info.cap) : 0, capN: info.cap > 0 ? info.cap : 0, sha: man.git_sha || "", tasks: tasks, named: named
   };
 }
 function identity(f) { return [f.runner, f.size, f.driver, f.player, f.cap, f.seed].join("|"); }
@@ -77,7 +78,7 @@ export function derivePairs(index, mans, RI, opts) {
     var f = runFacts(r.exp, mans[r.exp], RI && RI.get(r.exp), opts.origin);
     if (f && !by[f.exp]) { all.push(f); by[f.exp] = f; }
   });
-  var comps = {}, order = [], byTriple = {};
+  var comps = {}, order = [], byTriple = {}, alt = {};
   function comp(key, f, added, base) {
     if (!comps[key]) {
       var addW = words(added), baseW = words(base);
@@ -95,8 +96,10 @@ export function derivePairs(index, mans, RI, opts) {
     var cs = candidates(t, all, by);
     if (!cs.length) return;
     Object.keys(t.tasks).sort().forEach(function (task) {
-      var c = cs.filter(function (x) { return x.tasks[task]; })[0];
+      var have = cs.filter(function (x) { return x.tasks[task]; }), c = have[0];
       if (!c) return;
+      // other valid controls for this task: old links that name one get an accurate note, not "not a pair"
+      have.slice(1).forEach(function (x) { alt[task + "|" + x.exp + "|" + t.exp] = c.exp; });
       var added = minus(t.keys, c.keys);
       var k = cmpKey(added, c.keys, t);
       var C = comp(k, t, added, c.keys);
@@ -136,7 +139,8 @@ export function derivePairs(index, mans, RI, opts) {
     c.pairs.forEach(function (p) { byTriple[p.task + "|" + p.ctl + "|" + p.trt] = c.key; });
   });
   comparisons.sort(function (a, b) { return b.pairs.length - a.pairs.length || (a.label < b.label ? -1 : 1); });
-  return { comparisons: comparisons, repeats: repeats, byTriple: byTriple, runs: all.map(function (f) { return f.exp; }) };
+  Object.keys(byTriple).forEach(function (k) { delete alt[k]; });
+  return { comparisons: comparisons, repeats: repeats, byTriple: byTriple, alt: alt, runs: all.map(function (f) { return f.exp; }) };
 }
 
 // every comparison and repeat by key
@@ -172,6 +176,14 @@ export function writeState(search, st) {
   ["compare", "a", "b", "c"].forEach(function (k) { q.delete(k); });
   [["cmp", st.cmp], ["fam", st.fam], ["seed", st.seed], ["pair", st.pair]].forEach(function (kv) { if (kv[1]) q.set(kv[0], kv[1]); else q.delete(kv[0]); });
   return q.toString();
+}
+// a triple that is a valid control/treatment pair, but the pair list uses another control for that task: that control, else ""
+export function altControl(D, task, b, c) { return (D.alt && D.alt[task + "|" + b + "|" + c]) || ""; }
+// the hand-pick note for an old link that is not in the pair list
+export function legacyNote(D, task, b, c) {
+  var alt = altControl(D, task, b, c);
+  return alt ? "A valid control for this treatment (same settings and seed, fewer flags). The pair list uses " + alt + " for " + task + "."
+    : "Not a derived control/treatment pair: these runs differ in more than added flags, or are not linked as control and treatment.";
 }
 // an old ?compare=TASK&b=C&c=T link: the derived comparison holding that triple, or null for hand-pick mode
 export function mapLegacy(D, task, b, c) {

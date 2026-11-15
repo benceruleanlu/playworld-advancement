@@ -4,7 +4,7 @@
 import Section from "./Section.astro";
 const review = import.meta.env.BASE_URL.replace(/\/?$/, "/") + "review/";
 ---
-<Section id="pairs" title="Control and treatment, side by side" lede="One task, two runs that differ only by the flags named below. Pick a comparison, then step through its pairs.">
+<Section id="pairs" title="Control and treatment, side by side" lede="One task from two runs, with every recorded difference named above the clips. Pick a comparison, then step through its pairs.">
   <div class="prtop">
     <label class="prsel">Comparison <select id="pr-cmp"><option>Loading pairs</option></select></label>
   </div>
@@ -65,6 +65,7 @@ const review = import.meta.env.BASE_URL.replace(/\/?$/, "/") + "review/";
   </div>
   <h3 class="prh" id="pr-gridh" hidden>All pairs in this comparison</h3>
   <div class="prgrid" id="pair-grid" aria-label="Pairs"></div>
+  <button type="button" class="scmore" id="pr-more" hidden></button>
   <p class="scnote" id="watch-note">English judge comments were machine-translated after scoring; "show original" has the judge's own text. Task images come from <a href="https://github.com/kxding/PlayWorld" target="_blank" rel="noopener">PlayWorld</a> (Pexels and web image search, their terms). Videos: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial. <a href="https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request" target="_blank" rel="noopener">Request removal</a>. To judge two clips by eye without knowing which is which, use the <a href={review}>blind review page</a>.</p>
   <p class="prhandlink"><button type="button" class="linkbtn" id="pr-hand">Pick any two runs by hand</button></p>
 </Section>

@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import assert from "node:assert/strict";
 import { build } from "./runinfo.js";
 import { SETS as REVIEW_SETS, buildPairs as reviewPairs } from "./review-core.js";
-import { derivePairs, findComparison, filterPairs, seedsOf, pairId, pairById, readState, writeState, mapLegacy } from "./pairs.js";
+import { derivePairs, findComparison, filterPairs, seedsOf, pairId, pairById, readState, writeState, mapLegacy, legacyNote, altControl } from "./pairs.js";
 
 const root = new URL("../../../results/", import.meta.url);
 function csv(text) {
@@ -64,6 +64,12 @@ if (existsSync(mdir)) {
     ps.forEach((p) => assert.equal(p.ctl, p.task === "OE058" ? "sks14-fx-v1-a1" : "mem14-fx-v1-a1", p.task));
     assert.ok(ps.some((p) => p.task === "OE058"));
     assert.ok(!ps.some((p) => p.task === "GC005"));
+  });
+  check("old link to a valid, non-chosen control gets an accurate note", () => {
+    assert.equal(mapLegacy(D, "OE034", "sks14-fx-v1-a1", "sv14-fx-v1-a1"), null);
+    assert.equal(altControl(D, "OE034", "sks14-fx-v1-a1", "sv14-fx-v1-a1"), "mem14-fx-v1-a1");
+    assert.match(legacyNote(D, "OE034", "sks14-fx-v1-a1", "sv14-fx-v1-a1"), /valid control.*mem14-fx-v1-a1/);
+    assert.match(legacyNote(D, "OE039", "stk14-fx-dev-v1-a1", "stk14-fx-dev-v1-a4"), /^Not a derived control\/treatment pair/);
   });
   check("win14-a2 and pm14-fx-v2-a1 are never a control", () => {
     assert.equal(all.filter((p) => p.ctl === "win14-fx-v1-a2" || p.ctl === "pm14-fx-v2-a1").length, 0);
@@ -131,7 +137,8 @@ if (existsSync(mdir)) {
   const rows = [
     arm("t1", 1, 4, ""), arm("t1", 2, 4, "--lingbot-yaw-servo"), arm("t1", 3, 4, "--seed 1"), arm("t1", 4, 4, "--seed 1 --lingbot-yaw-servo"),
     arm("t2", 1, 1, "--lingbot-turn-cal --lingbot-yaw-servo"),
-    arm("t3", 1, 2, "--agent-model m"), arm("t3", 2, 2, "--agent-model m --lingbot-turn-cal")
+    arm("t3", 1, 2, "--agent-model m"), arm("t3", 2, 2, "--agent-model m --lingbot-turn-cal"),
+    arm("t5", 1, 3, ""), arm("t5", 2, 3, "--lingbot-yaw-servo"), arm("t5", 3, 3, "--lingbot-yaw-servo")
   ];
   const mans = {
     "t1-a1": man("t1-a1", [], [["GC1", "gc"], ["OE1", "outsight"]]),
@@ -141,7 +148,11 @@ if (existsSync(mdir)) {
     // named control in notes; t1-a1 has no turn-cal so it is not a subset candidate... it is: {} is a subset of anything
     "t2-a1": man("t2-a1", ["--lingbot-turn-cal", "--lingbot-yaw-servo"], [["GC1", "gc"]], { notes: "servo on turn-cal, control t1-a2", git_sha: "ccccccc" }),
     "t3-a1": man("t3-a1", ["--agent-model", "m"], [["IF1", "if"]], { action_source: "agent", player_model: "m" }),
-    "t3-a2": man("t3-a2", ["--agent-model", "m", "--lingbot-turn-cal"], [["IF1", "if"]], { action_source: "agent", player_model: "m" })
+    "t3-a2": man("t3-a2", ["--agent-model", "m", "--lingbot-turn-cal"], [["IF1", "if"]], { action_source: "agent", player_model: "m" }),
+    // capped runs pair only at the same cap: 10 with 10, never 10 with 20
+    "t5-a1": man("t5-a1", [], [["GC9", "gc"]], { max_chunks: 10 }),
+    "t5-a2": man("t5-a2", ["--lingbot-yaw-servo"], [["GC9", "gc"]], { max_chunks: 20 }),
+    "t5-a3": man("t5-a3", ["--lingbot-yaw-servo"], [["GC9", "gc"]], { max_chunks: 10 })
   };
   const index = { runs: Object.keys(mans).map((exp) => ({ exp, generated: "2026-11-15T00:00:00Z" })) };
   const RI = build(rows, index.runs, mans, NOW);
@@ -165,6 +176,10 @@ if (existsSync(mdir)) {
     const k1 = D.byTriple["GC1|t1-a1|t1-a2"], k2 = D.byTriple["GC1|t1-a2|t2-a1"];
     assert.ok(k1 && k2 && k1 !== k2);
     assert.equal(D.byTriple["GC1|t1-a3|t1-a4"], k1);
+  });
+  check("stub: chunk caps must match", () => {
+    assert.ok(!all.some((p) => p.trt === "t5-a2"));
+    assert.deepEqual(all.filter((p) => p.trt === "t5-a3").map((p) => p.ctl), ["t5-a1"]);
   });
   check("stub: repeats", () => {
     assert.ok(D.repeats.some((r) => r.runs.join() === "t1-a1,t1-a3"));

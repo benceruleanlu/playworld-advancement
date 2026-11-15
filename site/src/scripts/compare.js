@@ -21,7 +21,7 @@ import { fmtT, playableUrl } from "./clips.js";
   var wanted = ["", "", ""], wantTask = "", linked = false, scrolled = false;
   var loaded = false, wantPlay = false; // loaded: manifests are in; wantPlay: start playing once the requested clips have metadata
   // pairsView: the Pairs section drives this player; hand: the run pickers are showing; pending: a pick arrived before the manifests
-  var pairsView = !!$("pairs"), hand = !pairsView, pending = false, heads = null, cross = "", swapped = false, extraNotes = [];
+  var pairsView = !!$("pairs"), hand = !pairsView, pending = false, heads = null, roles = null, cross = "", swapped = false, extraNotes = [];
   var S = { t: 0, playing: false, rate: 1, loop: true, fps: 16, fpsKnown: false, raf: 0, last: 0 };
   var live = []; // [{exp, v, d, endEl, lenEl}] for the rendered slots
 
@@ -312,7 +312,8 @@ import { fmtT, playableUrl } from "./clips.js";
     var b = el("div", { class: "badges" });
     function badge(cls, text, title) { b.appendChild(el("span", { class: "badge" + (cls ? " " + cls : ""), text: text, title: title || null })); }
     var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
-    if (st.length && !(st.length === 1 && st[0] === "not scored")) badge(ok ? "ok" : "warn", st.join(", "), "Verifier status for this task");
+    // the verifier's outcome is a judge result: the Pairs view hides it with the scores (class vstat)
+    if (st.length && !(st.length === 1 && st[0] === "not scored")) badge((ok ? "ok" : "warn") + " vstat", st.join(", "), "Verifier status for this task");
     if (cap) badge("warn", cap > 0 ? "capped smoke, " + cap + " chunks" : "capped smoke", "Each rollout stopped early. A behaviour check, never comparable to a real score.");
     if (!runScored(m) && !(row && row.overall !== null)) badge("warn", sj ? "screening judge only" : "not scored", "No official verifier score for this run.");
     if (cross && !hand && role === "Control") badge("", "control from " + cross, "The control comes from another run with the same settings minus the treatment's flags.");
@@ -337,7 +338,8 @@ import { fmtT, playableUrl } from "./clips.js";
       [el("dt", { text: "Clip" }), lenEl]
     ));
     var kids = [
-      el("div", { class: "cvhead" }, [el("span", { class: "cvlab", text: role.toUpperCase() }), el("b", { text: headText(info, role, c.exp) }),
+      el("div", { class: "cvhead" }, [// seed repeats: "Seed 0" / "Seed 1", not Control / Treatment
+      el("span", { class: "cvlab", text: (roles && !hand ? roles[role === "Treatment" ? 1 : 0] : role).toUpperCase() }), el("b", { text: headText(info, role, c.exp) }),
         el("code", { class: "rawid", text: c.exp })]),
       media,
       el("div", { class: "cvscore" }, [el("span", { class: "sc", text: score }), el("span", { class: "judge", text: judge })]),
@@ -510,13 +512,13 @@ import { fmtT, playableUrl } from "./clips.js";
     document.addEventListener("pwa:compare", function (e) {
       var d = e.detail || {};
       wantTask = d.task || ""; wanted = ["", d.b || "", d.c || ""]; linked = true; scrolled = true; wantPlay = !!d.play;
-      heads = d.heads || null; cross = d.cross || ""; if (d.pair) hand = false;
+      heads = d.heads || null; roles = d.roles || null; cross = d.cross || ""; if (d.pair) hand = false;
       if (loaded) choose(); else pending = true;
     });
     // hand-pick mode: the run pickers; detail { task, a, b, c, note, fromUrl } opens that selection (fromUrl reads ?compare=)
     document.addEventListener("pwa:hand", function (e) {
       var d = e.detail || {};
-      hand = true; heads = null; cross = "";
+      hand = true; heads = null; roles = null; cross = "";
       if (d.note) extraNotes.push(d.note);
       if (d.fromUrl) readUrl();
       else if (d.task) { wantTask = d.task; wanted = [d.a || "", d.b || "", d.c || ""]; linked = true; scrolled = true; wantPlay = !!d.play; }
