@@ -463,3 +463,87 @@ def test_stateless_turntable_and_yaw_gain_saved_poses(monkeypatch, tmp_path):
     assert pitch_deg == pytest.approx(20.0, abs=1e-4)
     assert yaw_deg == pytest.approx(1.2 * 22.5, abs=1e-4)
 
+
+def test_turntable_composes_with_yaw_servo(monkeypatch, capsys, tmp_path):
+    import functools
+    from PIL import Image
+    from adapters.lingbot_world2 import yaw_servo as YS
+
+    for key in tuple(R.os.environ):
+        if key.startswith("LINGBOT_"):
+            monkeypatch.delenv(key)
+
+    class _ServoTurntableSession:
+        def __init__(self, g_left=1.25, g_right=0.9):
+            self.g = {"j": g_left, "l": g_right}
+            self.started, self.chunk_id, self.reanchor_events, self.track = False, 0, 0, S.PoseTrack()
+            self.heading, self.intended_latents = 0.0, []
+
+        def reset(self, *a, **kw):
+            self.started, self.chunk_id, self.track, self.heading = True, 0, S.PoseTrack(), 0.0
+            self.intended_latents = []
+
+        def step(self, keys, **kw):
+            gain = self.track.yaw_gain or (1.0, 1.0)
+            rel = self.track.advance(keys)
+            self.intended_latents.append(self.track.latents)
+            self.chunk_id += len(rel) // S.CHUNK
+            out = np.zeros((len(keys) + 1, 2, 2, 3), dtype=np.float64)
+            out[0] = self.heading
+            for i, key in enumerate(keys, 1):
+                y = YS.yaw_part(key)
+                if y:
+                    self.heading += YS.SIGN[y] * math.degrees(P.YAW) * (gain[0] if y == "j" else gain[1]) * self.g[y]
+                out[i] = self.heading
+            return out
+
+    img = tmp_path / "in.png"
+    Image.new("RGB", (8, 8)).save(img)
+    _stub_modules(monkeypatch)
+    pipe = SimpleNamespace(model=None, _t5_cache={})
+    monkeypatch.setattr(R, "load_pipe", lambda environ=None: (SimpleNamespace(sample_shift=5.0), pipe, Path("."), False))
+    monkeypatch.setattr(R.agent_api, "patch", lambda ra, *a: "test")
+    monkeypatch.setattr(R.agent_api, "finish", lambda ra: None)
+    monkeypatch.setattr(R.MT, "chunk_turn", lambda frames: (float(frames[-1, 0, 0, 0] - frames[0, 0, 0, 0]), 0.0, 1.0))
+    monkeypatch.setattr(R.YSV, "step", functools.partial(YS.step, rigid=None))
+    seen = []
+
+    def fake_import(fresh=True):
+        def run_task(task, eng, out, args):
+            # Tilted out-and-back pan: tilt up 20 deg, pan left 90, pan right 90, tilt down 20 deg
+            eng.generate(str(img), "p", "i-20,j-80,l-80,k-20,none-4", tmp_path, "GC033_full", 205)
+            return {"task_id": task["task_id"], "success": False}
+
+        ra = SimpleNamespace(run_task=run_task, decide_action=lambda *a, **kw: "WAIT", to_sana_key=lambda a: "none")
+
+        def run_main():
+            eng = ra.SanaWMEngine(SimpleNamespace(max_total_frames=961, seed=0, fps=16, action_frame_unit=20))
+            eng.session = _ServoTurntableSession()
+            seen.append(eng.session)
+            ra.run_task({"task_id": "GC033"}, eng, tmp_path, None)
+            return 0
+
+        ra.main = run_main
+        return ra
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    assert R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"]) == 0
+    assert R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-turntable-poses"]) == 0
+    servo_only, servo_tt = seen
+
+    # Both arms close the rendered heading via yaw_servo
+    assert abs(servo_only.heading) < 2.5 and abs(servo_tt.heading) < 2.5
+    # Without turntable, local yaw while tilted leaves residual horizon roll on both model and intended tracks;
+    # with turntable + yaw_servo, both model (`last`) and unscaled intended (`intended_last`) tracks stay at 0 roll,
+    # and the unscaled intended track closes back to exact identity while `last` reflects the servo's yaw gains.
+    assert abs(_roll_deg(servo_only.track.last)) > 1.0
+    assert abs(_roll_deg(servo_tt.track.last)) < 1e-12
+    assert abs(_roll_deg(servo_tt.track.intended_last)) < 1e-12
+    assert np.allclose(servo_tt.track.intended_last, np.eye(4), atol=1e-12)
+    assert not np.allclose(servo_tt.track.last, np.eye(4), atol=0.05)
+
+    out = capsys.readouterr().out
+    assert ", yaw servo on, turntable poses (walk=ground)," in out
+    assert "yaw_servo=on yaw_servo_chunks=13 yaw_servo_untrusted=0 turntable=ground turntable_frames=200" in out
+
+
