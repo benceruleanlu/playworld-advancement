@@ -73,6 +73,20 @@ caption prompt; requires caption prompting (--lingbot-caption-prompt or LINGBOT_
 Its counter if_subject_prompts counts generate() calls (about 30 per closed-loop rollout), not T5 encodes
 (one per session reset). See if_subject.py.
 
+Yaw servo (off by default, session mode with turn calibration): `--lingbot-yaw-servo` or LINGBOT_YAW_SERVO=1
+generates the rollout one latent chunk at a time, measures the yaw each chunk's frames show (measured_turn.chunk_turn)
+and sets the next chunk's left / right pose gain so the rendered heading follows the intended one: a per-rollout,
+per-direction estimate of rendered / commanded is divided out and the heading error so far is added back, each
+chunk's gain within 0.5 to 2.0. Knobs: --lingbot-yaw-servo-k (LINGBOT_YAW_SERVO_K, 1.0) and
+--lingbot-yaw-servo-beta (LINGBOT_YAW_SERVO_BETA, 0.6), read per main() call. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
+and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
+them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). GC call names
+only unless LINGBOT_YAW_SERVO_TASKS (a regex) says otherwise. Refused with
+--lingbot-yaw-gain (both set the model-track gain), --lingbot-gc-ease-turns, --lingbot-reanchor (per-chunk
+steps change which latent a return spanning chunks anchors) and LINGBOT_STREAM_DECODE=0 (quadratic re-decode). Weight mod, cond schedule, STG, KV noise, sink
+scale, noise-mean coupling and pose memory act per latent chunk inside session.step, so per-chunk steps leave
+them unchanged (weight_mod_steps still counts generate calls). See yaw_servo.py; the study is in PR #125.
+
 Yaw gain (off by default): `--lingbot-yaw-gain G` or LINGBOT_YAW_GAIN (0.5 to 2.0), with optional
 `--lingbot-yaw-gain-left` / `--lingbot-yaw-gain-right` (LINGBOT_YAW_GAIN_LEFT / _RIGHT), multiplies the j / l yaw
 of the poses sent to the model, in dataset (`<task>_full`) and chunked calls, session and stateless; requires
@@ -246,6 +260,7 @@ retries= errors= fallbacks=` per task, `[agent] player total ...` at the end, "p
 The --player-* args (completion budget, reasoning effort, empty-reply retries) are read there too.
 """
 import contextlib
+import math
 import os
 import sys
 import time
@@ -278,6 +293,7 @@ from adapters.lingbot_world2 import sink_scale as SK  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 from adapters.lingbot_world2 import yaw_gain as YG  # noqa: E402
+from adapters.lingbot_world2 import yaw_servo as YSV  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
@@ -285,7 +301,8 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
               "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
               "--lingbot-if-subject-director", "--lingbot-weight-mod", "--lingbot-if-identity-cue",
-              "--lingbot-measured-turn", "--lingbot-scripted-player", "--lingbot-noise-mean-coupling")
+              "--lingbot-measured-turn", "--lingbot-scripted-player", "--lingbot-noise-mean-coupling",
+              YSV.FLAG)
 
 
 def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
@@ -415,6 +432,25 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["yaw_gain"].enabled and not flags["turn_cal"]:
         raise SystemExit("--lingbot-yaw-gain corrects calibrated turns; it requires --lingbot-turn-cal "
                          "(or --lingbot-turn-step)")
+    flags["yaw_servo_cfg"], argv = YSV.parse(argv, environ)
+    flags["yaw_servo"] = flags["yaw_servo_cfg"].enabled
+    if flags["yaw_servo"]:
+        if flags["stateless"] or not flags["turn_cal"]:
+            raise SystemExit("--lingbot-yaw-servo requires session mode and --lingbot-turn-cal (or --lingbot-turn-step)")
+        if flags["yaw_gain"].enabled:
+            raise SystemExit("--lingbot-yaw-servo and --lingbot-yaw-gain both set the model-track yaw gain; use one")
+        if flags["gc_ease_turns"]:
+            raise SystemExit("--lingbot-yaw-servo steps chunk by chunk; it cannot run with --lingbot-gc-ease-turns")
+        if environ.get("LINGBOT_STREAM_DECODE", "1") == "0":
+            # the non-streaming decode re-decodes every latent so far on each step(); per-chunk steps make that
+            # quadratic in the rollout length (a 280-latent dataset step: ~35x the decode work)
+            raise SystemExit("--lingbot-yaw-servo steps per chunk; with LINGBOT_STREAM_DECODE=0 every chunk "
+                             "re-decodes the whole rollout")
+        if flags["reanchor"]:
+            # ReturnDetector closes a return visit at the end of each session.step(); stepping per chunk would
+            # anchor a different latent when a visit spans chunks, so the arm would not be re-anchor plus servo
+            raise SystemExit("--lingbot-yaw-servo steps chunk by chunk, which changes the latent --lingbot-reanchor "
+                             "picks for a return that spans chunks; use one per arm")
     flags.update(window)
     flags["sink_scale"], argv = SK.parse(argv, environ)
     if flags["sink_scale"].enabled and (flags["stateless"] or flags["sink"] == 0):
@@ -453,6 +489,8 @@ STG = STGM.StgConfig()  # --lingbot-stg / LINGBOT_STG=1, off by default; session
 SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
 POSE_MEM = PM.PoseMemoryConfig()  # --lingbot-pose-memory / LINGBOT_POSE_MEMORY=1, session only, off by default
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
+YAW_SERVO = False  # --lingbot-yaw-servo / LINGBOT_YAW_SERVO=1, off by default; session + turn-cal
+YAW_SERVO_CFG = YSV.ServoConfig()  # its knobs (--lingbot-yaw-servo-k / -beta, or env)
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -542,6 +580,7 @@ class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
     weight_mod = None  # --lingbot-weight-mod: a WeightModulator, set in __init__
+    yaw_servo = None  # --lingbot-yaw-servo: a YawServo, set in __init__
 
     def __init__(self, args):
         self.args = args
@@ -561,6 +600,8 @@ class LingBotWorld2Engine:
             STATS.stg = "skip"  # stateless or no DiT: the flags line must not read stg=on with 0 calls
         if self.weight_mod is not None:
             STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
+        self.yaw_servo = (YSV.YawServo(k=YAW_SERVO_CFG.k, beta=YAW_SERVO_CFG.beta)
+                          if YAW_SERVO and not STATELESS else None)
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
@@ -578,6 +619,9 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + (f", turn step {P.CHUNK_YAW_DEG:g} deg of yaw per chunk" if P.CHUNK_YAW_DEG else "")
               + (f", {YAW_GAIN.describe()}" if YAW_GAIN.enabled else "")
+              + ((", yaw servo on" + ("" if (self.yaw_servo.k, self.yaw_servo.beta) == (YSV.K_DEFAULT, YSV.BETA_DEFAULT)
+                                         else f" (k {self.yaw_servo.k:g}, beta {self.yaw_servo.beta:g})"))
+                 if self.yaw_servo is not None else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + ("" if (LOCAL_ATTN, SINK) == (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -723,6 +767,8 @@ class LingBotWorld2Engine:
         if YAW_GAIN.enabled:  # only with the flag, so the no-flag track stays main's
             self.session.track.yaw_gain = YAW_GAIN.pair()
             STATS.yaw_gain_frames += YG.yaw_frames(keys)
+        if self.yaw_servo is not None and not cont:
+            self.yaw_servo.reset()  # a new rollout: estimates and headings start over
         if cont and GC_DIRECTOR and name.startswith("GC"):
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
@@ -737,7 +783,17 @@ class LingBotWorld2Engine:
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
         pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
-        frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
+        servo_split = self.yaw_servo is not None and YSV.applies(name) and any(YSV.yaw_part(k) for k in keys)
+        if servo_split:
+            # chunk by chunk, each chunk's pose gain set from the yaw the earlier chunks rendered
+            before = (self.yaw_servo.chunks, self.yaw_servo.untrusted)
+            frames = YSV.step(self.session, self.yaw_servo, keys, math.degrees(P.YAW), MT.chunk_turn)
+            STATS.yaw_servo_chunks += self.yaw_servo.chunks - before[0]
+            STATS.yaw_servo_untrusted += self.yaw_servo.untrusted - before[1]
+            STATS.yaw_servo_locked = self.yaw_servo.locked
+            print(f"[lingbot] yaw servo: {name} {self.yaw_servo.describe()}", flush=True)
+        else:
+            frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
         STATS.noise_mean_samples += getattr(coupler, "count", 0) - coupled
         STATS.reanchored(self.session.reanchor_events - anchored)
@@ -754,7 +810,9 @@ class LingBotWorld2Engine:
             STATS.pose_mem_counted({k: v - pm_before[k] for k, v in self._pose_mem_counts().items()},
                                    self.session.pm_peak_bytes)
         if self.weight_mod is not None:
-            STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
+            steps = self.session.weight_mod_steps - modded[0]
+            # the servo splits one call into per-chunk session steps: count the call once, as without it
+            STATS.modulated(min(steps, 1) if servo_split else steps, self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
@@ -826,7 +884,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -846,7 +904,7 @@ def main(argv: list[str] | None = None) -> int:
     STG = flags["stg"]
     stg_mode = "off" if not STG.enabled else ("skip" if STATELESS else "on")
     NOISE_MEAN = flags["noise_mean"]
-    YAW_GAIN = flags["yaw_gain"]
+    YAW_GAIN, YAW_SERVO, YAW_SERVO_CFG = flags["yaw_gain"], flags["yaw_servo"], flags["yaw_servo_cfg"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
@@ -859,7 +917,8 @@ def main(argv: list[str] | None = None) -> int:
                                  kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
                                  sink_scale=SINK_SCALE.enabled, noise_mean=NOISE_MEAN, turn_step=flags["turn_step"],
-                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "", pose_mem=POSE_MEM.enabled)
+                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "", pose_mem=POSE_MEM.enabled,
+                                 yaw_servo=YAW_SERVO)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
