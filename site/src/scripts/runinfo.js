@@ -18,6 +18,7 @@ export const FLAG_NAMES = {
   "--lingbot-insight-director": "insight director",
   "--lingbot-if-repeat-check": "IF repeat check",
   "--lingbot-if-slow-translation": "IF slow translation",
+  "--lingbot-if-fixed-camera": "fixed camera for third-person IF",
   "--lingbot-gc-chunk-director": "GC chunk director",
   "--lingbot-gc-ease-turns": "GC ease turns",
   "--lingbot-if-subject-director": "IF subject director",
