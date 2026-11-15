@@ -258,9 +258,17 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
     wan.WanI2VCausal = Pipe
     configs = types.ModuleType("wan.configs")
     configs.WAN_CONFIGS = {"i2v-A14B": SimpleNamespace(sample_shift=5.0), "i2v-1.3B": SimpleNamespace(sample_shift=5.0)}
+    i2v = types.ModuleType("wan.image2video")  # the loader names fast_start patches during a load
+    originals = {n: (lambda *a, **k: None) for n in ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model")}
+    for n, f in originals.items():
+        setattr(i2v, n, f)
+    wan.image2video = i2v
     monkeypatch.setitem(sys.modules, "wan", wan)
     monkeypatch.setitem(sys.modules, "wan.configs", configs)
+    monkeypatch.setitem(sys.modules, "wan.image2video", i2v)
     monkeypatch.setattr(R, "_PIPES", {})
+    for k in ("LINGBOT_FAST", "LINGBOT_FAST_T5", "LINGBOT_FAST_LOAD", "LINGBOT_FAST_Y", "LINGBOT_T5_CPU"):
+        monkeypatch.delenv(k, raising=False)
 
     calls = []
 
@@ -288,11 +296,14 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
 
     monkeypatch.setattr(R, "import_run_agent", fake_import)
     default_yaw = P.YAW
-    assert R.main(["run.py", "--tasks", "GC005", "--lingbot-turn-cal", "--lingbot-player-hint"]) == 0
+    assert R.main(["run.py", "--tasks", "GC005", "--lingbot-turn-cal", "--lingbot-player-hint", "--lingbot-fast-y"]) == 0
     assert R.main(["run.py", "--tasks", "GC005", "--lingbot-stateless"]) == 0
     assert R.main(["run.py", "--tasks", "GC005"]) == 0
 
     assert len(loads) == 1  # one pipe for three arms
+    assert all(getattr(i2v, n) is f for n, f in originals.items())  # loader patches undone after the load
+    # fast-start flags are per call: arm 1's streamed y does not leak into arm 3
+    assert R.FAST == R.FS.FastFlags()
     a1, a2, a3 = calls
     assert all(c["fresh"] for c in calls) and len({id(c["module"]) for c in calls}) == 3
     assert a1["engine"].pipe is a2["engine"].pipe is a3["engine"].pipe
@@ -302,6 +313,7 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
     # session per arm, none for the stateless arm; flags re-read per call
     assert a1["engine"].session is not None and a2["engine"].session is None and a3["engine"].session is not None
     assert a1["engine"].session is not a3["engine"].session
+    assert a1["engine"].session.stream_encode and not a3["engine"].session.stream_encode
     assert (R.STATELESS, R.TURN_CAL, R.PLAYER_HINT) == (False, False, False)
     assert R.STATS.totals["tasks"] == 1  # counters belong to the last arm only
     # run_task wrapped once per fresh module (prompts + flag stats), never stacked across arms
