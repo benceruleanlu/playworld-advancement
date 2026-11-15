@@ -1,6 +1,7 @@
 ---
 // Reference material behind the story, as four tabs of one section. The panel ids are the old section ids, so deep links still land.
 import Section from "./Section.astro";
+const review = import.meta.env.BASE_URL.replace(/\/?$/, "/") + "review/";
 ---
 <Section id="watch" title="Explore" lede="Compare any two runs, browse one run's clips, or read every test and every run.">
   <div class="tabs" role="tablist" aria-label="Explore">
@@ -65,5 +66,5 @@ import Section from "./Section.astro";
     <div class="scroll"><table id="board"><tbody><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr></tbody></table></div>
     <button type="button" class="scmore" id="runs-more" hidden></button>
     </div>
-  <p class="scnote" id="watch-note">English judge comments were machine-translated after scoring; "show original" has the judge's own text. Task images come from <a href="https://github.com/kxding/PlayWorld" target="_blank" rel="noopener">PlayWorld</a> (Pexels and web image search, their terms). Videos: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial. <a href="https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request" target="_blank" rel="noopener">Request removal</a>.</p>
+  <p class="scnote" id="watch-note">English judge comments were machine-translated after scoring; "show original" has the judge's own text. Task images come from <a href="https://github.com/kxding/PlayWorld" target="_blank" rel="noopener">PlayWorld</a> (Pexels and web image search, their terms). Videos: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial. <a href="https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request" target="_blank" rel="noopener">Request removal</a>. To judge two clips by eye without knowing which is which, use the <a href={review}>blind review page</a>.</p>
 </Section>

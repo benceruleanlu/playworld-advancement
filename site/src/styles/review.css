@@ -1,0 +1,56 @@
+/* Blind review page (review.astro). Builds on global.css tokens and its .cvbtn, .cvbar, .cvgrid, .cvslot and .media patterns. */
+.rv { padding-top: 28px; }
+.rv > section > .sub { margin-bottom: 16px; }
+.rvform { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.rvform .filters { margin-bottom: 0; }
+.rvform input[type="text"] { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: var(--r-s); padding: 5px 8px; width: 14em; max-width: 100%; }
+.rvform .filters label.wide { flex: 1 1 16em; }
+.rvform select { width: 100%; }
+.rvlist { margin: 0; padding-left: 18px; font-size: var(--fs-s); color: var(--ink2); max-width: var(--measure); }
+.rvlist li { margin: 2px 0; }
+.rvrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 10px 0; }
+.rvgap { flex: 1 1 auto; }
+
+.rvtop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 10px; font-size: var(--fs-s); }
+.rvprog { font-weight: 600; font-variant-numeric: tabular-nums; }
+.rvpbar { flex: 1 1 120px; height: 4px; border-radius: 2px; background: var(--wash); overflow: hidden; }
+.rvpbar > span { display: block; height: 100%; width: 0; background: var(--ink2); }
+.rvtask { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+.rvtask b { font-size: var(--fs-l); }
+.rvtask .scnote { margin: 0; }
+.rvgrid { margin-bottom: 12px; }
+@media (min-width: 640px) { .rvgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rvpos { font-size: var(--fs-xs); color: var(--muted); }
+@media (min-width: 640px) { .rvpos { display: none; } }
+
+.rvqs { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 800px) { .rvqs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rvq { margin: 0; padding: 10px 12px; min-width: 0; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); }
+/* a 2px border, not a box-shadow ring: the ring drew through the legend text */
+.rvq.active { border: 2px solid var(--ink2); padding: 9px 11px; }
+.rvq legend { padding: 0 4px; font-weight: 650; font-size: var(--fs-m); }
+.rvchoices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.rvchoices .cvbtn { flex: 1 1 0; min-width: 0; min-height: 40px; }
+.rvchoices kbd { font: 11px var(--mono); color: var(--muted); border: 1px solid var(--axis); border-radius: 4px; padding: 0 4px; }
+.rvchoices .cvbtn[aria-pressed="true"] kbd { color: var(--ink); }
+.rvnote { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; font-size: var(--fs-xs); color: var(--ink2); }
+.rvnote textarea { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: var(--r-s); padding: 6px 8px; width: 100%; resize: vertical; }
+
+.rvsum { font-weight: 600; margin: 0 0 8px; }
+#rv-results h3, #rv-agree h3 { margin: 20px 0 4px; }
+#rv-results .scroll, #rv-agree .scroll { overflow-x: visible; margin-top: 8px; }
+table.rvtally caption { text-align: left; padding: 8px 10px 0; font-size: var(--fs-xs); color: var(--ink2); }
+table.rvtally th, table.rvtally td { white-space: normal; overflow-wrap: anywhere; padding: 6px 8px; }
+table.rvtally tr.sub2 th { padding-left: 18px; font-weight: 400; }
+@media (max-width: 480px) { table.rvtally th, table.rvtally td { padding: 5px 4px; font-size: var(--fs-xs); } }
+details.rvall { margin-top: 16px; font-size: var(--fs-s); }
+.rvexport { margin-top: 20px; }
+.rvimport { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-s); color: var(--ink2); max-width: 100%; }
+.rvimport input { max-width: 100%; font-size: var(--fs-s); }
+#rv-copied { color: var(--ink2); font-size: var(--fs-s); }
+#rv-attr-start, #rv-attr-reveal { margin-top: 16px; }
+nav.top span.nl { color: var(--ink); font-size: 14px; }
+@media (max-width: 560px) { nav.top .brand.rvhome { display: inline; font-size: var(--fs-s); } }
+main.rv > section { border-top: 0; padding-top: 0; }
+table.rvtally th.num, table.rvtally td.num { white-space: nowrap; overflow-wrap: normal; }
+table.rvtally .rvn { display: block; font-size: var(--fs-xs); color: var(--ink2); }
