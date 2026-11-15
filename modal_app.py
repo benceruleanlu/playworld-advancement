@@ -86,6 +86,25 @@ def gen_shard(argv: list[str], shard: int, num_shards: int, prov: dict[str, str]
         weights_vol.commit()
 
 
+@app.function(image=image, gpu=GPU, timeout=6 * 3600,
+              volumes={"/runs": runs_vol, "/weights": weights_vol},
+              secrets=[modal.Secret.from_name("pwa")])
+def gen_arms_shard(argv: list[str], shard: int, num_shards: int, prov: dict[str, str]) -> int:
+    """`pwa gen-arms`: every arm on this shard's tasks in one process, so the model loads once per container."""
+    env = {**os.environ, **prov}
+    cmd = ["python", "-m", "pwa.cli", "gen-arms", *shard_argv(argv, shard, num_shards)]
+    try:
+        return subprocess.run(cmd, cwd="/repo", env=env).returncode
+    finally:
+        runs_vol.commit()
+        weights_vol.commit()
+
+
+def arm_exps(exp: str, arms: str) -> list[str]:
+    """Experiment names `pwa gen-arms` writes for --arms (pwa/arms.py arm_names; '|'-separated)."""
+    return [f"{exp}-a{i}" for i in range(1, len(arms.split("|")) + 1)] if arms.strip() else []
+
+
 def _git(*args: str, cwd: Path = ROOT) -> str:
     r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -93,17 +112,23 @@ def _git(*args: str, cwd: Path = ROOT) -> str:
 
 @app.local_entrypoint()
 def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str = "dataset",
-         num_shards: int = 1, resume: bool = False, notes: str = "", tasks: str = "", extra: str = ""):
+         num_shards: int = 1, resume: bool = False, notes: str = "", tasks: str = "", extra: str = "",
+         arms: str = ""):
+    """arms: '|'-separated runner arg strings (pwa gen-arms). Each shard's container runs every arm, so the
+    model loads once per container; arm i lands in the Volume at /<EXP>-a<i>."""
     import re
     if not re.fullmatch(r"[A-Za-z0-9._-]+", exp):
         raise SystemExit(f"bad experiment name {exp!r}")
     if runner.startswith("lingbot") != RUNNER_ENV.startswith("lingbot"):
         raise SystemExit(f"runner {runner!r} needs a matching image: rerun with PWA_RUNNER={runner} in the environment")
     existing = {e.path.strip("/") for e in runs_vol.listdir("/")}
-    if exp in existing and not resume:
-        # Shards always pass --resume to pwa, so this is the overwrite guard.
-        raise SystemExit(f"{exp} already exists in the pwa-runs Volume; pick a new name or pass --resume")
+    for name in arm_exps(exp, arms) or [exp]:
+        if name in existing and not resume:
+            # Shards always pass --resume to pwa, so this is the overwrite guard.
+            raise SystemExit(f"{name} already exists in the pwa-runs Volume; pick a new name or pass --resume")
     argv = [exp, "--runner", runner, "--action-source", action_source]
+    if arms:
+        argv.append(f"--arms={arms}")  # one token: arm strings start with dashes
     argv += ["--tasks", *tasks.split(",")] if tasks else ["--split", split]
     if resume or num_shards > 1:
         # Shards share runs/EXP; pwa keeps per-shard meta files, so --resume is safe here.
@@ -118,7 +143,8 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         "PWA_GIT_DIRTY": "1" if _git("status", "--porcelain", "--", ".", ":!runs", ":!results") else "0",
         "PWA_SUBMODULE_SHA": _git("rev-parse", "HEAD", cwd=ROOT / "third_party" / "PlayWorld"),
     }
-    codes = list(gen_shard.starmap([(argv, i, num_shards, prov) for i in range(num_shards)]))
+    fn = gen_arms_shard if arms else gen_shard
+    codes = list(fn.starmap([(argv, i, num_shards, prov) for i in range(num_shards)]))
     print(f"shard exit codes: {codes}")
     if any(codes):
         raise SystemExit(1)

@@ -100,6 +100,10 @@ def test_hint_reaches_the_upstream_player_prompt(monkeypatch):
 
 
 def test_run_py_strips_the_flag_and_is_off_by_default():
+    from adapters.lingbot_world2 import run as R
+    flags, argv = R.configure(["run.py", "--tasks", "A", "--lingbot-player-hint"], {})
+    assert flags["player_hint"] and argv == ["run.py", "--tasks", "A"]
+    assert not R.configure(["run.py"], {})[0]["player_hint"]
+    assert R.configure(["run.py"], {"LINGBOT_PLAYER_HINT": "1"})[0]["player_hint"]
     src = (ROOT / "adapters" / "lingbot_world2" / "run.py").read_text()
-    assert '"--lingbot-player-hint")]' in src and 'os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"' in src
-    assert "if PLAYER_HINT:\n    run_agent.decide_action = H.wrap(" in src
+    assert "    if PLAYER_HINT:\n        run_agent.decide_action = H.wrap(" in src
