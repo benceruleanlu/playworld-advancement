@@ -378,10 +378,14 @@ jobs:
         # Screening judge: results/reports/EXP.<slug>.md and the run's unscored scenes reach main; never the
         # results csv row, and never the screening scores in the scenes manifest. An openai: (proxy) judge also
         # records its rows in results/proxy_experiments.csv, which the site does not read.
+        # The snippet is single-quoted: never put an apostrophe in it, comments included (tests/test_push_results_snippets.py).
+        # PUSH_RESULTS_EXPECT makes push_results.sh fail if a report is missing after the snippet ran.
         if: inputs.stage != 'gen-only' && inputs.judge_model != ''
         run: |
-          .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUGS" '
-            # only this run's openai: judges, so stale rows of other judges on the branch never overwrite main's
+          expect=()
+          for slug in $JUDGE_SLUGS; do expect+=("results/reports/$EXP.$slug.md"); done
+          PUSH_RESULTS_EXPECT="${expect[*]}" .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUGS" '
+            # only the openai: judges of this run, so stale rows of other judges on the branch never replace the rows on main
             proxy_args=()
             for spec in $JUDGE_SPECS; do
               if [[ "$spec" == openai:* ]]; then proxy_args+=(--judge-model "$spec"); fi

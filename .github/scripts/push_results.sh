@@ -2,6 +2,8 @@
 # push_results.sh MESSAGE SNIPPET
 # Run SNIPPET (bash) against a fresh checkout of main at $MAIN_DIR, then commit and push whatever it
 # changed under results/. Only results/ is staged, so no branch code reaches main. Retries on push races.
+# PUSH_RESULTS_EXPECT (optional): space-separated paths under $MAIN_DIR the snippet must leave in place. A missing
+# one fails the script; if all exist but nothing changed, a warning says so (a silent no-op hid a quoting bug once).
 set -euo pipefail
 msg="$1"
 snippet="$2"
@@ -20,8 +22,19 @@ for i in 1 2 3 4 5; do
   git -C "$MAIN_DIR" reset -q --hard FETCH_HEAD
   git -C "$MAIN_DIR" clean -qfd results
   bash -euo pipefail -c "$snippet"
+  for want in ${PUSH_RESULTS_EXPECT:-}; do
+    if [[ ! -e "$MAIN_DIR/$want" ]]; then
+      echo "::error::push_results.sh: the snippet did not write $want (\"$msg\"); nothing committed"
+      exit 1
+    fi
+  done
   git -C "$MAIN_DIR" add results
-  git -C "$MAIN_DIR" diff --cached --quiet && exit 0
+  if git -C "$MAIN_DIR" diff --cached --quiet; then
+    if [[ -n "${PUSH_RESULTS_EXPECT:-}" ]]; then
+      echo "::warning::push_results.sh: nothing changed under results/ (\"$msg\"); main already has identical files"
+    fi
+    exit 0
+  fi
   git -C "$MAIN_DIR" commit -q -m "$msg"
   git -C "$MAIN_DIR" push -q origin HEAD:main && exit 0
   sleep $((i * 3))
