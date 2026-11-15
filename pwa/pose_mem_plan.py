@@ -78,14 +78,14 @@ def _plan(task, cfg, chunked, turn_cal, sink, local, chunk_frames):
         if applies is None:
             applies = cfg.applies(name)
             pm = PM.PoseMemory(cfg, sink, local, name=name) if applies else None
-        track.advance(keys)
+        rel = track.advance(keys)
         for c in range(n):
-            cid, lat = chunk_id, track.latents[c * CHUNK:(c + 1) * CHUNK]
+            cid, lat, rel_c = chunk_id, track.latents[c * CHUNK:(c + 1) * CHUNK], rel[c * CHUNK:(c + 1) * CHUNK]
             v = PM.view_of(PM.centre(lat))
             row = {"call": name, "chunk": cid, "yaw": v[0], "pitch": v[1], "pos": float(np.linalg.norm(v[2:])),
                    "kind": "off", "memory": [], "rope": [], "notes": [], "installed_during": False}
             if pm is not None:
-                d = pm.decide(lat, cid, installed)
+                d = pm.decide(lat, cid, installed, rel_c)
                 row["kind"] = d.kind
                 if d.plan is not None:
                     row["window"], row["matched"] = d.plan.window, d.plan.matched
@@ -98,10 +98,13 @@ def _plan(task, cfg, chunked, turn_cal, sink, local, chunk_frames):
                     row["diff"] = [(round(m.dyaw, 1), round(m.dpitch, 1), round(m.dpos, 1), round(m.overlap, 2))
                                    for m in d.matches]
                     row["rope"] = list(d.ropes)
+                    row["rel"] = [PM.rel_motion(mr) for mr in d.rels]
+                    if cfg.rel != "stored":
+                        row["rel_mode"] = cfg.rel
                     row["notes"] = [m.note for m in d.matches if m.note]
-                row["installed"] = [i for i, _ in installed]
+                row["installed"] = [i for i, *_ in installed]
                 row["installed_during"] = bool(installed)
-                pm.record(cid, lat)
+                pm.record(cid, lat, rel=rel_c)
             rows.append(row)
             chunk_id += 1
     mem = [r for r in rows if r["installed_during"]]
@@ -133,8 +136,9 @@ def row_line(r: dict) -> str:
                         for c, d in zip(r["memory"], r["diff"])) if r["kind"] == "install" else \
             f"keeps {','.join(map(str, r['memory']))}"
         win = f" window o={r['window']:.2f}" if "window" in r else ""
+        rel = f" rel {r['rel_mode']}:{','.join(r['rel'])}" if "rel_mode" in r else ""
         notes = f" [{'; '.join(r['notes'])}]" if r["notes"] else ""
-        return f"{head} | {r['kind']} {what}{win} rope {','.join(map(str, r['rope']))}{notes}"
+        return f"{head} | {r['kind']} {what}{win} rope {','.join(map(str, r['rope']))}{rel}{notes}"
     tail = f" installed {','.join(map(str, r['installed']))}" if r.get("installed") else ""
     win = f" window o={r['window']:.2f} matched {r['matched']}" if "window" in r and r["kind"] != "warmup" else ""
     return f"{head} | {r['kind']}{win}{tail}"
