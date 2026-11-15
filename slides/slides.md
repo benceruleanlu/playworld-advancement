@@ -537,7 +537,7 @@ Clips: OE039 and OE047 at seed 0, results/media/stk14-fx-dev-v1-a1.json and -a2.
 
 <div class="dg grid grid-cols-4 gap-3 mt-6 tiers">
   <div class="box fill2"><b>Measured</b><div class="m">Yaw servo: end heading</div></div>
-  <div class="box fill"><b>Lead, small sample</b><div class="m">Stack: out-of-sight about +1, 2 seeds + dev2</div></div>
+  <div class="box fill"><b>Lead, small sample</b><div class="m">Stack: out-of-sight about +1 (proxy judge), 2 seeds + dev2</div></div>
   <div class="box"><b>Mixed</b><div class="m">Turn calibration on GC031: +1.95, then +0.35</div><div class="m">Sink 10 + window 22, OE039: +2.44 at seed 1; seed 0 mixed</div><div class="m">Caption prompt: 2 tasks up, 2 down</div></div>
   <div class="box dash"><b>Dropped</b><div class="m">Sink key scale: −0.46 to −0.85</div><div class="m">Conditioning schedule: insight 3.00 → 1.50</div><div class="m">Pose memory: +0.20 (proxy), bar 0.34</div></div>
 </div>
