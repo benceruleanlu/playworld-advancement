@@ -16,7 +16,9 @@ Each chunk's gain is limited to [0.5, 2.0]. It never adds or removes frames and 
 
 Only pure LEFT / RIGHT runs are measured and corrected. Chunks that also move (w/s/a/d) or tilt (i/k) are
 generated at the current gain and their yaw is taken as intended, because image shift is not a rotation there.
-A chunk whose correlation peak is under measured_turn.MIN_PEAK moves the heading but not the estimates.
+A run whose correlation peak is under measured_turn.MIN_PEAK, or whose image motion is not one rigid shift
+(rigid_share under RIGID_MIN: a subject is moving), is not trusted: its turn is taken as intended and nothing is
+learned from it, so on such scenes the servo leaves the rollout as it would be without the flag.
 
 Constants (env): LINGBOT_YAW_SERVO_K (1.0: share of the heading error corrected per chunk), LINGBOT_YAW_SERVO_BETA
 (0.6: weight of the newest chunk in the estimates). Pure Python and numpy; the session is passed in.
@@ -29,6 +31,7 @@ FLAG = "--lingbot-yaw-servo"
 LO, HI = 0.5, 2.0
 SIGN = {"l": 1.0, "j": -1.0}   # right positive, as measured_turn and player_hint
 MIN_FRAMES = 4                 # a run shorter than one latent is not used to update an estimate
+RIGID_MIN = 0.7                # under this share of rigid frame pairs the image motion is not a camera turn
 
 
 def enabled(argv: list[str], environ=os.environ) -> bool:
@@ -62,6 +65,36 @@ def yaw_part(key: str) -> str:
 def measurable(key: str) -> bool:
     """Image shift reads as rotation only for a pure turn or a wait."""
     return key.lower() in ("j", "l") or yaw_part(key) == "" and not any(p in "wsadik" for p in key.lower().split("+") if p)
+
+
+def rigid_share(frames, tol_px: float = 1.5, tol_rel: float = 0.3) -> float:
+    """Share of consecutive frame pairs whose image motion looks like one camera turn, in [0, 1].
+
+    A yaw shifts the top and bottom halves of the image by the same number of pixels, and the left and right
+    halves too. A subject that moves (an animal, a person, a vehicle) shifts only the part of the image it is in.
+    For each pair the horizontal shift is measured in the four halves of a 416 px wide grey frame; the pair counts
+    as rigid when all four agree within tol_px or tol_rel of their median. A low share means the yaw estimate is reading
+    subject motion, not rotation (measured: 0.96 to 1.00 on the static GC dev scenes, 0.42 to 0.62 on a zoo scene)."""
+    import numpy as np  # noqa: PLC0415
+
+    from adapters.lingbot_world2 import measured_turn as MT  # noqa: PLC0415
+    gray = []
+    for f in frames:
+        g = np.asarray(f, dtype=np.float32)
+        g = g.mean(axis=2) if g.ndim == 3 else g
+        step = max(1, round(g.shape[1] / 416))
+        gray.append(g[::step, ::step])
+    if len(gray) < 2:
+        return 1.0
+    h, w = gray[0].shape
+    halves = (np.s_[:h // 2, w // 8:w - w // 8], np.s_[h // 2:, w // 8:w - w // 8],
+              np.s_[h // 8:h - h // 8, :w // 2], np.s_[h // 8:h - h // 8, w // 2:])
+    ok = 0
+    for a, b in zip(gray, gray[1:]):
+        dx = [MT.shift(a[s], b[s])[0] for s in halves]
+        med = float(np.median(dx))
+        ok += max(abs(d - med) for d in dx) <= max(tol_px, tol_rel * abs(med))
+    return ok / (len(gray) - 1)
 
 
 class YawServo:
@@ -116,10 +149,11 @@ class YawServo:
             if not measurable(key):
                 self.heading += asked            # moving or tilting: take the turn as intended
                 continue
-            self.heading += yaw
-            if not trusted:
+            if not trusted:                      # weak peak or a moving subject: stand down, as intended too
+                self.heading += asked
                 self.untrusted += 1
                 continue
+            self.heading += yaw
             if y and n >= MIN_FRAMES:
                 commanded = n * rate_deg * gain[0 if y == "j" else 1]
                 ratio = abs(yaw) / commanded if commanded > 0 else 0.0
@@ -131,11 +165,13 @@ class YawServo:
                 f"heading {self.heading:+.1f} (intended {self.intended:+.1f})")
 
 
-def step(session, servo: YawServo, keys: list[str], rate_deg: float, measure, log=None):
-    """session.step(keys) generated chunk by chunk under the servo. Returns the same frames array shape a single
-    step returns (fresh rollout: input frame + 16n-4; continuation: previous last frame + 16n).
+def step(session, servo: YawServo, keys: list[str], rate_deg: float, measure, rigid=rigid_share, log=None):
+    """session.step(keys) generated chunk by chunk under the servo. Returns the same frames array a single step
+    returns (fresh rollout: input frame + 16n-4; continuation: previous last frame + 16n).
 
-    measure(frames) -> (yaw, pitch, peak) is measured_turn.chunk_turn; min_peak its trust threshold."""
+    measure(frames) -> (yaw, pitch, peak) is measured_turn.chunk_turn. A run's reading is trusted when its peak is
+    at least measured_turn.MIN_PEAK and, with `rigid`, when rigid(frames) is at least RIGID_MIN (the image moved as
+    one camera turn, not as a subject walking through it). Untrusted runs do not move the estimates."""
     import numpy as np  # noqa: PLC0415
 
     from adapters.lingbot_world2 import measured_turn as MT  # noqa: PLC0415
@@ -146,8 +182,10 @@ def step(session, servo: YawServo, keys: list[str], rate_deg: float, measure, lo
         frames = session.step(piece)            # frames[0] is the frame before this chunk
         measured = []
         for _key, a, b in runs(piece):
-            yaw, _pitch, peak = measure(frames[a:b + 1])
-            measured.append((yaw, peak >= MT.MIN_PEAK))
+            sub = frames[a:b + 1]
+            yaw, _pitch, peak = measure(sub)
+            ok = peak >= MT.MIN_PEAK and (rigid is None or rigid(sub) >= RIGID_MIN)
+            measured.append((yaw, bool(ok)))
         servo.observe(piece, rate_deg, gain, measured)
         if log is not None:
             log(servo.describe())

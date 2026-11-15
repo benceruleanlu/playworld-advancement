@@ -70,7 +70,7 @@ def test_servo_closes_the_heading_in_one_long_step(segs, g):
     open_loop.step(keys)
     s = FakeSession(*g)
     servo = YS.YawServo()
-    frames = YS.step(s, servo, keys, RATE, _measure(s))
+    frames = YS.step(s, servo, keys, RATE, _measure(s), rigid=None)
     assert frames.shape == (len(keys) + 1, 1)                           # same frames a single step returns
     assert abs(s.heading) < 2.0 and abs(s.heading) < 0.15 * abs(open_loop.heading)
     assert servo.intended == pytest.approx(0.0, abs=1e-9) and servo.heading == pytest.approx(s.heading)
@@ -81,10 +81,10 @@ def test_servo_closes_the_heading_in_one_long_step(segs, g):
 def test_servo_works_across_closed_loop_calls_and_resets():
     s = FakeSession(1.3, 0.9)
     servo = YS.YawServo()
-    first = YS.step(s, servo, ["j"] * 28, RATE, _measure(s))            # chunk 01 of a rollout: 29 frames
+    first = YS.step(s, servo, ["j"] * 28, RATE, _measure(s), rigid=None)            # chunk 01 of a rollout: 29 frames
     assert first.shape == (29, 1)
     for keys in (["j"] * 32, ["l"] * 32, ["l"] * 32):                   # later agent steps: 33 frames each
-        assert YS.step(s, servo, keys, RATE, _measure(s)).shape == (33, 1)
+        assert YS.step(s, servo, keys, RATE, _measure(s), rigid=None).shape == (33, 1)
     # intended: 60 frames left, 64 right; the rendered heading follows it instead of the raw gains
     assert servo.intended == pytest.approx(4 * RATE)
     assert abs(s.heading - servo.intended) < 2.0
@@ -97,13 +97,66 @@ def test_servo_works_across_closed_loop_calls_and_resets():
 def test_servo_does_not_learn_from_moving_or_untrusted_chunks():
     s = FakeSession(1.5, 1.5)
     servo = YS.YawServo()
-    YS.step(s, servo, ["w+l"] * 12 + ["w"] * 16, RATE, _measure(s))     # walking while turning: not measurable
+    YS.step(s, servo, ["w+l"] * 12 + ["w"] * 16, RATE, _measure(s), rigid=None)     # walking while turning: not measurable
     assert servo.est == {"j": 1.0, "l": 1.0} and servo.heading == pytest.approx(servo.intended) == pytest.approx(12 * RATE)
     weak = FakeSession(1.5, 1.5, peak=0.0)
     servo = YS.YawServo()
-    YS.step(weak, servo, ["l"] * 12 + ["l"] * 16, RATE, _measure(weak))
-    assert servo.est["l"] == 1.0 and servo.untrusted == 2 and servo.heading == pytest.approx(weak.heading)
+    YS.step(weak, servo, ["l"] * 12 + ["l"] * 16, RATE, _measure(weak), rigid=None)
+    assert servo.est["l"] == 1.0 and servo.untrusted == 2 and servo.heading == pytest.approx(servo.intended)
+    assert [g for _n, g in weak.calls] == [(1.0, 1.0), (1.0, 1.0)]     # stood down: the rollout is the open-loop one
     still = FakeSession(1.0, 1.0)
     servo = YS.YawServo()
-    YS.step(still, servo, ["none"] * 12, RATE, _measure(still))         # nothing to correct: gain stays 1
+    YS.step(still, servo, ["none"] * 12, RATE, _measure(still), rigid=None)         # nothing to correct: gain stays 1
     assert still.calls == [(12, (1.0, 1.0))] and servo.corrected == 0
+
+
+# ------------------------------------------------------------ runner flag
+
+def test_runner_flag_parses_and_refuses_bad_combinations():
+    from adapters.lingbot_world2 import run as R
+    flags, rest = R.configure(["run.py", "--tasks", "GC033"], environ={})
+    assert flags["yaw_servo"] is False and rest == ["run.py", "--tasks", "GC033"]
+    flags, rest = R.configure(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo", "--tasks", "GC033"], environ={})
+    assert flags["yaw_servo"] is True and rest == ["run.py", "--tasks", "GC033"]
+    flags, _ = R.configure(["run.py", "--lingbot-turn-cal"], environ={"LINGBOT_YAW_SERVO": "1"})
+    assert flags["yaw_servo"] is True
+    for argv, msg in ((["--lingbot-yaw-servo"], "requires session mode and --lingbot-turn-cal"),
+                      (["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-stateless"], "requires session mode"),
+                      (["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-gain", "0.8"], "use one"),
+                      (["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-gc-ease-turns"], "gc-ease-turns")):
+        with pytest.raises(SystemExit, match=msg):
+            R.configure(["run.py", *argv], environ={})
+
+
+def test_flag_counters_only_with_the_flag():
+    from adapters.lingbot_world2 import flag_stats as F
+    off = F.FlagStats(True, "goal", False, False)
+    assert "yaw_servo" not in off.summary("GC033") and "yaw_servo" not in off.total_line()
+    on = F.FlagStats(True, "goal", False, False, yaw_servo=True)
+    assert on.summary("GC033")["yaw_servo"] == "skip"                 # on, but this task had no turn chunk
+    on.yaw_servo_chunks, on.yaw_servo_untrusted = 11, 1
+    s = on.summary("GC033")
+    assert (s["yaw_servo"], s["yaw_servo_chunks"], s["yaw_servo_untrusted"]) == ("on", 11, 1)
+    on.finish_task("GC033")
+    assert "yaw_servo=on yaw_servo_chunks=11 yaw_servo_untrusted=1" in on.total_line()
+
+
+def test_rigid_share_tells_a_camera_turn_from_a_moving_subject():
+    rng = np.random.default_rng(0)
+    tex = rng.random((480, 2000)).astype(np.float32)
+    c = np.cumsum(np.cumsum(tex, axis=0), axis=1)
+    tex = (c[8:, 8:] - c[:-8, 8:] - c[8:, :-8] + c[:-8, :-8]) / 64.0
+    pan = np.stack([tex[:464, 100 + 6 * i:100 + 6 * i + 832] for i in range(9)])        # whole image shifts together
+    assert YS.rigid_share(pan) == 1.0
+    subject = np.stack([tex[:464, 100:932].copy() for _ in range(9)])                   # still camera ...
+    for i in range(9):
+        subject[i, 232:, :] = tex[:232, 300 + 8 * i:300 + 8 * i + 832]                  # ... the lower half moves
+    assert YS.rigid_share(subject) < YS.RIGID_MIN
+    assert YS.rigid_share(pan[:1]) == 1.0
+
+
+def test_step_stands_down_when_the_motion_is_not_rigid():
+    s = FakeSession(1.5, 1.5)
+    servo = YS.YawServo()
+    YS.step(s, servo, ["l"] * 12 + ["l"] * 16, RATE, _measure(s), rigid=lambda frames: 0.4)
+    assert servo.est["l"] == 1.0 and servo.untrusted == 2 and [g for _n, g in s.calls] == [(1.0, 1.0), (1.0, 1.0)]
