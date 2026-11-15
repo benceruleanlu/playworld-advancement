@@ -308,7 +308,7 @@ import * as RunInfo from "./runinfo.js";
     return best;
   }
   // runs whose AI player differs from every run compared since
-  var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "Older AI player than every run compared since, so this is a diagnostic, not the starting-model number." };
+  var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "This run used an older AI player than every run compared since, so it is a diagnostic and not the starting-model number." };
   function renderStatus() {
     var box = $("status"), fin = bestFinal(), shown = fin || bestClosed();
     box.className = "scorecard card" + (fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD) ? " ok" : "");
@@ -330,12 +330,12 @@ import * as RunInfo from "./runinfo.js";
       if (PLAYER_NOTE[shown.exp]) box.appendChild(el("p", { class: "vs", text: PLAYER_NOTE[shown.exp] }));
     } else box.appendChild(el("p", { class: "vs", text: "No run big enough to estimate a score yet (24 or more tasks, 2 or more judge passes)." }));
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
-    box.appendChild(el("p", { class: "vs", text: "Paper, all 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
+    box.appendChild(el("p", { class: "vs", text: "On all 171 tasks the paper reports " + fmt(GENIE.overall) + " for Genie 3 and " + fmt(lb.overall) + " for LingBot-World v2." }));
   }
   function renderFull() {
     var full = realRows().filter(function (r) { return isFull(r) && r.overall !== null; });
     var most = 0; realRows().forEach(function (r) { if (r.overall !== null && r.n_tasks > most) most = r.n_tasks; });
-    $("full").textContent = full.length ? "" : "No full-benchmark score exists yet: every scored run so far covers at most " + most + " of the " + FULL_TASKS + " tasks, so none compares directly with the paper rows.";
+    $("full").textContent = full.length ? "" : "No full-benchmark score exists yet. Every scored run so far covers at most " + most + " of the " + FULL_TASKS + " tasks, so none compares directly with the paper rows.";
     $("full").hidden = !!full.length;
   }
   function renderRuler() {
@@ -414,7 +414,7 @@ import * as RunInfo from "./runinfo.js";
   var METHODS = [
     { group: "now", title: "Turn calibration", arms: [["off", "fx14-model-dev-v2-a1"], ["on", "fx14-model-dev-v2-a2"]],
       cells: "of 15 tasks scored in both arms, 0 up a full point and 1 down; 8 and 9 of 24 clips missing and counted as 1.0",
-      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11. The same comparison on the 6 GC tasks alone (orc14-gc-v1) moved 2 tasks up a full point and none down; one of them, GC031, gained 1.95 there and 0.35 here.",
+      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11. The same comparison on the 6 GC tasks alone (orc14-gc-v1) moved 2 tasks up a full point and none down, and the GC mean from 2.18 to 2.58, inside the noise. GC031 gained 1.95 there and 0.35 here, and its 4.00 there comes with a judge comment that the camera never completes the 360-degree turn. The gain did not replicate, so turn calibration is not adopted.",
       also: ["orc14-gc-v1-a1", "orc14-gc-v1-a2"], links: [["#23", PR + "23"]] },
     { group: "now", title: "Caption prompt", arms: [["off", "fx14-model-dev-v2-a2"], ["on", "fx14-model-dev-v2-a3"]], also: ["ins14-base-v2", "ins14-caption-v1"],
       cells: "of 14 tasks scored in both arms, 2 up a full point and 2 down; no insight clip in either arm",
@@ -429,23 +429,24 @@ import * as RunInfo from "./runinfo.js";
       body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on. On insight tasks (dec14-ins-v1, OE001 and OE018, after the decode fix) the schedule lowered both: 3.00 to 1.50 overall. Dropped.",
       links: [["#101", PR + "101"]] },
     { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
-      pending: "control and sink 12 scored (2.35, 2.17); the two local 36 arms failed",
-      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. Control and sink 12 are scored and single tasks move both ways by up to 1.9 points (OE039 up, OE048 down); a repeat measurement found 12 sink latents changed nothing, so these are spread, not an effect. The local 36 arms produced no clips.",
+      pending: "control and sink 12 scored (2.35, 2.17); the two arms with a window of 36 failed",
+      also: ["pm14-fx-v1-a3", "pm14-fx-v2-a4", "win14-fx-v1-a3", "win14-fx-v1-a4"],
+      body: "Changes how many latent frames the model keeps attending to (a sink of 6 opening latents in an attention window of 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. OE039 scored about 3 in all three arms that keep more of the opening view: 3.00 with a sink of 12, and 3.12 in both arms with a sink of 10 in a window of 22 (pm14-fx-v1-a3, pm14-fx-v2-a4), against 1.25 to 2.00 across the control's scorings. The two 10 and 22 arms scored 2.25 and 2.67 on out-of-sight, about 2.46 against 1.83 to 2.10 for control. That is at the noise bar, on one seed. Their two videos are nearly identical, yet they scored 1.50 and 2.88 on OE048. A sink of 12 alone showed no out-of-sight gain (1.86 against 1.93) and dropped OE048 from 3.19 to 1.25. A second seed is running (win14-fx-v1). The two arms with an attention window of 36 produced no clips.",
       links: [["#104", PR + "104"]] },
     { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
       cells: "every scaled arm is lower than the control; dropped",
-      body: "Turns down how strongly later chunks attend to the pinned first frames, to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed actions. Weakening the sink lowered out-of-sight from 2.10 to between 1.25 and 1.65, which fits returns to the start view being served by the sink.",
+      body: "Lowers how strongly later chunks attend to the pinned opening frames (the sink), to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed action scripts. A weaker sink lowered out-of-sight from 2.10 to between 1.25 and 1.65. That fits the reading that the sink is what lets the camera return to the start view.",
       links: [["#112", PR + "112"]] },
-    { group: "now", title: "Insight prompt: goal, caption, caption with cue", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption + director", "ins14-fx-v2-a3"]],
-      body: "All six insight dev tasks. Insight tasks are wait-only, so the fixed-action rollout equals the closed-loop one.",
+    { group: "now", title: "Insight prompt: goal, caption, or caption with the insight director", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption and director", "ins14-fx-v2-a3"]],
+      body: "Runs on all six insight dev tasks. Insight tasks are wait-only, so the rollout with fixed action scripts is the same as the closed-loop one.",
       links: [["#32", PR + "32"], ["#90", PR + "90"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
       cells: "chunk director lowered 2 of 6 tasks by a full point and raised none; ease turns moved none; re-anchor raised 1 (GC033) and lowered none; one seed",
       body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on a repeat measurement; re-anchor is a weak lead. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
-      cells: "6 tasks, one seed; the first run changed no frame, so differences are spread",
-      body: "Re-inserts past views into the attention sink when the camera returns near them. In the first run the memory never inserted anything, so its arms are the control plus judge spread; a fixed version is in progress (pm14-fx-v2 tests variants). Not a result.",
+      cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread",
+      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. A fix is in progress. Not a result.",
       also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4"], links: [["#123", PR + "123"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
@@ -471,9 +472,9 @@ import * as RunInfo from "./runinfo.js";
       body: "Three changes to how each chunk is sampled or written to the model's memory. Merged behind opt-in flags and not run yet.", links: [["#103", PR + "103"], ["#112", PR + "112"]] }
   ];
   var GROUPS = [
-    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes, one run per arm. The overall figures count missing clips as 1.0, so read the per-task counts."],
-    ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. Not adopted."],
-    ["cand", "Candidates, not yet scored", "Off by default. Not results."]
+    ["now", "Testing now: model-side", "These use fixed action scripts or the scripted player (no AI player), the 14B model, the official judge with 2 to 4 passes, and one run per arm. The overall figures count missing clips as 1.0, so read the per-task counts."],
+    ["parked", "Tried and parked: player-side", "These use the AI player, the official judge with 4 passes, and small task sets. None is adopted."],
+    ["cand", "Candidates, not yet scored", "Off by default. These are not results."]
   ];
   function rowText(r) {
     if (!r) return "not logged";
@@ -485,8 +486,7 @@ import * as RunInfo from "./runinfo.js";
     if (!m.arms) return { text: "not scored", none: true };
     var rows = m.arms.map(function (a) { return rowByExp(a[1]); });
     if (rows.every(function (r) { return r && r.overall !== null && !isCapped(r); })) {
-      var s = rows.length === 2 ? fmt(rows[0].overall) + " → " + fmt(rows[1].overall) + " overall, " + rows[1].n_tasks + " tasks"
-        : m.arms.map(function (a, i) { return a[0] + " " + fmt(rows[i].overall); }).join(" · ");
+      var s = m.arms.map(function (a, i) { return a[0] + " " + fmt(rows[i].overall); }).join(", ") + (rows.length === 2 ? " overall on " + rows[1].n_tasks + " tasks" : "");
       return { text: s + (m.cells ? "; " + m.cells : ""), none: false };
     }
     if (rows.some(function (r) { return r && isCapped(r); })) return { text: "capped smoke only, no decision", none: true };
@@ -528,48 +528,49 @@ import * as RunInfo from "./runinfo.js";
   // kind "note": text and a scene only. watch: { task, b: control, c: treatment } for the compare player; scene: [exp, task].
   // say: the one line the tour bar shows. Every number in body or say must be in results/ or research/.
   var STORY = [
-    { id: "player", kind: "note", kicker: "Starting point", title: "With an AI player, the player decides most camera tasks",
-      body: "In our 24-task baseline the player reversed direction 9 to 17 times on every out-of-sight task and 25 times on GC036. On 4 of 6 out-of-sight tasks the camera never came back to the start view, so there was nothing for the judge to grade. We therefore test model-side changes with fixed action scripts, and keep the AI player for final scores.",
-      say: "The baseline player turned left and right for the whole rollout. Model-side tests use fixed moves instead.",
+    { id: "player", kind: "note", title: "In our baseline, the AI player's moves decided most camera tasks",
+      body: "In our 24-task baseline the player reversed direction 9 to 17 times on every out-of-sight task and 25 times on GC036. On 4 of 6 out-of-sight tasks the camera never came back to the start view, so there was nothing for the judge to grade. So we test model-side changes with fixed action scripts and use the AI player for final scores.",
+      say: "The baseline player kept turning left and right until the rollout ended. Model-side tests use fixed action scripts instead.",
       scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch the baseline player on GC036",
       links: [["baseline census", BLOB + "research/baseline-census.md"]] },
-    { id: "noise", kind: "repeat", kicker: "Noise floor", title: "The same settings, scored three times, do not give the same score",
-      body: "Three control arms ran the same flags and the same fixed action scripts. Generation is deterministic, so the judge saw the same video each time, and the per-task means over four passes still differ. So a task counts as moved only at a full point, and a change is adopted only if the gain repeats on a second seed.",
-      say: "Three identical controls disagree. That sets the bar: a full point, twice.",
+    { id: "noise", kind: "repeat", title: "Three controls with the same settings got different scores",
+      body: "Three control arms ran the same flags and the same fixed action scripts. Generation is deterministic, so the judge saw the same video each time, and the per-task means over four passes still differ. Across these scorings the control's out-of-sight mean was 1.83, 1.93 and 2.10, over the out-of-sight tasks each run covers. The pose-memory arm pm14-fx-v1-a2 is a byte-identical copy of the control clips, scored separately, and GC036 got 2.65 with its gate passed in the control and 1.35 with its gate failed in the copy. So a task counts as moved only when it changes by a full point, and a change is adopted only if the gain repeats on a second seed.",
+      say: "The judge gives the same videos different scores, so a change must move a task by a full point and repeat on a second seed.",
       runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
-      watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" }, watchLabel: "Watch two identical controls on OE047" },
-    { id: "turncal", kicker: "Camera", title: "Given correct moves, calibrated turns lifted two GC tasks by more than a point",
-      body: "The task prompts name angles (a turn key is 22.5 degrees) but the model's default rate turns 34. With dataset moves replayed and the rate calibrated, GC031 and GC036 moved up. In the separate 24-task A/B the same two tasks moved by 0.35 and 0.80, under the bar, so this is not adopted.",
-      say: "Calibrated turns: two tasks up on one run, under the bar on the second.",
+      watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" }, watchLabel: "Watch two controls with the same settings on OE047" },
+    { id: "turncal", title: "Turn calibration lifted two GC tasks on one run and did not replicate",
+      body: "The task prompts name angles (one turn key is 22.5 degrees), but at the model's default rate one key turns 34 degrees. With the dataset moves replayed and the rate calibrated, GC031 and GC036 moved up by more than a point, but the GC mean moved from 2.18 to 2.58, inside the noise. GC031 scored 4.00 although the judge's own comment says the camera never completes the 360-degree turn. In the separate 24-task A/B the GC mean moved by 0.20 and the same two tasks by 0.35 and 0.80, less than a full point. Turn calibration is not adopted.",
+      say: "Turn calibration lifted two GC tasks on one run. On a second run they moved by less than a point, so it is not adopted.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", kind: "repeat", kicker: "A test that did not run", title: "Our pose memory never fired in its first run, and its score still moved",
-      body: "Pose memory re-inserts an earlier view into the model's attention when the camera comes back to it. In the first run it never inserted anything and no frame changed, so the memory arm is the control scored again. One task still moved 1.3 points and failed a gate. There is no pose-memory result yet; a fixed version is being rerun.",
-      say: "Our own memory mechanism never fired. The flag counters caught it; the scores alone would have looked like an effect.",
-      runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Mean of the official judge's passes per task. The memory arm changed no frame, so both columns score the same video.",
+    { id: "memory", kind: "repeat", title: "Our pose memory never fired in its first run, and its score still moved",
+      body: "Pose memory re-inserts an earlier view into the model's attention when the camera comes back to it. In the first run it never inserted anything and no frame changed, so the memory arm is the control scored again. One task still moved 1.3 points and failed a gate. The two later memory arms (pm14-fx-v2-a1, pm14-fx-v2-a2) also made zero retrievals, and their clips are byte-identical to control too. There is no pose-memory result yet. A fix is in progress.",
+      say: "Pose memory never fired in its first run. The flag counters showed it. From the scores alone it would have looked like an effect.",
+      runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Each number is the mean of the official judge's passes on that task. The memory arm changed no frame, so both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
-    { id: "sink", kicker: "Negative result", title: "Damping attention to the opening frames made out-of-sight worse",
-      body: "Hypothesis: the pinned opening frames pull the scene back to its first state when the camera returns, which the rubric scores lowest. Turning their attention down lowered out-of-sight in all three arms. That fits the opposite reading: a return to the start view is served by those frames. Dropped.",
-      say: "A hypothesis that failed: every arm scored lower than control.",
+    { id: "sink", title: "Lowering attention to the opening frames made out-of-sight worse",
+      body: "We expected the pinned opening frames to pull the scene back to its first state when the camera returns, which the rubric scores lowest. Lowering their attention lowered out-of-sight in all three arms. That fits the opposite reading, that those frames are what lets the camera return to the start view. Dropped.",
+      say: "Lowering attention to the opening frames failed. Every arm scored lower than control.",
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
       watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
-    { id: "insight", kicker: "Insight", title: "Does the scene caption wake up a static scene?", pending: true,
-      body: "Insight tasks tell the player to wait and observe, and the model receives that sentence as its text prompt. In the baseline, four of six insight rollouts were flagged static. This A/B gives the model the task's scene caption instead, with and without a fixed activity cue.",
-      say: "Insight: the model was being prompted with \"wait and observe\". This A/B swaps in the scene caption.",
-      ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
+    { id: "insight", title: "Does prompting with the scene caption make static insight scenes move?", pending: true,
+      body: "Insight tasks tell the player to wait and observe, and the model receives that sentence as its text prompt. In the baseline, four of six insight rollouts were flagged static or near static in at least one judge pass. This A/B gives the model the task's scene caption instead, with and without the insight director, which adds a fixed sentence about the activity.",
+      say: "On insight tasks the model was prompted with \"wait and observe\". This A/B prompts it with the scene caption instead.",
+      ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["director", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } }
-    ,{ id: "window", kicker: "Second seed", title: "Does a larger attention cache help the camera come back?", pending: true,
-      body: "On the first seed, three arms with a larger cache scored OE039 between 3.0 and 3.1, against 1.25 to 2.0 for three controls, and two of the three lost more than a point on OE048. This run repeats the control and the larger cache on a second seed, which is what the adoption rule asks for.",
-      say: "One lead is being repeated on a second seed right now.",
-      ctl: "win14-fx-v1-a3", arms: [["larger cache", "win14-fx-v1-a4", "sink 10, cache 22, seed 1"]],
+    ,{ id: "window", title: "Does a larger attention window help the camera come back?", pending: true,
+      body: "On the first seed, OE039 scored about 3 in all three arms that keep more of the opening view (3.00 with a sink of 12, 3.12 in both arms with a sink of 10 in a window of 22), against 1.25 to 2.00 across the control's scorings. The two 10 and 22 arms averaged about 2.46 on out-of-sight against 1.83 to 2.10 for control, which is at the noise bar on one seed. On OE048 one of them dropped to 1.50 while the other scored 2.88, and the sink of 12 dropped to 1.25. This run repeats the control and the 10 and 22 window on a second seed, as the adoption rule asks.",
+      say: "This run repeats the larger attention window on a second seed.",
+      ctl: "win14-fx-v1-a3", arms: [["larger window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]],
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
-    { id: "open", kind: "note", kicker: "Still open", title: "What this page cannot show yet",
-      body: "Reported as it stands, not as we hoped.",
-      say: "What is missing: a full 171-task score, and any change that repeats on two seeds.",
+    { id: "open", kind: "note", title: "What this page cannot show yet",
+      body: "",
+      say: "There is no full 171-task score yet, and no change has repeated its gain on two seeds.",
       points: ["No score on all 171 tasks exists, for the starting model or for a method, so nothing here compares directly with the paper rows.",
         "Every A/B above is one seed with fixed actions (open loop). None meets the adoption rule, which needs the AI player and two seeds.",
         "Dropped as harmful or null: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads still standing: the caption prompt on insight, re-anchoring on GC (weak), pose memory (needs its rerun)."],
+        "Leads not yet ruled out: a larger attention window on out-of-sight (one seed, at the noise bar, a second seed running as win14-fx-v1), the caption prompt on insight (the six-task test is running as ins14-fx-v2), and re-anchoring on GC (weak, inside the noise).",
+        "Pose memory has no result. Every memory arm so far made zero retrievals and its clips are byte-identical to control. A fix is in progress."],
       links: [["status in AGENTS.md", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
@@ -655,7 +656,7 @@ import * as RunInfo from "./runinfo.js";
         el("span", { class: t.down ? "bad" : "", text: t.down + " down" }), document.createTextNode(" of " + t.n + " task" + (t.n === 1 ? "" : "s"))]));
     });
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: "Mean of the official judge's passes per task. ▲ ▼ mark a move of a full point against control. Click a number to watch that pair." };
+      cap: "Each number is the mean of the official judge's passes on that task. ▲ and ▼ mark a move of a full point against control. Click a number to watch the control and that arm side by side." };
   }
   // the same settings run several times: tasks at least two runs judged, and the spread between them
   function repeatEvidence(s) {
@@ -679,9 +680,9 @@ import * as RunInfo from "./runinfo.js";
       tb.appendChild(tr);
     });
     var sum = el("ul", { class: "tally" }, [el("li", null, [document.createTextNode("Largest spread "), el("b", { text: fmt(worst.sp) }),
-      document.createTextNode(" on " + worst.k + "; " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
+      document.createTextNode(" on " + worst.k + ". " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: s.cap || "Mean of the official judge's passes per task, for runs with identical settings." };
+      cap: s.cap || "Each number is the mean of the official judge's passes on that task, for runs with the same settings." };
   }
   function storyState(s) {
     if (s.kind === "note") return "ok";
@@ -702,9 +703,8 @@ import * as RunInfo from "./runinfo.js";
       if (st === "ended" || st === "none" || (st === "generated" && !s.pending)) return;
       var ev = st !== "ok" ? null : s.kind === "repeat" ? repeatEvidence(s) : s.kind === "note" ? null : abEvidence(s);
       var n = storyShown.length + 1;
-      var text = el("div", { class: "st-text" }, [
-        el("p", { class: "st-kick" }, [el("span", { class: "st-n", text: String(n) }), document.createTextNode(s.kicker)]),
-        el("h3", { text: s.title }), el("p", { class: "st-body", text: s.body })]);
+      var text = el("div", { class: "st-text" }, [el("h3", { text: n + ". " + s.title })]);
+      if (s.body) text.appendChild(el("p", { class: "st-body", text: s.body }));
       if (s.points) text.appendChild(el("ul", { class: "st-points" }, s.points.map(function (t) { return el("li", { text: t }); })));
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
@@ -740,7 +740,7 @@ import * as RunInfo from "./runinfo.js";
           side.appendChild(pb);
         }
       }
-      var li = el("li", { class: "st card" + (ev || s.kind === "note" ? "" : " pend") + (side.firstChild ? "" : " solo"), id: "story-" + s.id }, side.firstChild ? [text, side] : [text]);
+      var li = el("li", { class: "st" + (ev || s.kind === "note" ? "" : " pend") + (side.firstChild ? "" : " solo"), id: "story-" + s.id }, side.firstChild ? [text, side] : [text]);
       ol.appendChild(li); storyShown.push({ s: s, li: li, ev: !!ev });
     });
     if (!storyShown.length) ol.appendChild(el("li", { class: "empty", text: "No findings to show yet." }));
@@ -754,62 +754,59 @@ import * as RunInfo from "./runinfo.js";
     if (!shown) { p.hidden = true; return; }
     p.hidden = false;
     var beat = fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD);
-    p.appendChild(el("b", { text: fin ? (beat ? "Answer: yes. " : "Answer: no. ") : "Answer so far: not yet. " }));
-    p.appendChild(document.createTextNode(fin ? "Final score " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks against Genie 3's " + fmt(TARGET) + "."
-      : "Our best official score is " + fmt(shown.overall) + " on " + shown.n_tasks + " of " + FULL_TASKS + " tasks; Genie 3 scores " + fmt(TARGET) + " on all of them. " +
-        (ADOPTED.length ? "Adopted so far: " + ADOPTED.join(", ") + "." : "No change has yet repeated a full-point gain on two seeds, so none is adopted.")));
+    p.appendChild(el("b", { text: fin ? (beat ? "Yes. " : "No. ") : "Not yet. " }));
+    p.appendChild(document.createTextNode(fin ? "Our final score is " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks, and Genie 3 scores " + fmt(TARGET) + "."
+      : "Our best official score is " + fmt(shown.overall) + " on " + shown.n_tasks + " of " + FULL_TASKS + " tasks, and Genie 3 scores " + fmt(TARGET) + " on all of them. " +
+        (ADOPTED.length ? "Adopted so far are " + ADOPTED.join(", ") + "." : "No change has yet repeated a full-point gain on two seeds, so none is adopted.")));
   }
   function renderGlance() {
-    var ul = $("glance"); if (!ul) return; clear(ul);
+    var p = $("glance"); if (!p) return; clear(p);
     var real = realRows(), scored = real.filter(function (r) { return r.overall !== null; });
     var groups = {}; real.forEach(function (r) { var m = /\[arm \d+\/\d+ of ([^:\]]+)/.exec(r.notes || ""); if (m) groups[m[1]] = 1; });
     var judged = 0; scored.forEach(function (r) { judged += (r.n_tasks || 0) * (r.passes || 0); });
     var clipsN = 0; ((scenesIdx && scenesIdx.runs) || []).forEach(function (r) { clipsN += r.n_tasks || 0; });
-    [[real.length, "runs logged", "Every launch writes a row, including failed and cancelled ones."],
-     [Object.keys(groups).length, "A/B groups", "Sets of arms run on the same tasks and seed in one job."],
-     [judged, "official judgments", "Task scores from Gemini 3.1 Pro: tasks times judge passes over every scored run."],
-     [clipsN || null, "clips published", "Rollouts you can watch on this page."]].forEach(function (x) {
-      if (x[0] === null) return;
-      ul.appendChild(el("li", { title: x[2] }, [el("b", { text: String(x[0]) }), el("span", { text: x[1] })]));
-    });
+    var nGroups = Object.keys(groups).length;
+    p.textContent = "The log has " + real.length + " runs, failed and cancelled ones included, in " + nGroups + " A/B group" + (nGroups === 1 ? "" : "s") +
+      ". The official judge has given " + judged + " task scores (tasks times passes, over every scored run)" +
+      (clipsN ? ", and " + clipsN + " clips are published on this page." : ".");
   }
 
   /* ---------- how a test runs ---------- */
   var LOOP = [
     ["Flag", "Each change is a runner flag, off by default, with a counter in the log that shows whether it fired.", "adapters/lingbot_world2/", "adapters/lingbot_world2"],
-    ["Arms", "One job runs every arm on the same tasks and seed on Modal H100s; the model loads once per container.", "arms workflow", ".github/workflows/arms.yml"],
-    ["Judge", "PlayWorld's own verifier, Gemini 3.1 Pro at the benchmark's settings, four passes per clip.", "pwa score", "pwa/score.py"],
-    ["Decide", "A task moves only at a full point on its pass mean. A change is adopted only if the gain repeats on a second seed and no gate breaks.", "plan of record", "AGENTS.md#plan-of-record"],
-    ["Publish", "The row, the judge's reason for every task and the clips land on main; this page reads them at view time.", "results/", "results"]
+    ["Arms", "One job runs every arm on the same tasks and seed on Modal H100s. The model loads once per container.", "arms workflow", ".github/workflows/arms.yml"],
+    ["Judge", "The judge is PlayWorld's own verifier, Gemini 3.1 Pro at the benchmark's settings, with two to four passes per clip.", "pwa score", "pwa/score.py"],
+    ["Decide", "A task counts as moved only when its pass mean changes by a full point. A change is adopted only if the gain repeats on a second seed and no gate breaks.", "plan of record", "AGENTS.md#plan-of-record"],
+    ["Publish", "The results row, the judge's reason for every task and the clips are committed to main. This page reads them when it loads.", "results/", "results"]
   ];
   function renderLoop() {
     var ol = $("loop-steps"); if (!ol) return; clear(ol);
     LOOP.forEach(function (x, i) {
-      ol.appendChild(el("li", { class: "card" }, [el("div", { class: "lp-h" }, [el("span", { class: "st-n", text: String(i + 1) }), el("b", { text: x[0] })]),
+      ol.appendChild(el("li", null, [el("div", { class: "lp-h" }, [el("b", { text: (i + 1) + ". " + x[0] })]),
         el("p", { text: x[1] }), el("a", { href: (/\.|#/.test(x[3]) ? BLOB : "https://github.com/" + REPO + "/tree/main/") + x[3], target: "_blank", rel: "noopener", text: x[2] })]));
     });
     var note = $("loop-note"); clear(note);
-    note.appendChild(document.createTextNode("Measured: loading the 14B model fell from about 207 s to about 31 s with bit-identical weights ("));
+    note.appendChild(document.createTextNode("Loading the 14B model fell from about 207 s to about 31 s, with bit-identical weights ("));
     note.appendChild(el("a", { href: PR + "79", target: "_blank", rel: "noopener", text: "PR #79" }));
-    note.appendChild(document.createTextNode("). Not covered by CI: GPU generation, Gemini scoring and player calls need keys."));
+    note.appendChild(document.createTextNode("). CI does not test GPU generation, Gemini scoring or player calls, because they need keys."));
   }
 
   /* ---------- guided tour: a bar that walks the page in order; arrow keys step, Esc exits, ?tour=N deep links ---------- */
   var tourSteps = [], tourAt = -1;
   function buildTour() {
     var shown = bestFinal() || bestClosed();
-    var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can inference-time changes lift an open world model past Genie 3 (" + fmt(TARGET) + ") on PlayWorld? No retraining." }];
+    var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can changes made at inference time, without retraining, lift an open world model past Genie 3 (" + fmt(TARGET) + ") on PlayWorld?" }];
     steps.push({ el: function () { return $("scores"); }, title: "Where we start",
-      line: shown ? "Our best official score, AI played (" + shown.exp + "): " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks. Genie 3: " + fmt(TARGET) + " on all " + FULL_TASKS + "." : "No run big enough to estimate a score yet." });
+      line: shown ? "Our best official score with the AI player is " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks (" + shown.exp + "). Genie 3 scores " + fmt(TARGET) + " on all " + FULL_TASKS + "." : "No run is big enough to estimate a score yet." });
     storyShown.forEach(function (x) {
       var s = x.s;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
-      if (s.watch && x.ev) steps.push({ el: function () { return $("watch"); }, run: function () { watch(s.watch); }, title: "Watch " + s.watch.task, line: "Control on the left, treatment on the right, on one clock. The judge's score and comment are under each clip." });
-      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return $("watch"); }, run: function () { openScene(s.scene[0], s.scene[1]); }, title: "Watch " + s.scene[1], line: "One rollout, as the judge saw it." });
+      if (s.watch && x.ev) steps.push({ el: function () { return $("watch"); }, run: function () { watch(s.watch); }, title: "Watch " + s.watch.task, line: "Control plays on the left and treatment on the right, on one shared clock. The judge's score and comment are under each clip." });
+      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return $("watch"); }, run: function () { openScene(s.scene[0], s.scene[1]); }, title: "Watch " + s.scene[1], line: "One rollout from this run, with the judge's score and comment." });
     });
-    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One dispatch: flag, arms on GPUs, official judge, full-point rule, published clips." });
-    steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs. Nothing is hidden, including what failed." });
-    steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "The full log, with the commit and job behind each row." });
+    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One workflow dispatch runs every arm on GPUs, scores it with the official judge, applies the full-point rule and publishes the clips." });
+    steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is one A/B and its runs, including the ones that failed." });
+    steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "Every row of the results log, with the commit and job that produced it." });
     tourSteps = steps;
     if (tourAt >= 0) tourShow();
   }
@@ -820,7 +817,7 @@ import * as RunInfo from "./runinfo.js";
     $("tour-title").textContent = s.title; $("tour-line").textContent = s.line;
     $("tour-prog").style.width = ((tourAt + 1) / tourSteps.length * 100) + "%";
     $("tour-prev").disabled = tourAt === 0;
-    $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next →";
+    $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next";
     Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
     var node = s.el(); if (node && node.classList && node.id !== "top") node.classList.add("tour-on");
   }
@@ -887,7 +884,7 @@ import * as RunInfo from "./runinfo.js";
     function T(t) { return document.createTextNode(t); }
     f.appendChild(el("h2", { class: "credhead", text: "Method" }));
     f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown. The judge writes its comments mostly in Chinese; English copies are machine-translated for display after scoring, never feed a score, and the judge's original text is authoritative." }));
-    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
+    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 2 to 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
     f.appendChild(el("p", null, [T("Rows come from "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "results/experiments.csv"), T(" (" + source + "). "), A("https://github.com/" + REPO, "Repository"), T(".")]));
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
     var ul = el("ul", { class: "credits", "aria-label": "Credits" });

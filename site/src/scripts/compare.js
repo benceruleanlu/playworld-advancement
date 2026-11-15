@@ -307,7 +307,7 @@ import * as RunInfo from "./runinfo.js";
     if (chosen.length === 2) {
       df.appendChild(document.createTextNode(RunInfo.difference(RI.get(sel.ctl), RI.get(sel.trt))));
       var g = other ? null : RI.groups[sel.group];
-      if (g) df.appendChild(el("span", { class: "cvboth", text: "Both arms: " + g.common.join(" · ") + (g.setupWords.length ? " · both with " + g.setupWords.join(", ") : "") }));
+      if (g) df.appendChild(el("span", { class: "cvboth", text: "Both arms: " + g.common.join(", ") + (g.setupWords.length ? ", with " + g.setupWords.join(", ") : "") }));
     }
     df.hidden = chosen.length !== 2;
     bar.hidden = !live.length;
