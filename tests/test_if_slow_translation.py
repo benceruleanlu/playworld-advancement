@@ -50,7 +50,7 @@ def test_flag_defaults_stateless_guard_and_arm_reset(monkeypatch):
     for key in tuple(R.os.environ):
         if key.startswith("LINGBOT_"):
             monkeypatch.delenv(key)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, *a, **k: "test")
     monkeypatch.setattr(R, "import_run_agent", lambda **kw:
                         SimpleNamespace(run_task=lambda *a: None, main=lambda: 0))
     flag = "--lingbot-if-slow-translation"

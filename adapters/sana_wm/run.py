@@ -7,6 +7,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
 
+player_cfg, sys.argv = agent_api.configure(sys.argv)  # --player-* runner args (agent_api docstring)
 run_agent = import_run_agent()
-print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
-raise SystemExit(run_agent.main())
+print(f"[adapter] agent provider: {agent_api.patch(run_agent, player_cfg)}", flush=True)
+rc = run_agent.main()
+agent_api.finish(run_agent)
+raise SystemExit(rc)

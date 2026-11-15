@@ -321,7 +321,9 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
     for c in calls:
         assert c["module"].run_task is c["run_task"]
     assert a1["module"].decide_action is not a1["decide"]  # player hint wraps it on arm 1 only
-    assert a2["module"].decide_action is a2["decide"] and a3["module"].decide_action is a3["decide"]
+    # arms 2 and 3: only the always-on player counters (agent_api.install_stats) wrap it, once
+    assert a2["module"].decide_action.__wrapped__ is a2["decide"]
+    assert a3["module"].decide_action.__wrapped__ is a3["decide"]
 
 
 def test_lingbot_arms_do_not_share_t5_embeddings_across_cpu_threads(tmp_path, monkeypatch):
@@ -455,7 +457,7 @@ def test_lingbot_return_stop_is_per_arm(tmp_path, monkeypatch, capsys):
     assert "return stop on" in out1 and out1.rstrip().endswith("return_stops=1")
     # arm 2: no stop, no hint, the player answers both; the flag lines have no return-stop fields
     assert a2["answers"] == ["RIGHT", "RIGHT"] and [p for p, _ in a2["asked"]] == [goal, goal]
-    assert a2["module"].decide_action is a2["decide"]
+    assert a2["module"].decide_action.__wrapped__ is a2["decide"]  # player counters only
     assert R.RETURN_STOP is False and "return_stop" not in R.STATS.summary("OE034")
     lingbot2 = [x for x in out2.splitlines() if "[lingbot]" in x and str(tmp_path) not in x]
     assert lingbot2 and not any("return_stop" in x or "return stop" in x for x in lingbot2)

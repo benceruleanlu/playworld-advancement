@@ -1,0 +1,103 @@
+{
+ "exp": "ins14-base-v2",
+ "release_tag": "run-ins14-base-v2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-base-v2",
+ "generated": "2026-11-15T02:22:37Z",
+ "git_sha": "3efeeb957ccd83295cbc90ce7c9353a2b8baa000",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "agent",
+ "scored": false,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-stall-abort",
+  "900",
+  "--agent-model",
+  "gpt-6-luna"
+ ],
+ "player_model": "gpt-6-luna",
+ "notes": "14B insight dev tasks, full length, control for the caption prompt (goal text as model prompt); relaunch after Modal rate limit",
+ "labels": [
+  "not scored"
+ ],
+ "report": "ins14-base-v2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "OE001",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE001.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE001.jpg"
+  },
+  {
+   "task_id": "OE005",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE005.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE005.jpg"
+  },
+  {
+   "task_id": "OE018",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE018.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE018.jpg"
+  },
+  {
+   "task_id": "OE035",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE035.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE035.jpg"
+  },
+  {
+   "task_id": "OE064",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE064.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE064.jpg"
+  },
+  {
+   "task_id": "OE074",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE074.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-base-v2/OE074.jpg"
+  }
+ ]
+}

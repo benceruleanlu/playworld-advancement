@@ -28,7 +28,7 @@ def harness(monkeypatch):
     for key in tuple(R.os.environ):
         if key.startswith("LINGBOT_"):
             monkeypatch.delenv(key)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, *a, **k: "test")
     monkeypatch.setattr(R, "load_pipe", lambda environ=None: (SimpleNamespace(sample_shift=5.0), SimpleNamespace(),
                                                               Path("weights"), False))
     arms = []

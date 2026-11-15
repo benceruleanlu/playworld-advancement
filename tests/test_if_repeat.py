@@ -46,7 +46,7 @@ def test_runner_flag_env_and_reset(monkeypatch):
     for key in tuple(R.os.environ):
         if key.startswith("LINGBOT_"):
             monkeypatch.delenv(key)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, *a, **k: "test")
     modules = []
     def fresh(**kw):
         ra = SimpleNamespace(decide_action=lambda *a, **k: "W", run_task=lambda *a: None, main=lambda: 0)

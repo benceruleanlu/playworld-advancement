@@ -45,7 +45,7 @@ def test_real_player_prompt_and_counters(monkeypatch, capsys):
 
 
 def test_per_arm_installation_and_env(monkeypatch):
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, *a, **k: "test")
     for key in tuple(R.os.environ):
         if key.startswith("LINGBOT_"):
             monkeypatch.delenv(key)

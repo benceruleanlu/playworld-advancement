@@ -52,7 +52,7 @@ def test_runner_is_opt_in_and_resets_each_arm(monkeypatch):
     for key in tuple(R.os.environ):
         if key.startswith("LINGBOT_"):
             monkeypatch.delenv(key)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, *a, **k: "test")
     modules = []
     def fresh(**kw):
         sample = lambda *a: list(range(4))

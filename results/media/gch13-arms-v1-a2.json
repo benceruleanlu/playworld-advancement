@@ -2,12 +2,12 @@
  "exp": "gch13-arms-v1-a2",
  "release_tag": "run-gch13-arms-v1-a2",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-gch13-arms-v1-a2",
- "generated": "2026-11-15T02:02:32Z",
+ "generated": "2026-11-15T02:19:15Z",
  "git_sha": "97f7acf686fab0031e6daa6e2f0b29e70a1ab45f",
  "branch": "main",
  "runner": "lingbot_world2_1p3b",
  "action_source": "agent",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-turn-cal",
@@ -18,10 +18,7 @@
  ],
  "player_model": "gpt-6-luna",
  "notes": "1.3B, full length: GC completion hint vs control (both with player hint and turn-cal) [arm 2/2 of gch13-arms-v1: --lingbot-turn-cal --lingbot-player-hint --agent-model gpt-6-luna --lingbot-gc-completion-hint]",
- "labels": [
-  "not scored",
-  "arm 2/2 of gch13-arms-v1: --lingbot-turn-cal --lingbot-player-hint --agent-model gpt-6-luna --lingbot-gc-completion-hint"
- ],
+ "labels": [],
  "report": "gch13-arms-v1-a2.md",
  "model": {
   "name": "LingBot-World v2",
@@ -37,33 +34,33 @@
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 1.65,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "相机完成了360度旋转，但在返回初始视角时，场景受到严重的黄绿色噪点破坏，导致物体形状、纹理和颜色出现严重的一致性失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 1.7999999999999998,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头仅执行了向左旋转的动作，且一直持续，未能按照指令要求向右转回初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频仅完成了向左和向右的平移，缺失了最后向左平移回到中心的动作，轨迹未完全按照指令执行。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a2/GC036.jpg"
   }
