@@ -53,6 +53,9 @@ export const FLAG_NAMES = {
   "--lingbot-stg-blocks": function (v) { return "blocks " + v; },
   "--lingbot-stg-w": function (v) { return "weight " + v; },
   "--lingbot-turn-step": function (v) { return "turn step " + v + " degrees"; },
+  "--lingbot-yaw-gain": function (v) { return "yaw gain " + v; },
+  "--lingbot-yaw-gain-left": function (v) { return "yaw gain left " + v; },
+  "--lingbot-yaw-gain-right": function (v) { return "yaw gain right " + v; },
   "--player-reasoning-effort": function (v) { return "player effort " + v; },
   "--player-max-completion-tokens": function (v) { return "player max tokens " + v; },
   "--player-empty-retries": function (v) { return "player retries " + v; }
@@ -63,6 +66,7 @@ var KNOB_OF = {
   "--lingbot-cond-cam": "--lingbot-cond-schedule", "--lingbot-cond-3p": "--lingbot-cond-schedule",
   "--lingbot-sink-scale-after": "--lingbot-sink-key-scale", "--lingbot-sink-scale-tasks": "--lingbot-sink-key-scale",
   "--lingbot-kv-noise-t": "--lingbot-kv-noise",
+  "--lingbot-yaw-gain-left": "--lingbot-yaw-gain", "--lingbot-yaw-gain-right": "--lingbot-yaw-gain",
   "--lingbot-pose-mem-deg": "--lingbot-pose-memory", "--lingbot-pose-mem-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-leave-deg": "--lingbot-pose-memory",
   "--lingbot-pose-mem-leave-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-latents": "--lingbot-pose-memory",
   "--lingbot-pose-mem-anchor": "--lingbot-pose-memory", "--lingbot-pose-mem-time": "--lingbot-pose-memory", "--lingbot-pose-mem-fallback": "--lingbot-pose-memory",
@@ -72,7 +76,7 @@ var KNOB_OF = {
 // what a value flag tests, for a group title ("Attention window test")
 var TOPIC = {
   "--lingbot-sink-size": "attention sink", "--lingbot-local-attn": "attention window",
-  "--lingbot-sink-key-scale": "sink key scale", "--lingbot-turn-step": "turn step"
+  "--lingbot-sink-key-scale": "sink key scale", "--lingbot-turn-step": "turn step", "--lingbot-yaw-gain": "yaw gain"
 };
 // speed, logging and player plumbing: never part of a description. --num-chunks becomes "capped N chunks",
 // --agent-model is the player, --lingbot-scripted-player sets the driver.
