@@ -284,7 +284,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
   function flagsLine(i) { return !i.keys ? "flags not recorded" : i.words.length ? i.words.join(", ") : "no flags"; }
   function slotCard(c, role) {
     var m = c.man, t = c.t, row = csvRow(c.exp), cap = capOf(m, row);
-    var v = el("video", { muted: "", playsinline: "", preload: "auto", src: t.video, poster: t.poster || null, "aria-label": role + ": " + c.exp + ", " + t.task_id });
+    var v = el("video", { muted: "", playsinline: "", preload: lazyClips() && !wantPlay ? "none" : "auto", src: t.video, poster: t.poster || null, "aria-label": role + ": " + c.exp + ", " + t.task_id });
     v.muted = true; v.loop = false;
     var endEl = el("div", { class: "cvend", hidden: "" });
     var media = el("div", { class: "media" }, [v, endEl]);
@@ -390,8 +390,18 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     try { if (Math.abs(s.v.currentTime - x) > 0.001) s.v.currentTime = x; } catch (e) { /* not ready */ }
   }
   function seekAll() { live.forEach(function (s) { seekOne(s, S.t); }); updateBar(); }
+  // under 900 px or with data saver, clips fetch nothing until the first play
+  function lazyClips() {
+    var narrow = !!(window.matchMedia && window.matchMedia("(max-width: 899px)").matches);
+    return narrow || !!(navigator.connection && navigator.connection.saveData);
+  }
+  function wake() {
+    var any = false;
+    live.forEach(function (s) { if (!s.failed && s.v.preload === "none") { s.v.preload = "auto"; s.v.load(); any = true; } });
+    return any;
+  }
   function play() {
-    var D = maxDur(); if (!D) return;
+    var D = maxDur(); if (!D) { if (wake()) wantPlay = true; return; }
     if (S.t >= D - END) S.t = 0;
     seekAll();
     S.playing = true; S.last = performance.now();
