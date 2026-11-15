@@ -39,6 +39,12 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-if-repeat-check           if_repeat=on, if_repeat_checks (IF decisions that got the repeat reminder)
   --lingbot-if-slow-translation       if_slow=on, if_translation_frames (IF session frames whose W/S/A/D
                                       translation was halved)
+  --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
+                                      wait-only insight), scripted_planned (script + tail chunks),
+                                      scripted_chunks (decisions answered from the script), scripted_end
+                                      (1 when the script ran out and the wrapper answered END, 0 when the
+                                      harness cap cut it first); the total line adds scripted_chunks and
+                                      scripted_ends
 
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
@@ -55,7 +61,8 @@ class FlagStats:
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
-                 if_subject: bool = False):
+                 if_subject: bool = False, scripted: bool = False):
+        self.scripted = bool(scripted)
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -75,7 +82,7 @@ class FlagStats:
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
-                       "if_subject_prompts": 0}
+                       "if_subject_prompts": 0, "scripted_chunks": 0, "scripted_ends": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -88,6 +95,7 @@ class FlagStats:
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
         self.if_subject_prompts = 0
+        self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -162,6 +170,14 @@ class FlagStats:
         if kind == "end":
             self.if_horizon_ends += 1
 
+    def scripted_event(self, kind: str, n: int):
+        """scripted_player.wrap on_event: "plan", "chunk" or "end", with the plan length."""
+        self.scripted_planned = int(n)
+        if kind == "chunk":
+            self.scripted_chunks += 1
+        elif kind == "end":
+            self.scripted_end = 1
+
     def summary(self, task_id) -> dict:
         if self.prompt_mode == "goal":
             caption = "director" if self.insight_director and self.insight_director_prompts else "off"
@@ -194,6 +210,9 @@ class FlagStats:
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
                      if_horizon_ends=self.if_horizon_ends)
+        if self.scripted:
+            s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
+                     scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
         return s
 
     @staticmethod
@@ -216,7 +235,9 @@ class FlagStats:
                    if self.if_horizon else "")
                 + "".join(f" {k}={v}" for k, v in self.director_summary(t).items())
                 + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else "")
-                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else ""))
+                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
+                + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
+                   if self.scripted else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -231,6 +252,8 @@ class FlagStats:
         t["gc_director_updates"] += self.gc_director_updates
         t["gc_eased_turns"] += self.gc_eased_turns
         t["if_subject_prompts"] += self.if_subject_prompts
+        t["scripted_chunks"] += self.scripted_chunks
+        t["scripted_ends"] += self.scripted_end
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events

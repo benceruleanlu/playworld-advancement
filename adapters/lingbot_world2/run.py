@@ -73,14 +73,21 @@ caption prompt; requires caption prompting (--lingbot-caption-prompt or LINGBOT_
 Its counter if_subject_prompts counts generate() calls (about 30 per closed-loop rollout), not T5 encodes
 (one per session reset). See if_subject.py.
 
+Scripted player (off by default, closed loop only): `--lingbot-scripted-player` or LINGBOT_SCRIPTED_PLAYER=1
+answers every closed-loop decision from the task's dataset action, cut into chunks (upstream
+grouped_dataset_actions with poses.CHUNK_UNITS tokens per chunk), then WAIT for the dataset-mode tail and END;
+the LLM is never called. Outermost decide_action wrapper, so the player-side wrappers are not reached. For A/B
+of model-side flags only, not final numbers. Needs --action-source agent or refined. See scripted_player.py.
+
 Model prompt composition, in order: caption prompt (prompts.model_prompt), insight director (insight
 tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
 replaces the prompt with its structured form). Each applies to one family, so at most one rewrites a task.
 
 decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
-return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
+return stop, IF horizon, scripted player. The goal the player reads is therefore goal + GC completion | (IF camera, then
 IF repeat) + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
-replies never reach the hints or their counters.
+replies never reach the hints or their counters. The scripted player answers every decision itself, so with it
+on none of the others is reached.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -109,6 +116,8 @@ Env:
   LINGBOT_GC_CHUNK_DIRECTOR  1 = same as --lingbot-gc-chunk-director
   LINGBOT_GC_EASE_TURNS  1 = same as --lingbot-gc-ease-turns
   LINGBOT_IF_SUBJECT_DIRECTOR  1 = same as --lingbot-if-subject-director
+  LINGBOT_SCRIPTED_PLAYER  1 = same as --lingbot-scripted-player
+  LINGBOT_SCRIPTED_TAIL  WAIT chunks after the script (default ceil(--tail-frames / (--chunk-frames - 1)) = 2)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -171,6 +180,7 @@ from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
+from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
@@ -179,7 +189,7 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
               "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
-              "--lingbot-if-subject-director")
+              "--lingbot-if-subject-director", "--lingbot-scripted-player")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -208,8 +218,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "gc_director": "--lingbot-gc-chunk-director" in argv or environ.get("LINGBOT_GC_CHUNK_DIRECTOR", "0") == "1",
         "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
         "if_subject": "--lingbot-if-subject-director" in argv or environ.get("LINGBOT_IF_SUBJECT_DIRECTOR", "0") == "1",
+        "scripted": "--lingbot-scripted-player" in argv or environ.get("LINGBOT_SCRIPTED_PLAYER", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    if flags["scripted"]:
+        SP.check_action_source(argv)
     if flags["gc_director"] and (mode == "goal" or flags["stateless"]):
         raise SystemExit("--lingbot-gc-chunk-director requires caption prompting and session mode")
     if flags["gc_ease_turns"] and flags["stateless"]:
@@ -348,6 +361,7 @@ class LingBotWorld2Engine:
               + (", GC chunk director on" if GC_DIRECTOR else "")
               + (", GC ease turns on" if GC_EASE_TURNS else "")
               + (", IF subject director on" if IF_SUBJECT else "")
+              + (f", scripted player on ({SP.units()} tokens per chunk)" if STATS.scripted else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
 
@@ -506,7 +520,7 @@ def main(argv: list[str] | None = None) -> int:
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
-                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT)
+                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, scripted=flags["scripted"])
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
@@ -545,6 +559,14 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = IH.wrap(run_agent.decide_action, run_agent.parse_segments,
                                           on_event=STATS.if_horizon_event)
         print("[lingbot] IF horizon: on", flush=True)
+    if flags["scripted"]:  # outermost: answers every decision, so no wrapper inside it and no LLM is reached
+        run_agent.decide_action = SP.wrap(run_agent.decide_action, run_agent.grouped_dataset_actions,
+                                          on_event=STATS.scripted_event)
+        inert = [n for n, on in (("player hint", PLAYER_HINT), ("IF repeat check", flags["if_repeat"]),
+                                 ("IF camera hint", flags["if_camera"]), ("GC completion hint", GC_COMPLETION),
+                                 ("return stop", RETURN_STOP), ("IF horizon", IF_HORIZON)) if on]
+        print(f"[lingbot] scripted player: on ({SP.units()} dataset tokens per chunk, then WAIT tail and END; "
+              f"LLM player not called)" + (f"; not reached: {', '.join(inert)}" if inert else ""), flush=True)
     rc = run_agent.main()
     agent_api.finish(run_agent)
     print(STATS.total_line(), flush=True)
