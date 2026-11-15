@@ -274,6 +274,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     return why.length ? why.join(", ") : "not every check passed";
   }
   // hero state: "final" (a final 171-task score), "full" (a 171-task run on the protocol, not final) or "dev" (dev subsets only)
+  // a STORY field may be a function of the loaded data
+  function val(x) { return typeof x === "function" ? x() : x; }
   function heroState() { var fin = bestFinal(), nf = fin ? null : rulerFull(); return { fin: fin, nf: nf, mode: fin ? "final" : nf ? "full" : "dev", shown: fin || nf || bestDev() }; }
   // dev state: why nothing is placed against the paper rows
   function anyFull() { return realRows().some(function (r) { return isFull(r) && r.overall !== null; }); }
@@ -494,15 +496,15 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       body: "Changes how many latent frames the model keeps attending to (a sink of 6 opening latents in an attention window of 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. OE039 scored about 3 in all three arms that keep more of the opening view: 3.00 with a sink of 12, and 3.12 in both arms with a sink of 10 in a window of 22 (pm14-fx-v1-a3, pm14-fx-v2-a4), against 1.25 to 2.00 across the control's scorings. The two 10 and 22 arms scored 2.25 and 2.67 on out-of-sight, about 2.46 against 1.83 to 2.10 for control. That is at the noise bar, on one seed. Their two videos are nearly identical, yet they scored 1.50 and 2.88 on OE048. A sink of 12 alone showed no out-of-sight gain (1.86 against 1.93) and dropped OE048 from 3.19 to 1.25. The second seed (win14-fx-v1): sink 10 with window 22 scored 1.81 on out-of-sight at seed 0 and window 22 alone 2.13, against a control near 2.0; at seed 1 control 1.42 and the larger window 2.04. No family-level effect repeats; OE039 is the one consistent task. Not adopted. The two arms with an attention window of 36 produced no clips.",
       links: [["#104", PR + "104"]] },
     { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
-      cells: "every scaled arm is lower than the control, one seed, 6 tasks; dropped on a small sample",
-      body: "Lowers how strongly later chunks attend to the pinned opening frames (the sink), to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed action scripts. A weaker sink lowered out-of-sight from 2.10 to between 1.25 and 1.65 on one seed. That fits the reading that the sink is what lets the camera return to the start view, but it was not replicated.",
+      cells: "two of three scaled arms are lower than the control by more than the six-task noise, one seed, 6 tasks; dropped on a small sample",
+      body: "Lowers how strongly later chunks attend to the pinned opening frames (the sink), to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed action scripts. Out-of-sight went from 2.10 to 1.65 (0.7), 1.33 (0.4) and 1.25 (0.7 from chunk 4) on one seed. The 0.7 arm is inside the six-task noise of about 0.5; the other two are below it. Not replicated, so it says nothing firm about what the sink does.",
       links: [["#112", PR + "112"]] },
     { group: "now", title: "Insight prompt: goal, caption, or caption with the insight director", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption and director", "ins14-fx-v2-a3"]],
       body: "Runs on all six insight dev tasks. Insight tasks are wait-only, so the rollout with fixed action scripts is the same as the closed-loop one.",
       links: [["#32", PR + "32"], ["#90", PR + "90"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
       cells: "chunk director lowered 2 of 6 tasks by a full point and raised none; ease turns moved none; re-anchor raised 1 (GC033) and lowered none; one seed",
-      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on a repeat measurement; re-anchor is a weak lead. Not a closed-loop score.",
+      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on this one seed and on owner measurements of the same flags (sample size not recorded here); re-anchor is a weak lead. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
       cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread; dropped",
@@ -514,7 +516,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       body: "Turn calibration, caption prompt, insight director, IF slow translation, and a sink of 10 in a window of 22, against no flags. 24 dev tasks at two seeds and the 24 dev2 tasks, fixed moves. Proxy judge (Luna), not comparable to the paper's table: out-of-sight +1.02, +0.92 and +0.98 (dev seed 0, dev seed 1, dev2), the only family that clears the noise bar of about 0.6 in all three, six tasks per pair. A lead, not confirmed by Gemini.",
       links: [["findings", "#story-stack"]] },
     { group: "now", title: "Yaw servo", arms: [["control", "svgc14-fx-v1-a1"], ["servo", "svgc14-fx-v1-a2"], ["servo + memory", "svgc14-fx-v1-a3"]],
-      pending: "measured geometry: end heading closer to the start on all six GC tasks checked; no judge score change",
+      pending: "measured geometry: end heading closer to the start on all six GC tasks checked (4 of them read with the servo's own estimator; an independent frame check on 2); no Gemini score, Luna deltas are noise",
       also: ["stksv14-fx-gc-v1-a1", "stksv14-fx-gc-v1-a2", "stksv14-cl-gc-v1-a1", "stksv14-cl-gc-v1-a2"],
       body: "Measures how far each chunk turned in the rendered frames and corrects the next chunk's camera command, so a turn out and back ends at the start heading. Design by Benjamin Lu (PR #125), merged in #131. End-heading error fell from 28 to 0.3 degrees on GC033 and from 70 to 5.6 on GC036. Under the proxy judge (Luna, not comparable to the paper's table) the same-run deltas are noise. Both arms of sv14-fx-v1 and sv14-fx-v2 run the servo (seeds 0 and 1), so neither has its own control. On out-of-sight tasks (sv14-fx-v2) a gain is not supported. svgc14-fx-v1 is missing GC035 in all three arms and GC002 and GC022 in the servo arms.",
       links: [["findings", "#story-servo"], ["#125", PR + "125"], ["#131", PR + "131"], ["#138", PR + "138"]] },
@@ -602,11 +604,12 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   // say: the one line the tour bar shows. Every number in body or say must be in results/ or research/.
   var STORY = [
     { id: "noise", short: true, kind: "repeat", label: "Judge noise", verdict: "measured", title: "Same video, different scores: six-task comparisons cannot resolve differences under about 0.5",
-      body: "Gemini 3.1 Pro scored the same video up to 1.3 apart on a task mean (GC036: 2.65 with its gate passed, 1.35 with it failed) and about 0.5 apart on a six-task family mean. The proxy judge (Luna) moved 0.50 per task on average on byte-identical clips, and 0.62 on a five-task mean. So a comparison of six tasks cannot resolve a difference under about 0.5 under Gemini or 0.6 under Luna, and the rest of this list reads with that in mind.",
+      body: "The two runs below made byte-identical clips (pose memory, before its fix, changed no frame). Gemini 3.1 Pro still scored them up to 1.3 apart on a task mean (GC036: 2.65 with its gate passed, 1.35 with it failed), and the judge spread is about 0.5 on a six-task family mean. The proxy judge (Luna) moved 0.50 per task on average on byte-identical clips, and 0.62 on a five-task mean. So a comparison of six tasks cannot resolve a difference under about 0.5 under Gemini or 0.6 under Luna, and the rest of this list reads with that in mind.",
       say: "The same video gets different scores. Six-task comparisons cannot resolve differences under about 0.5.",
-      points: ["Estimate, not measured: trusting a score would take all 171 tasks under Gemini with 2 or more passes, for the starting model and for a method; at that size the noise on the overall mean is about 0.1."],
-      runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
-      watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" } },
+      points: ["Three control runs with the same settings and seed, from three commits (clips not compared), differ by up to 1.38 on a task mean (OE047).",
+        "Estimate, not measured: scaling the 0.5 six-task spread by the square root of 6/171 gives about 0.1 on a 171-task overall mean. That is the size a final score needs; a dev A/B is judged by the bar in the verdict table."],
+      runs: [["run 1", "pm14-fx-v1-a1"], ["run 2, same bytes", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
+      watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
     { id: "examples", kind: "gallery", title: "What works and what breaks, by task type",
       say: "For each task type, the rollout the judge scored highest and the one it scored lowest." },
     { id: "player", kind: "note", title: "The AI player decides most camera tasks",
@@ -614,7 +617,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       say: "The baseline player turned left and right for the whole rollout.",
       scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch GC036",
       links: [["baseline census", BLOB + "research/baseline-census.md"]] },
-    { id: "turncal", prs: [23], label: "Turn calibration", verdict: "did not replicate", title: "Calibrated turns lifted two GC tasks, once",
+    { id: "turncal", prs: [23], label: "Turn calibration", verdict: "did not replicate: 5 tasks", title: "Calibrated turns lifted two GC tasks, once",
       body: "Task prompts name 22.5 degrees per turn key; the model's default turns 34. With the rate calibrated, GC031 and GC036 gained more than a point, though the judge's comment on GC031 says the camera never completes its 360. On a second run they gained 0.35 and 0.80. Not adopted.",
       say: "Two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
@@ -625,16 +628,16 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
     { id: "sink", short: true, prs: [112], label: "Sink key scale", verdict: "dropped on a small sample", title: "Turning down the opening frames scored lower on out-of-sight, on one seed",
-      body: "We expected the pinned opening frames to reset the scene when the camera returns. Turning their attention down lowered every arm on the six out-of-sight tasks (2.10 to between 1.25 and 1.65, Gemini, one seed), so returns may depend on them. Not replicated; dropped on that small sample.",
-      say: "Every arm scored below control, on six tasks and one seed. Dropped on that small sample.",
+      body: "We expected the pinned opening frames to reset the scene when the camera returns. Turning their attention down scored lower on the six out-of-sight tasks (2.10 to 1.65, 1.33 and 1.25 across three arms, Gemini, one seed). The 1.65 arm is inside the six-task noise of about 0.5; the other two are below it. Not replicated; dropped on that small sample.",
+      say: "Two of three arms scored below control by more than the noise, on six tasks and one seed. Dropped on that small sample.",
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
       watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
-    { id: "insight", prs: [32, 90], label: "Caption prompt on insight", verdict: "not adopted", title: "The scene caption alone did not move insight",
+    { id: "insight", prs: [32, 90], label: "Caption prompt on insight", verdict: "not adopted: 6 tasks, one seed", title: "The scene caption alone did not move insight",
       body: "Insight tasks prompt the model with \"wait and observe\", and four of six baseline rollouts were flagged static or near static in a judge pass. On all six insight dev tasks (ins14-fx-v2) the goal prompt scored 1.76, the scene caption 1.80 and the caption with the insight director, a fixed sentence about the activity, 2.09, all inside the noise. The caption moved no task by a full point; the director moved one up and one down.",
       say: "Swapping \"wait and observe\" for the scene caption moved nothing by a full point.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
-    { id: "window", short: true, seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "not adopted", title: "A larger attention window lifted OE039, not the out-of-sight family",
+    { id: "window", short: true, seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "lead: OE039 only", title: "A larger attention window lifted OE039, not the out-of-sight family",
       body: "On out-of-sight (win14-fx-v1), sink 10 with window 22 scored 1.81 on seed 0 against a control near 2.0, and window 22 alone 2.13. On seed 1 control scored 1.42 and the larger window 2.04. OE039 scored 3.0 or more in five of six larger-window videos and 2.0 or less in every control video. No family-level effect repeats; OE039 is a one-task lead. Not adopted.",
       say: "The family score did not move the same way twice. One task, OE039, rose every time but once.",
       ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
@@ -658,8 +661,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         "No Gemini score exists for these runs."],
       scene: ["stk14-fx-dev-v1-a2", "OE039"], sceneLabel: "Watch OE039 with the stack",
       links: [["compare with no flags", "?compare=OE039&b=stk14-fx-dev-v1-a1&c=stk14-fx-dev-v1-a2#compare-clips"], ["status", BLOB + "AGENTS.md#status-against-the-timeline"]] },
-    { id: "servo", prs: [125, 131], label: "Yaw servo on GC", verdict: "measured: geometry", kind: "note", title: "The yaw servo brings the camera closer to its start heading",
-      body: "The servo reads how far each chunk turned in the rendered frames and corrects the next camera command. Design by Benjamin Lu (PR #125), merged in #131. Measured from the video with no judge, the end-heading error fell on all six GC tasks checked, and end-of-clip similarity to the first frame, the independent check, rose on GC033 and GC036. It is a geometry result: no judge has shown a score change.",
+    { id: "servo", prs: [125, 131], label: "Yaw servo on GC", verdict: "measured: geometry, no score", kind: "note", title: "The yaw servo brings the camera closer to its start heading",
+      body: "The servo reads how far each chunk turned in the rendered frames and corrects the next camera command. Design by Benjamin Lu (PR #125), merged in #131. Measured from the video with no judge, the end-heading error fell on all six GC tasks checked; on four of them it is read with the same estimator the servo steers with. End-of-clip similarity to the first frame, the independent check, rose on the two tasks it was run on, GC033 and GC036. It is a geometry result: no judge has shown a score change.",
       say: "Measured without a judge, the servo ends GC turns near the start heading. No judge score shows a gain.",
       points: ["End-heading error in degrees, without to with the servo: GC033 28 to 0.3, GC036 70 to 5.6, GC031 96 to 0, GC012 8 to 2, GC022 45 to 1 (stack run), GC038 96 to 49.",
         "End similarity to the first frame: GC033 -0.09 to 0.52, GC036 0.07 to 0.63.",
@@ -668,15 +671,20 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       scene: ["svgc14-fx-v1-a2", "GC033"], sceneLabel: "Watch GC033 with the servo",
       links: [["compare with control", "?compare=GC033&b=svgc14-fx-v1-a1&c=svgc14-fx-v1-a2#compare-clips"], ["PR #125", PR + "125"], ["PR #131", PR + "131"]] },
     { id: "open", short: true, kind: "note", title: "Still open",
-      say: "No final 171-task score and nothing adopted. Measured: judge noise and the servo's geometry. The rest are leads.",
-      points: ["Best official score is unchanged: lb14-session-agent-dev-v1, 1.64 +/- 0.13, closed loop, 24 dev tasks, 2 passes, Gemini.",
-        "No final 171-task score, for the starting model or for a method. Heldout is unscored. Nothing is adopted.",
-        "Measured: the judge's noise, the servo's end heading, and that the attention cache keeps the opening view plus about 2 s. Every other difference on this page rests on six tasks or fewer, one seed, or the proxy judge.",
+      // the first lines follow the hero (heroState), so they never claim "no final score" next to one
+      say: function () { var hs = heroState(); return (hs.fin ? "Final " + FULL_TASKS + "-task score " + fmt(hs.fin.overall) + "; nothing adopted." : hs.nf ? "A " + FULL_TASKS + "-task run exists but is not final; nothing adopted." : "No final " + FULL_TASKS + "-task score and nothing adopted.") + " Measured: judge noise and the servo's geometry. The rest are leads."; },
+      points: function () {
+        var hs = heroState();
+        return [hs.fin ? "Final score: " + fmt(hs.fin.overall) + " on all " + FULL_TASKS + " tasks (" + hs.fin.exp + "). Nothing is adopted."
+            : hs.nf ? "Best " + FULL_TASKS + "-task run: " + fmt(hs.nf.overall) + " (" + hs.nf.exp + "), not final: " + notFinalWhy(hs.nf) + ". Nothing is adopted."
+            : "No final " + FULL_TASKS + "-task score, for the starting model or for a method. Heldout is unscored. Nothing is adopted.",
+          "Best dev score: lb14-session-agent-dev-v1, 1.64 +/- 0.13, closed loop, 24 dev tasks, 2 passes, Gemini.",
+          "Measured: the judge's noise and the servo's end heading. The attention cache's reach (the opening view plus about 2 s) is its configuration, not a measurement. Every other difference on this page rests on nine tasks or fewer, one seed, or the proxy judge.",
         "Every official-judge A/B here uses fixed moves. Adoption needs the AI player, two seeds and the official judge.",
         "Closed loop: clstk14-dev-v1 was cut short when the GPU provider workspace was disabled at 09:01 UTC. The no-flag arm has 23 of 24 tasks, stack plus servo 8 of 24, and the third arm never started. No closed-loop comparison of stack plus servo exists.",
-        "Dropped on small samples (one seed, six tasks or fewer): conditioning schedule, sink key scale, GC completion hint. Dropped on a repeat or a measurement: GC chunk director, GC turn easing, pose memory.",
-        "Leads: the stack on out-of-sight (Luna, six tasks per pair), a larger attention window on OE039 only, the insight director (one up, one down), re-anchoring on GC (weak). The yaw servo's heading gain is measured; its score effect is unknown.",
-        "Merged and not run: IF fixed camera (#147) and the flags from #115, #116, #121, #132, #133, #139 and #144."],
+        "Dropped, each on one seed and six tasks or fewer: conditioning schedule, sink key scale, GC completion hint, GC chunk director and GC turn easing (plus owner measurements with no sample size recorded), pose memory (no geometric gain and +0.20 under Luna, one run).",
+        "Leads: the stack on out-of-sight (Luna, six tasks per pair) and a larger attention window on OE039 only, the two in the verdict table; the insight director (one up, one down) and re-anchoring on GC (weak). The yaw servo's heading gain is measured; its score effect is unknown.",
+        "Merged and not run: IF fixed camera (#147) and the flags from #115, #116, #121, #132, #133, #139 and #144."]; },
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
@@ -943,7 +951,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       var n = storyShown.length + 1;
       var text = el("div", { class: "st-text" }, [
         el("h3", { text: n + ". " + s.title }), s.body ? el("p", { class: "st-body", text: s.body }) : null]);
-      if (s.points) text.appendChild(el("ul", { class: "st-points" }, s.points.map(function (t) { return el("li", { text: t }); })));
+      var pts = val(s.points);
+      if (pts) text.appendChild(el("ul", { class: "st-points" }, pts.map(function (t) { return el("li", { text: t }); })));
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
         var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task });
@@ -1040,14 +1049,14 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         var td = el("td", { class: "num" }); if (!t) dashCell(td); else td.appendChild(el("span", { class: t[k[0]] ? k[1] : "", text: String(t[k[0]]) }));
         tr.appendChild(td);
       });
-      var cls = /dropped/.test(s.verdict) ? "bad" : /^lead|running|proxy|no official/.test(s.verdict) ? "warn" : /^measured/.test(s.verdict) ? "ok" : "";
+      var cls = /dropped/.test(s.verdict) ? "bad" : /^lead|running|proxy|no official/.test(s.verdict) ? "warn" : "";
       tr.appendChild(el("td", null, [el("span", { class: "badge " + cls, text: s.verdict })]));
       tb.appendChild(tr);
     });
     box.appendChild(el("table", { class: "ev vd" }, [el("thead", null, [hr]), tb]));
     var nm = rows.filter(function (s) { return /^measured/.test(s.verdict); }).length, nl = rows.filter(function (s) { return /^lead/.test(s.verdict); }).length;
     box.appendChild(el("p", { class: "st-cap", text: "Up and down count task-by-arm cells that moved a full point against control, official judge only; a dash means no count (repeat runs and notes). Fixed moves; one seed unless the row says two. " +
-      nm + " measured (no judge score, or the judge itself), " + nl + " lead" + (nl === 1 ? "" : "s") + " (six tasks or fewer, one seed, or the proxy judge: not a result), " + ADOPTED.length + " adopted." }));
+      nm + " measured (geometry with no judge score, or the judge itself), " + nl + " lead" + (nl === 1 ? "" : "s") + " (a gain seen on a small sample or the proxy judge: not a result), " + ADOPTED.length + " adopted. Every other verdict rests on one seed and six tasks or fewer unless the row says two seeds." }));
   }
 
   /* ---------- hero: verdict line and the project in numbers ---------- */
@@ -1344,13 +1353,14 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       line: !shown ? "No run big enough to estimate a score yet." : fin ? "Final score, AI played: " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks (" + fin.exp + "). Genie 3: " + fmt(TARGET) + "."
         : nf ? "These are the paper's " + FULL_TASKS + "-task scores. Our best " + FULL_TASKS + "-task run, " + fmt(nf.overall) + " (" + nf.exp + "), is placed among them but is not final: " + notFinalWhy(nf) + "."
         : "These are the paper's " + FULL_TASKS + "-task scores. Our best official score, " + fmt(shown.overall) + " on " + shown.n_tasks + " dev tasks (" + shown.exp + "), is not placed among them." });
-    if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it; small-sample results are marked as leads." });
+    if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it. Gains seen only on small samples are marked as leads." });
     storyShown.forEach(function (x) {
       var s = x.s;
       if (!tourFull && !s.short) return;
-      steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
-      if (s.watch && x.ev && (tourFull || s.id !== "window")) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, watchSel(s)); }, title: "Watch " + s.watch.task, line: (s.kind === "repeat" ? "" : "Control left, treatment right. ") + (s.say || "") });
-      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: s.say || "" });
+      var say = val(s.say) || "";
+      steps.push({ el: function () { return x.li; }, title: s.title, line: say });
+      if (s.watch && x.ev && (tourFull || s.id !== "window")) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, watchSel(s)); }, title: "Watch " + s.watch.task, line: (s.kind === "repeat" ? "" : "Control left, treatment right. ") + say });
+      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: say });
     });
     steps.push({ el: function () { return $("loop"); }, title: "Method", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
     if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("tests", false); scrollToEl($("watch")); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
