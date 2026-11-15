@@ -1,0 +1,67 @@
+{
+ "exp": "gch13-arms-v1-a1",
+ "release_tag": "run-gch13-arms-v1-a1",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-gch13-arms-v1-a1",
+ "generated": "2026-11-15T02:15:39Z",
+ "git_sha": "97f7acf686fab0031e6daa6e2f0b29e70a1ab45f",
+ "branch": "main",
+ "runner": "lingbot_world2_1p3b",
+ "action_source": "agent",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-turn-cal",
+  "--lingbot-player-hint",
+  "--agent-model",
+  "gpt-6-luna"
+ ],
+ "player_model": "gpt-6-luna",
+ "notes": "1.3B, full length: GC completion hint vs control (both with player hint and turn-cal) [arm 1/2 of gch13-arms-v1: --lingbot-turn-cal --lingbot-player-hint --agent-model gpt-6-luna]",
+ "labels": [],
+ "report": "gch13-arms-v1-a1.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2_1p3b"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 3.3,
+   "status": [
+    "ok"
+   ],
+   "reason": "镜头向右旋转的速度较慢，未能在视频结束前完成360度旋转并回到初始视角。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 3.3000000000000003,
+   "status": [
+    "ok"
+   ],
+   "reason": "镜头没有在向左转90度后停止，也没有向右转回以重新看到初始的展示窗。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 1.0,
+   "status": [
+    "gate_fail"
+   ],
+   "reason": "视频中镜头始终向右平移，完全没有执行指令中要求的向左平移动作，轨迹与指令要求完全不符。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-gch13-arms-v1-a1/GC036.jpg"
+  }
+ ]
+}
