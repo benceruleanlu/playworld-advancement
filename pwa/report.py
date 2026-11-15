@@ -7,7 +7,8 @@ import math
 import os
 
 from .aggregate import aggregate_pass, mean_std, upstream_cross_check
-from .core import FAMILIES, current_branch, RESULTS_CSV, RUNS, exp_dir, log, now, read_json, read_meta, video_path, write_json
+from .core import (FAMILIES, cap_label, chunk_cap, current_branch, RESULTS_CSV, RUNS, exp_dir, log, now, read_json,
+                   read_meta, video_path, write_json)
 from .score import Judge, eval_dir, passes_present
 
 # Paper numbers, full 171-task benchmark: gc, if, insight, outsight, overall.
@@ -20,7 +21,9 @@ REFERENCE = {
 FALLBACK_STD = math.sqrt(0.011)
 CSV_FIELDS = ["exp", "split", "timestamp", "git_sha", "runner", "action_source", "gc", "if", "insight",
               "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes", "branch",
-              "n_dropped", "status", "run_url"]
+              "n_dropped", "status", "run_url", "max_chunks"]
+# max_chunks: agent-chunk cap of a capped smoke run (pwa gen --max-chunks); blank = uncapped. A capped row is never
+# an official score: the site badges it and keeps it out of the headline.
 # status: running (launched), generated (gen-only done), scored, failed, cancelled. Blank on rows older than the column.
 LIVE_STATUSES = ("running", "generated", "failed", "cancelled")
 
@@ -100,6 +103,8 @@ def render(rep: dict, meta: dict) -> str:
       + ("  [strict]" if rep["strict"] else ""))
     if rep.get("judge"):
         p(f"*** {rep['judge']['label']} ***")
+    if chunk_cap(meta):
+        p(f"*** {cap_label(chunk_cap(meta))} ***")
     p()
     p(f"{'family':<9} {'mean':>5} {'std':>5} {'n':>3} {'gate':>7} {'miss':>4} {'drop':>4}  per-pass")
     for fam, f in rep["families"].items():
@@ -136,6 +141,9 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
     p()
     if rep.get("judge"):
         p(f"> **{_md_cell(rep['judge']['label'])}.** Dev screening only; not written to results/experiments.csv.")
+        p()
+    if chunk_cap(meta):
+        p(f"> **{_md_cell(cap_label(chunk_cap(meta)).capitalize())}.** Smoke tier only; never the site headline.")
         p()
     p(f"runner `{meta.get('runner')}` | action source `{meta.get('action_source')}` | passes {len(rep['passes'])} "
       f"| tasks {rep['n_tasks']} | missing {rep['n_missing']}")
@@ -184,20 +192,29 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
             rows, head = list(rd), [c for c in (rd.fieldnames or []) if c]
     head += [c for c in CSV_FIELDS if c not in head]  # keep columns this version does not know
     fam = rep["families"]
+    cap = chunk_cap(meta)
     r4 = lambda x: "" if x is None else f"{x:.4f}"  # noqa: E731
     new = {"exp": rep["exp"], "split": split, "timestamp": rep["generated"], "git_sha": meta.get("git_sha") or "",
            "runner": meta.get("runner", ""), "action_source": meta.get("action_source", ""),
            **{f: r4(fam.get(f, {}).get("mean")) for f in FAMILIES},
            "overall": r4(rep["overall"]), "overall_std": r4(rep["overall_std"]), "passes": len(rep["passes"]),
-           "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": meta.get("notes", ""),
+           "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": capped_notes(meta.get("notes", ""), cap),
            "branch": meta.get("branch") or current_branch(),
            # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
            "n_dropped": sum(f.get("dropped") or 0 for f in fam.values()),
-           "status": "scored", "run_url": run_url()}
+           "status": "scored", "run_url": run_url(), "max_chunks": str(cap or "")}
     # replace the same exp+split, and exp's score-less live rows (mark_row) under any split label
     rows = [r for r in rows if not (r.get("exp") == rep["exp"]
                                     and (r.get("split") == split or r.get("status") in LIVE_STATUSES))] + [new]
     _write_csv(RESULTS_CSV, head, [{k: v for k, v in r.items() if k in head} for r in rows])
+
+
+def capped_notes(notes: str, cap: int | None) -> str:
+    """Notes of a capped run start with its label (idempotent), so the csv says so even where max_chunks is not shown."""
+    if not cap:
+        return notes or ""
+    tag = f"[capped smoke: {cap} chunks]"
+    return notes if (notes or "").startswith(tag) else (f"{tag} {notes}" if notes else tag)
 
 
 def run_url() -> str:
@@ -219,7 +236,7 @@ def _write_csv(dest, head: list[str], rows: list[dict]) -> None:
 
 
 def mark_row(exp: str, dest, status: str, split: str = "", runner: str = "", action_source: str = "",
-             notes: str = "", git_sha: str = "") -> int:
+             notes: str = "", git_sha: str = "", max_chunks: int | None = None) -> int:
     """Record a run's live status in csv `dest` so in-flight runs are visible. Returns rows written.
 
     running: add a score-less row for exp, or refresh its existing score-less row (empty arguments keep
@@ -241,7 +258,8 @@ def mark_row(exp: str, dest, status: str, split: str = "", runner: str = "", act
         if any((r.get("overall") or "").strip() for r in mine):
             return 0
         upd = {"split": split, "git_sha": git_sha, "runner": runner, "action_source": action_source,
-               "notes": notes, "branch": current_branch(), "run_url": run_url()}
+               "notes": capped_notes(notes, max_chunks) if notes or max_chunks else "", "branch": current_branch(),
+               "run_url": run_url(), "max_chunks": str(max_chunks or "")}
         new = {**(mine[0] if mine else {}), **{k: v for k, v in upd.items() if v},
                "exp": exp, "timestamp": now(), "status": "running"}
         _write_csv(dest, head, [r for r in rows if r.get("exp") != exp] + [new])
@@ -306,6 +324,7 @@ def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: boo
            judge: Judge | None = None) -> dict:
     rep = build(exp, sel, strict, split_label, judge)
     rep["split"] = split_label
+    rep["max_chunks"] = chunk_cap(read_meta(exp))
     if not rep["passes"]:
         hint = f" --judge-model {judge.spec}" if judge else ""
         log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}{hint}`)")

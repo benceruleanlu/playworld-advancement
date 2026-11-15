@@ -24,10 +24,13 @@
         <tr><td>Gains must clear the noise</td><td>Verifier passes disagree; a single lucky pass is not an improvement.</td><td class="enf"><code>pwa compare</code> and the <a href="#progress">Progress</a> table use 2x pass std</td></tr>
         <tr><td>Changes are kept only on a full-point, two-seed gain</td><td>Two scorings of the same video differed by 0.5 or more on 10 of 24 baseline tasks, so half-point moves are judge noise.</td><td class="enf"><code>pwa cells</code> counts tasks that moved by a full point; adoption is a team rule <span class="badge warn">convention, not code</span></td></tr>
         <tr><td>Screening scores stay out of the log</td><td>A second judge is not comparable with the leaderboard.</td><td class="enf"><code>--judge-model</code> writes to its own eval folder and <code>report.&lt;model&gt;.json</code>, never <code>results/experiments.csv</code></td></tr>
-        <tr><td>Capped smoke runs never count</td><td>A rollout cut to 10 of 30 chunks covers a third of the task, so its score measures a different thing.</td><td class="enf">Upstream <code>--num-chunks 10</code> caps the rollout; screening-judge runs end as <code>generated</code> with no score; this page badges rows named <code>smk-*</code> or noted "capped smoke" and keeps them out of the headline, ruler, task-type scores and best-so-far line</td></tr>
+        <tr><td>Capped smoke runs never count</td><td>A rollout cut to 10 of 30 chunks covers a third of the task, so its score measures a different thing.</td><td class="enf">Upstream <code>--num-chunks 10</code> caps the rollout; screening-judge runs end as <code>generated</code> with no score; this page badges rows named <code>smk-*</code> or <code>smk13-*</code> or noted "capped smoke" and keeps them out of the headline, ruler, task-type scores and best-so-far line</td></tr>
         <tr><td>Branch code is flagged</td><td>A score should describe code anyone can check out from main.</td><td class="enf">Workflow records <code>branch</code>; non-main rows badged "unmerged code"</td></tr>
       </tbody>
     </table>
   </div>
   </details>
+  <h3 id="speed-h" class="speedhead">Iteration speed</h3>
+  <p class="sub">Measured wall clock of real runs, and the changes to make a run faster with their status.</p>
+  <div id="speed" aria-labelledby="speed-h"></div>
 </section>
