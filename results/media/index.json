@@ -1,6 +1,16 @@
 {
  "runs": [
   {
+   "exp": "smk14-arms-gc-v2-a1",
+   "generated": "2026-11-15T02:18:04Z",
+   "n_tasks": 3,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk14-arms-gc-v2-a1",
+   "scored": true,
+   "labels": [
+    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores"
+   ]
+  },
+  {
    "exp": "smk14-arms-gc-v2-a2",
    "generated": "2026-11-15T02:17:56Z",
    "n_tasks": 3,
@@ -38,18 +48,6 @@
    "labels": [
     "not scored",
     "arm 1/2 of rs13-arms-v1: --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-player-hint"
-   ]
-  },
-  {
-   "exp": "smk14-arms-gc-v2-a1",
-   "generated": "2026-11-15T02:06:52Z",
-   "n_tasks": 3,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk14-arms-gc-v2-a1",
-   "scored": false,
-   "labels": [
-    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
-    "not scored",
-    "arm 1/2 of smk14-arms-gc-v2: --lingbot-fast --lingbot-cpu-threads --num-chunks 10 --agent-model gpt-6-luna"
    ]
   },
   {

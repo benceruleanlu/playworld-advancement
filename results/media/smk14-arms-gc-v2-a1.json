@@ -2,12 +2,12 @@
  "exp": "smk14-arms-gc-v2-a1",
  "release_tag": "run-smk14-arms-gc-v2-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk14-arms-gc-v2-a1",
- "generated": "2026-11-15T02:06:52Z",
+ "generated": "2026-11-15T02:18:04Z",
  "git_sha": "82cbaf15de0ade2144003afb3fcd731c3887a6fe",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "agent",
- "scored": false,
+ "scored": true,
  "max_chunks": 10,
  "runner_args": [
   "--lingbot-fast",
@@ -20,9 +20,7 @@
  "player_model": "gpt-6-luna",
  "notes": "capped smoke (10 chunks), 14B with fast load: no-flags baseline vs turn-cal + player hint [arm 1/2 of smk14-arms-gc-v2: --lingbot-fast --lingbot-cpu-threads --num-chunks 10 --agent-model gpt-6-luna]",
  "labels": [
-  "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
-  "not scored",
-  "arm 1/2 of smk14-arms-gc-v2: --lingbot-fast --lingbot-cpu-threads --num-chunks 10 --agent-model gpt-6-luna"
+  "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores"
  ],
  "report": "smk14-arms-gc-v2-a1.md",
  "model": {
@@ -39,33 +37,33 @@
   {
    "task_id": "GC005",
    "family": "gc",
-   "mean": null,
+   "mean": 1.55,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "相机仅在雕塑的前方和局部侧面进行了移动，没有执行完整的360度环绕轨迹。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC005.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC005.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 3.95,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频成功展示了相机向左平移后返回的动作，橱窗内的关键物体在重新出现时保持了高度的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 3.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频中镜头连续左右平移，所有关键物体、纹理、颜色和相对位置均保持高度一致，无明显突变或噪点。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk14-arms-gc-v2-a1/GC036.jpg"
   }
