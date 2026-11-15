@@ -407,3 +407,45 @@ def test_knobs_reach_the_engine_per_main_call(monkeypatch, capsys, tmp_path):
     R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"])
     R.main(["run.py", "--lingbot-turn-cal"])
     assert [(on, c.k) for on, c in seen] == [(True, 0.5), (True, 1.0), (False, 1.0)]
+
+
+# ------------------------------------------------------------ per-chunk stepping and other flags
+
+def test_reanchor_refused_and_per_chunk_flags_allowed():
+    from adapters.lingbot_world2 import run as R
+    base = ["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"]
+    for bad in (["--lingbot-reanchor"], ["--lingbot-stateless"], ["--lingbot-yaw-gain", "1.2"], ["--lingbot-gc-ease-turns"]):
+        with pytest.raises(SystemExit):
+            R.configure(base + bad, environ={})
+    with pytest.raises(SystemExit):
+        R.configure(["run.py", "--lingbot-yaw-servo"], environ={})              # no turn calibration
+    for ok in (["--lingbot-weight-mod"], ["--lingbot-cond-schedule"], ["--lingbot-stg"], ["--lingbot-kv-noise"],
+               ["--lingbot-pose-memory"], ["--lingbot-turn-step", "90"]):
+        flags, _ = R.configure(base + ok, environ={})
+        assert flags["yaw_servo"]
+
+
+@pytest.mark.parametrize("kv_noise", [False, True])
+def test_split_at_gain_one_is_the_single_step(monkeypatch, kv_noise):
+    """Dataset mode: the servo turns one <task>_full step into per-chunk steps. With the gains at 1 (k=0 and no
+    reading, so the estimates stay 1) every DiT input, noise draw, camera pose and KV write equals the single step."""
+    from adapters.lingbot_world2 import kv_noise as KVN
+    from tests.test_lingbot_kv_noise import _session, _torch
+    _torch(monkeypatch)
+    keys = ["j"] * 44 + ["l"] * 48                     # 12 + 5 x 16 frames: one 6-chunk dataset step
+    runs = []
+    for split in (False, True):
+        sess, calls, decoded = _session(KVN.KVNoise(KVN.KVNoiseConfig(True, 25.0)) if kv_noise else None)
+        rels = []
+        sess._plucker = lambda r, rels=rels: rels.append(np.array(r)) or SimpleNamespace(chunk=lambda *a, **kw: ("e",))
+        if split:
+            servo = YS.YawServo(k=0.0)
+            YS.step(sess, servo, keys, RATE, lambda f: (0.0, 0.0, 1.0), rigid=None)
+            assert servo.chunks == 6 and set(servo.last_gain) == {1.0}
+        else:
+            sess.step(keys)
+        runs.append((calls, np.concatenate(decoded, axis=1), rels, list(sess.gen.draws), sess.chunk_id))
+    (c0, d0, r0, g0, n0), (c1, d1, r1, g1, n1) = runs
+    assert n0 == n1 == 6 and g0 == g1 and np.array_equal(d0, d1)
+    assert len(c0) == len(c1) and all(a[0] == b[0] and np.array_equal(a[1], b[1]) for a, b in zip(c0, c1))
+    assert len(r0) == len(r1) == 6 and all(np.array_equal(a, b) for a, b in zip(r0, r1))

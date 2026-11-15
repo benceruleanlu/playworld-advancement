@@ -81,8 +81,10 @@ chunk's gain within 0.5 to 2.0. Knobs: --lingbot-yaw-servo-k (LINGBOT_YAW_SERVO_
 --lingbot-yaw-servo-beta (LINGBOT_YAW_SERVO_BETA, 0.6), read per main() call. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
 and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
 them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). Refused with
---lingbot-yaw-gain (both set the model-track gain) and --lingbot-gc-ease-turns. See yaw_servo.py and
-research/camera-response.md.
+--lingbot-yaw-gain (both set the model-track gain), --lingbot-gc-ease-turns and --lingbot-reanchor (per-chunk
+steps change which latent a return spanning chunks anchors). Weight mod, cond schedule, STG, KV noise, sink
+scale, noise-mean coupling and pose memory act per latent chunk inside session.step, so per-chunk steps leave
+them unchanged (weight_mod_steps still counts generate calls). See yaw_servo.py; the study is in PR #125.
 
 Yaw gain (off by default): `--lingbot-yaw-gain G` or LINGBOT_YAW_GAIN (0.5 to 2.0), with optional
 `--lingbot-yaw-gain-left` / `--lingbot-yaw-gain-right` (LINGBOT_YAW_GAIN_LEFT / _RIGHT), multiplies the j / l yaw
@@ -437,6 +439,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
             raise SystemExit("--lingbot-yaw-servo and --lingbot-yaw-gain both set the model-track yaw gain; use one")
         if flags["gc_ease_turns"]:
             raise SystemExit("--lingbot-yaw-servo steps chunk by chunk; it cannot run with --lingbot-gc-ease-turns")
+        if flags["reanchor"]:
+            # ReturnDetector closes a return visit at the end of each session.step(); stepping per chunk would
+            # anchor a different latent when a visit spans chunks, so the arm would not be re-anchor plus servo
+            raise SystemExit("--lingbot-yaw-servo steps chunk by chunk, which changes the latent --lingbot-reanchor "
+                             "picks for a return that spans chunks; use one per arm")
     flags.update(window)
     flags["sink_scale"], argv = SK.parse(argv, environ)
     if flags["sink_scale"].enabled and (flags["stateless"] or flags["sink"] == 0):
@@ -768,7 +775,8 @@ class LingBotWorld2Engine:
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
         pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
-        if self.yaw_servo is not None and any(YSV.yaw_part(k) for k in keys):
+        servo_split = self.yaw_servo is not None and any(YSV.yaw_part(k) for k in keys)
+        if servo_split:
             # chunk by chunk, each chunk's pose gain set from the yaw the earlier chunks rendered
             before = (self.yaw_servo.chunks, self.yaw_servo.untrusted)
             frames = YSV.step(self.session, self.yaw_servo, keys, math.degrees(P.YAW), MT.chunk_turn)
@@ -794,7 +802,9 @@ class LingBotWorld2Engine:
             STATS.pose_mem_counted({k: v - pm_before[k] for k, v in self._pose_mem_counts().items()},
                                    self.session.pm_peak_bytes)
         if self.weight_mod is not None:
-            STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
+            steps = self.session.weight_mod_steps - modded[0]
+            # the servo splits one call into per-chunk session steps: count the call once, as without it
+            STATS.modulated(min(steps, 1) if servo_split else steps, self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
