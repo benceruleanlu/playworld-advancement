@@ -1,0 +1,87 @@
+{
+ "exp": "wm14-arm-c10-v1",
+ "release_tag": "run-wm14-arm-c10-v1",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-wm14-arm-c10-v1",
+ "generated": "2026-11-15T02:28:07Z",
+ "git_sha": "d9b70600c770c77927dfc50a52f27a797a03ba97",
+ "branch": "proposal/weight-mod",
+ "runner": "lingbot_world2",
+ "action_source": "agent",
+ "scored": false,
+ "max_chunks": 10,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-player-hint",
+  "--lingbot-weight-mod",
+  "--agent-model",
+  "gpt-6-luna"
+ ],
+ "player_model": "gpt-6-luna",
+ "notes": "14B smoke of PR 87 weight modulation (camera conditioning scaled per chunk), arm",
+ "labels": [
+  "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+  "not scored"
+ ],
+ "report": "wm14-arm-c10-v1.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/GC033.jpg"
+  },
+  {
+   "task_id": "IF010",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/IF010.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/IF010.jpg"
+  },
+  {
+   "task_id": "OE018",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/OE018.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/OE018.jpg"
+  },
+  {
+   "task_id": "OE035",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/OE035.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-wm14-arm-c10-v1/OE035.jpg"
+  }
+ ]
+}

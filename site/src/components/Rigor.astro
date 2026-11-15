@@ -4,10 +4,10 @@
   <ol class="steps">
     <li><b>Fixed task sets.</b> We develop on 24 practice tasks. The other 147 stay unseen until the code is frozen.</li>
     <li><b>The AI plays every move.</b> A language model watches the video and picks each action: <code>gpt-6-luna</code> in every run we compare (the first baseline used <code>gpt-4.1-mini</code>). Final scores never replay recorded moves.</li>
-    <li><b>The benchmark's own judge.</b> Gemini 3.1 Pro scores each video with the benchmark's settings, and is never told which model made it. A cheaper screening judge may pick which practice test gets an official run. On our 24 baseline videos it was more lenient than the official judge, so it keeps or drops nothing, and its scores never appear here.</li>
+    <li><b>The benchmark's own judge.</b> Gemini 3.1 Pro scores each video with the benchmark's settings, and is never told which model made it. We checked two cheaper judges against it on our 24 baseline videos. Neither agreed with it, so they keep or drop nothing, and their scores never appear here.</li>
     <li><b>Score twice.</b> A final score averages two or more scorings and reports how much they disagree.</li>
     <li><b>Ignore small differences.</b> A gain smaller than twice that disagreement does not count. On practice tasks a change is kept only if single tasks move by a full point on two separate runs, because two scorings of the same video differed by half a point or more on 10 of 24 tasks.</li>
-    <li><b>Quick checks are labeled.</b> Capped smoke runs stop each rollout after 10 of its 30 chunks, on 2 or 3 chosen tasks with one GPU each, and get one pass of the screening judge. They show how the player and each change behave; their numbers are not comparable with official scores and never count here.</li>
+    <li><b>Quick checks are labeled.</b> Capped smoke runs stop each rollout after 10 of its 30 chunks, on 2 or 3 chosen tasks with one GPU each. They show how the player and each change behave. A capped run covers a third of each task, so even when the official judge scores it, its number is not comparable with a full score and never counts here.</li>
     <li><b>Everything is logged.</b> Each run is a row in a public file with its exact code version. This page reads it live.</li>
   </ol>
   <details class="rules-wrap"><summary>Technical detail: the 11 rules and where the code enforces each</summary>

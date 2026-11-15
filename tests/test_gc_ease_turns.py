@@ -40,7 +40,7 @@ def test_non_pure_turn_is_bit_identical(keys):
 def test_runner_routes_pose_option_and_records_count(monkeypatch, tmp_path, tid, key, enabled, expected):
     engine = R.LingBotWorld2Engine.__new__(R.LingBotWorld2Engine)
     calls = []
-    engine.session = SimpleNamespace(started=True, chunk_id=2, reanchor_events=0,
+    engine.session = SimpleNamespace(started=True, chunk_id=2, reanchor_events=0, track=S.PoseTrack(),
         step=lambda keys, **kw: calls.append((keys, kw)) or np.zeros((1, 2, 2, 3)))
     engine._last_chunk, engine.args = (tid, 1), SimpleNamespace(fps=16)
     monkeypatch.setattr(engine, "_calibrate", lambda *a: None)
