@@ -15,6 +15,10 @@ export PLAYER_MODEL="gpt-4.1-mini"   # non-reasoning; reasoning models can retur
 # Rubric Verifier (scoring). Must be Gemini 3.1 Pro to match the leaderboard.
 export GEMINI_API_KEY=""
 export GEMINI_MODEL="gemini-3.1-pro-preview"
+# Screening judge on an OpenAI-compatible API (`--judge-model openai:MODEL`, dev loops only).
+# Empty = use PLAYER_API_KEY / PLAYER_API_URL.
+# export JUDGE_API_KEY=""
+# export JUDGE_API_URL="https://api.openai.com/v1"
 
 # Hugging Face (dataset is public; token only raises rate limits).
 export HF_TOKEN=""
