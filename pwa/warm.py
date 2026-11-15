@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import sys
@@ -41,6 +42,7 @@ CALL_TIMEOUT_S = 5 * 3600  # one call; the arms job itself times out at 350 min
 NAME = re.compile(r"[A-Za-z0-9._-]+")
 TASK = re.compile(r"[A-Za-z0-9_-]+")
 ROOT = Path(__file__).resolve().parents[1]
+TOKEN_ENV = "PWA_WARM_DEPLOY_TOKEN"  # per-deploy id, only for deployments of a checkout with uncommitted changes
 
 
 class WarmError(ValueError):
@@ -68,9 +70,14 @@ def settings(environ=os.environ) -> dict:
             "timeout": CALL_TIMEOUT_S}
 
 
-def fingerprint(git_sha: str, dirty: bool, s: dict) -> str:
-    """What a deployment is: the code (commit) and the class settings. A mismatch means redeploy."""
-    blob = json.dumps({"sha": git_sha, "dirty": bool(dirty), "gpu": s["gpu"], "idle": s["scaledown_window"],
+def fingerprint(git_sha: str, dirty: bool, s: dict) -> str | None:
+    """What a deployment is: the code (commit) and the class settings. A mismatch means redeploy.
+
+    None for a checkout with uncommitted changes: the commit does not identify that code (two snapshots on one
+    commit would share a fingerprint), so a dirty checkout never reuses a deployment and always redeploys."""
+    if dirty:
+        return None
+    blob = json.dumps({"sha": git_sha, "gpu": s["gpu"], "idle": s["scaledown_window"],
                        "max": s["max_containers"]}, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
@@ -142,8 +149,10 @@ class WarmWorker:
     run_agent, counters) is reset by the runner's own main() on every call; only the loaded pipe is kept."""
 
     def __init__(self, runner: str, deploy_sha: str, run_pwa, reload=lambda: None, commit=lambda: None,
-                 free=lambda: None, clock=time.time):
-        self.runner, self.deploy_sha = runner, deploy_sha
+                 free=lambda: None, clock=time.time, deploy_token: str = ""):
+        # deploy_token: set only when the deployed code had uncommitted changes (a random id per deploy);
+        # a call is accepted only with the same token, i.e. from the client that made this deployment.
+        self.runner, self.deploy_sha, self.deploy_token = runner, deploy_sha, deploy_token
         self.run_pwa, self.reload, self.commit, self.free, self.clock = run_pwa, reload, commit, free, clock
         self.calls, self.loaded_in, self.started = 0, None, clock()
 
@@ -197,6 +206,13 @@ class WarmWorker:
         if self.deploy_sha and sha and sha != self.deploy_sha:
             # The container runs the code baked in at deploy time; recording another commit would lie.
             return f"deployed code is {self.deploy_sha[:12]}, caller is {sha[:12]}; redeploy (python -m pwa.warm run does)"
+        token = prov.get(TOKEN_ENV, "")
+        if token != self.deploy_token:
+            # A deployment of uncommitted code is used only by the client that deployed it, and a dirty caller
+            # only uses its own deployment: the commit alone does not say which code either side has.
+            if self.deploy_token:
+                return "deployed code had uncommitted changes and this call is not from that deploy; redeploy"
+            return "caller has uncommitted changes but this deployment is not its own; redeploy"
         return ""
 
 
@@ -222,12 +238,15 @@ def provenance_env() -> dict:
 
 def ensure_deployed(s: dict, prov: dict, runner: str) -> bool:
     """Deploy warm_app.py unless the deployed app has this fingerprint and the runner's class resolves.
-    Returns True when it deployed (the next call starts a cold container)."""
+    A checkout with uncommitted changes always deploys, with a fresh TOKEN_ENV that is also put in prov, so
+    its containers accept only this client's calls. Returns True when it deployed (the next call is cold)."""
     import modal  # noqa: PLC0415
 
     fp = fingerprint(prov["PWA_GIT_SHA"], prov["PWA_GIT_DIRTY"] == "1", s)
+    token = "" if fp else secrets.token_hex(8)
+    prov[TOKEN_ENV] = token
     state = modal.Dict.from_name(STATE_DICT, create_if_missing=True)
-    if state.get("fingerprint") == fp:
+    if fp and state.get("fingerprint") == fp:
         try:
             modal.Cls.from_name(APP_NAME, CLASSES[runner]).hydrate()
             print(f"[warm] {APP_NAME} already deployed at {fp}; reusing its containers", flush=True)
@@ -236,11 +255,17 @@ def ensure_deployed(s: dict, prov: dict, runner: str) -> bool:
             print(f"[warm] {APP_NAME} class {CLASSES[runner]} not reachable ({type(e).__name__}); deploying",
                   flush=True)
     env = {**os.environ, "PWA_MODAL_GPU": s["gpu"], "PWA_WARM_IDLE_MIN": str(s["idle_min"]),
-           "PWA_WARM_MAX_CONTAINERS": str(s["max_containers"]), "PWA_WARM_DEPLOY_SHA": prov["PWA_GIT_SHA"]}
+           "PWA_WARM_MAX_CONTAINERS": str(s["max_containers"]), "PWA_WARM_DEPLOY_SHA": prov["PWA_GIT_SHA"],
+           TOKEN_ENV: token}
     print(f"[warm] deploying {APP_NAME} ({s['gpu']}, idle {s['idle_min']} min, max {s['max_containers']} "
-          f"containers per class) at {prov['PWA_GIT_SHA'][:12]}", flush=True)
+          f"containers per class) at {prov['PWA_GIT_SHA'][:12]}"
+          f"{' with uncommitted changes (always redeployed)' if token else ''}", flush=True)
+    # Forget the old fingerprint first: if the deploy fails halfway, the next run must not trust it.
+    with contextlib.suppress(KeyError):
+        state.pop("fingerprint")
     subprocess.run(["modal", "deploy", str(ROOT / "warm_app.py")], cwd=ROOT, env=env, check=True)
-    state["fingerprint"] = fp
+    if fp:
+        state["fingerprint"] = fp  # a dirty deployment leaves no fingerprint, so nothing ever reuses it
     return True
 
 
@@ -264,6 +289,12 @@ def cmd_run(a) -> int:
     if a.num_shards > s["max_containers"]:
         print(f"[warm] {a.num_shards} shards but at most {s['max_containers']} containers: shards queue", flush=True)
     prov = provenance_env()
+    if os.environ.get("PWA_RUN_ID"):
+        prov["PWA_RUN_ID"] = os.environ["PWA_RUN_ID"]  # recorded as run_id in each meta.json (pwa.arms --owned)
+    claim = os.environ.get("PWA_CLAIM_FILE")
+    if claim:
+        # As modal_app.py: written only after every check and the overwrite guard passed.
+        Path(claim).write_text("".join(f"{n}\n" for n in names))
     deployed = ensure_deployed(s, prov, a.runner)
     obj = modal.Cls.from_name(APP_NAME, CLASSES[a.runner])()
     t0 = time.time()

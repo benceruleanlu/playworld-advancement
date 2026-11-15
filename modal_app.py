@@ -73,6 +73,13 @@ def shard_argv(argv: list[str], shard: int, num_shards: int) -> list[str]:
     return [*argv[:i], *flags, *argv[i:]]
 
 
+def cap_argv(max_chunks: int) -> list[str]:
+    """`pwa gen` flag for a capped smoke run (0 = uncapped, the default). A pwa flag, so it goes before `--`."""
+    if max_chunks < 0:
+        raise SystemExit("max_chunks must be >= 0 (0 = uncapped)")
+    return [f"--max-chunks={max_chunks}"] if max_chunks else []
+
+
 @app.function(image=image, gpu=GPU, timeout=6 * 3600,
               volumes={"/runs": runs_vol, "/weights": weights_vol},
               secrets=[modal.Secret.from_name("pwa")])
@@ -105,6 +112,16 @@ def arm_exps(exp: str, arms: str) -> list[str]:
     return [f"{exp}-a{i}" for i in range(1, len(arms.split("|")) + 1)] if arms.strip() else []
 
 
+def claim_names(exp: str, arms: str, existing: set, resume: bool) -> list:
+    """Experiment directories this invocation writes. The overwrite guard: refuses if one is already in the
+    Volume (shards always pass --resume to pwa, so nothing else stops a reused name)."""
+    names = arm_exps(exp, arms) or [exp]
+    taken = [n for n in names if n in existing]
+    if taken and not resume:
+        raise SystemExit(f"{' '.join(taken)} already in the pwa-runs Volume; pick a new name or pass --resume")
+    return names
+
+
 def _git(*args: str, cwd: Path = ROOT) -> str:
     r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -113,7 +130,7 @@ def _git(*args: str, cwd: Path = ROOT) -> str:
 @app.local_entrypoint()
 def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str = "dataset",
          num_shards: int = 1, resume: bool = False, notes: str = "", tasks: str = "", extra: str = "",
-         arms: str = ""):
+         arms: str = "", max_chunks: int = 0):
     """arms: '|'-separated runner arg strings (pwa gen-arms). Each shard's container runs every arm, so the
     model loads once per container; arm i lands in the Volume at /<EXP>-a<i>."""
     import re
@@ -122,10 +139,7 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
     if runner.startswith("lingbot") != RUNNER_ENV.startswith("lingbot"):
         raise SystemExit(f"runner {runner!r} needs a matching image: rerun with PWA_RUNNER={runner} in the environment")
     existing = {e.path.strip("/") for e in runs_vol.listdir("/")}
-    for name in arm_exps(exp, arms) or [exp]:
-        if name in existing and not resume:
-            # Shards always pass --resume to pwa, so this is the overwrite guard.
-            raise SystemExit(f"{name} already exists in the pwa-runs Volume; pick a new name or pass --resume")
+    names = claim_names(exp, arms, existing, resume)
     argv = [exp, "--runner", runner, "--action-source", action_source]
     if arms:
         argv.append(f"--arms={arms}")  # one token: arm strings start with dashes
@@ -135,6 +149,7 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         argv.append("--resume")
     if notes:
         argv.append(f"--notes={notes}")  # one token, so notes starting with a dash still parse
+    argv += cap_argv(max_chunks)
     if extra:
         argv += ["--", *extra.split()]
     prov = {
@@ -143,6 +158,12 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         "PWA_GIT_DIRTY": "1" if _git("status", "--porcelain", "--", ".", ":!runs", ":!results") else "0",
         "PWA_SUBMODULE_SHA": _git("rev-parse", "HEAD", cwd=ROOT / "third_party" / "PlayWorld"),
     }
+    if os.environ.get("PWA_RUN_ID"):
+        prov["PWA_RUN_ID"] = os.environ["PWA_RUN_ID"]  # recorded as run_id in each meta.json
+    claim = os.environ.get("PWA_CLAIM_FILE")
+    if claim:
+        # Written only after the overwrite guard passed: the directories this invocation generates into.
+        Path(claim).write_text("".join(f"{n}\n" for n in names))
     fn = gen_arms_shard if arms else gen_shard
     codes = list(fn.starmap([(argv, i, num_shards, prov) for i in range(num_shards)]))
     print(f"shard exit codes: {codes}")

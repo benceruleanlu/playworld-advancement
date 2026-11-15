@@ -196,6 +196,38 @@ def select_for_exp(exp: str, split: str | None, families, tasks) -> list[dict]:
     return select(meta.get("split") or "dev", families, None)
 
 
+UPSTREAM_NUM_CHUNKS = 30  # run_agent.py --num-chunks default: agent chunks per closed-loop rollout
+
+
+def runner_num_chunks(args: list[str]) -> int | None:
+    """Last --num-chunks value in runner args (argparse keeps the last one), or None."""
+    val = None
+    for i, x in enumerate(args or []):
+        if x == "--num-chunks" and i + 1 < len(args):
+            val = args[i + 1]
+        elif x.startswith("--num-chunks="):
+            val = x.split("=", 1)[1]
+    try:
+        return int(val) if val is not None else None
+    except ValueError:
+        return None
+
+
+def chunk_cap(meta: dict) -> int | None:
+    """Agent-chunk cap of a run (pwa gen --max-chunks, or --num-chunks below upstream's 30 in the runner args).
+    None = uncapped, comparable to official scores. A capped run is a smoke run and never an official number."""
+    if meta.get("max_chunks"):
+        return int(meta["max_chunks"])
+    n = runner_num_chunks(meta.get("runner_args") or [])
+    return n if n is not None and n < UPSTREAM_NUM_CHUNKS else None
+
+
+def cap_label(cap: int | None) -> str:
+    """One label for a capped run, used in meta notes, the csv, reports and the site."""
+    return f"capped smoke run: {cap} agent chunk{'s' if cap != 1 else ''} per rollout (official {UPSTREAM_NUM_CHUNKS}), " \
+           f"not comparable to official scores" if cap else ""
+
+
 def git(*args, cwd: Path = ROOT) -> str | None:
     try:
         r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=10)
@@ -219,7 +251,10 @@ def provenance() -> dict:
     return {"git_sha": git("rev-parse", "HEAD") or os.environ.get("PWA_GIT_SHA"), "branch": current_branch(),
             "git_dirty": dirty,
             "submodule_sha": git("rev-parse", "HEAD", cwd=PLAYWORLD) or os.environ.get("PWA_SUBMODULE_SHA"),
-            "hostname": socket.gethostname()}
+            "hostname": socket.gethostname(),
+            # launcher's invocation id (modal_app.py passes PWA_RUN_ID through), so a workflow can tell its own
+            # rollouts from older ones under the same name
+            **({"run_id": os.environ["PWA_RUN_ID"]} if os.environ.get("PWA_RUN_ID") else {})}
 
 
 def write_json(path: Path, obj) -> None:

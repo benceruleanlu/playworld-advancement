@@ -38,6 +38,31 @@ def test_names_and_listing():
         "g-a1 1/2 base", "g-a2 2/2 --lingbot-turn-cal --lingbot-player-hint"]
 
 
+def test_labels_include_shared_args():
+    # the args every arm gets come first; "base" only when the arm ran with no args at all
+    assert arms.arm_label([], ["--lingbot-stateless"]) == "--lingbot-stateless"
+    assert arms.arm_label(["--x"], ["--s"]) == "--s --x" and arms.arm_label([], []) == "base"
+    assert arms.listing("g", " | --lingbot-turn-cal", "--lingbot-stateless") == [
+        "g-a1 1/2 --lingbot-stateless", "g-a2 2/2 --lingbot-stateless --lingbot-turn-cal"]
+    with pytest.raises(PwaError):
+        arms.listing("g", "|", "'unclosed")
+
+
+def test_listing_cli_takes_shared_args():
+    r = subprocess.run([sys.executable, "-m", "pwa.arms", "g", " | --b", " --agent-model m"], cwd=ROOT,
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.splitlines() == ["g-a1 1/2 --agent-model m", "g-a2 2/2 --agent-model m --b"]
+
+
+def test_cli_accepts_arms_value_starting_with_dashes():
+    from pwa import cli
+    assert cli._join_arms(["gen-arms", "g", "--arms", "--a|--b", "--tasks", "X", "--", "--arms", "y"]) == [
+        "gen-arms", "g", "--arms=--a|--b", "--tasks", "X", "--", "--arms", "y"]
+    a = cli.parser().parse_args(cli._join_arms(["gen-arms", "g", "--arms", "--lingbot-turn-cal|--lingbot-stateless"]))
+    assert a.arms == "--lingbot-turn-cal|--lingbot-stateless"
+    assert cli._join_arms(["gen-arms", "g", "--arms= | --x"]) == ["gen-arms", "g", "--arms= | --x"]
+
+
 def _modal_fn(name):
     # modal_app imports modal at import time; load just the pure helper.
     tree = ast.parse((ROOT / "modal_app.py").read_text())
@@ -52,6 +77,40 @@ def test_modal_arm_names_match_pwa():
     for text in (" | --a", "--a|--b|--c", "--a|", "--x"):
         assert f("g", text) == arms.arm_names("g", len(arms.parse_arms(text)))
     assert f("g", "") == []
+
+
+def test_modal_claim_names_refuses_a_reused_name():
+    ns: dict = {}
+    tree = ast.parse((ROOT / "modal_app.py").read_text())
+    fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("arm_exps", "claim_names")]
+    exec(compile(ast.Module(body=fns, type_ignores=[]), "modal_app.py", "exec"), ns)  # noqa: S102
+    claim = ns["claim_names"]
+    assert claim("g", " | --x", {"other"}, False) == ["g-a1", "g-a2"]
+    assert claim("g", "", set(), False) == ["g"]
+    with pytest.raises(SystemExit, match="g-a2 already in the pwa-runs Volume"):
+        claim("g", " | --x", {"g-a2"}, False)
+    assert claim("g", " | --x", {"g-a2"}, True) == ["g-a1", "g-a2"]
+
+
+def test_owned_needs_every_meta_from_this_run(tmp_path, monkeypatch):
+    from pwa import core
+    monkeypatch.setattr(core, "RUNS", tmp_path)
+    for name, ids in {"mine": ["r1"], "old": ["r0"], "mixed": ["r1", "r0"], "none": [None]}.items():
+        for k, rid in enumerate(ids):
+            d = tmp_path / name
+            d.mkdir(exist_ok=True)
+            (d / f"meta.shard{k}of{len(ids)}.json").write_text(json.dumps({"exp": name, **({"run_id": rid} if rid else {})}))
+    assert arms.owned("mine", "r1")
+    assert not arms.owned("old", "r1") and not arms.owned("mixed", "r1") and not arms.owned("none", "r1")
+    assert not arms.owned("missing", "r1") and not arms.owned("mine", "")
+
+
+def test_provenance_records_run_id_only_when_set(monkeypatch):
+    from pwa import core
+    monkeypatch.delenv("PWA_RUN_ID", raising=False)
+    assert "run_id" not in core.provenance()
+    monkeypatch.setenv("PWA_RUN_ID", "123-1")
+    assert core.provenance()["run_id"] == "123-1"
 
 
 # -- in-process launch ------------------------------------------------------------
@@ -138,7 +197,9 @@ def test_gen_arms_end_to_end(env):
         meta = json.loads((runs / name / "meta.json").read_text())
         assert meta["exp"] == name and meta["runner_args"] == ["--common", *arm]
         assert meta["arm_group"] == "g" and meta["arm"] == i and meta["num_arms"] == 2 and meta["arm_args"] == arm
-        assert meta["tasks"] == [["gc", "GC005"], ["outsight", "OE034"]] and meta["notes"].startswith("smoke [arm")
+        assert meta["tasks"] == [["gc", "GC005"], ["outsight", "OE034"]]
+        # the label names every arg the arm ran with, shared ones included (arm 1 is not "base")
+        assert meta["notes"] == f"smoke [arm {i}/2 of g: {' '.join(['--common', *arm])}]"
         assert meta["last_gen"]["produced"] == 2
         for tid in ("GC005", "OE034"):
             assert (runs / name / "videos" / tid / f"{tid}.mp4").is_file()
@@ -157,6 +218,14 @@ def test_gen_arms_failure_in_one_arm(env):
     assert r.returncode == 1
     s = json.loads(r.stdout)
     assert s["failed"] and all(a["failed"][0]["task_id"] == "GC005" for a in s["arms"])
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_gen_arms_dash_leading_arms_value(env):
+    # no leading space: argparse alone would reject this value as a missing argument
+    r = pwa(env, "gen-arms", "d", "--arms", "--foo|--bar", "--tasks", "GC005", "--runner", FAKE, "--json")
+    assert r.returncode == 0, r.stderr
+    assert [a["arm_args"] for a in json.loads(r.stdout)["arms"]] == [["--foo"], ["--bar"]]
 
 
 def test_gen_arms_rejects_sana(env):

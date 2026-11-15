@@ -43,10 +43,17 @@ def test_fingerprint_changes_with_code_and_settings():
     base = W.fingerprint("abc", False, s)
     assert base == W.fingerprint("abc", False, W.settings({}))
     assert base != W.fingerprint("abd", False, s)
-    assert base != W.fingerprint("abc", True, s)
     assert base != W.fingerprint("abc", False, W.settings({"PWA_WARM_IDLE_MIN": "11"}))
     assert base != W.fingerprint("abc", False, W.settings({"PWA_WARM_MAX_CONTAINERS": "2"}))
     assert base != W.fingerprint("abc", False, W.settings({"PWA_MODAL_GPU": "L40S"}))
+
+
+def test_dirty_checkout_has_no_fingerprint():
+    # Two working-tree snapshots on one commit must never share a fingerprint: a dirty checkout gets none,
+    # so ensure_deployed always redeploys it.
+    s = W.settings({})
+    assert W.fingerprint("abc", True, s) is None
+    assert W.fingerprint("abc", False, s) is not None
 
 
 def test_warm_app_reads_settings_and_class_names():
@@ -128,10 +135,10 @@ class Recorder:
         return fn
 
 
-def _worker(rec, behaviour=lambda argv: 0, sha="abc123"):
+def _worker(rec, behaviour=lambda argv: 0, sha="abc123", token=""):
     return W.WarmWorker("lingbot_world2", sha, run_pwa=rec.run_pwa(behaviour),
                         reload=lambda: rec.events.append("reload"), commit=lambda: rec.events.append("commit"),
-                        free=lambda: rec.events.append("free"))
+                        free=lambda: rec.events.append("free"), deploy_token=token)
 
 
 ARGV = ["g", "--runner", "lingbot_world2", "--action-source", "agent", "--arms=base", "--tasks", "GC005"]
@@ -193,6 +200,22 @@ def test_refused_calls_run_nothing(argv, prov, why):
     out = _worker(rec).run(argv, 0, 1, prov)
     assert out["rc"] == 2 and why in out["error"]
     assert rec.events == []  # no reload, no run, no commit
+
+
+@pytest.mark.parametrize("deploy_token,call_token,ok", [
+    ("", "", True),            # clean deployment, clean caller
+    ("t1", "t1", True),        # dirty deployment, the client that deployed it
+    ("t1", "t2", False),       # dirty deployment, another dirty snapshot on the same commit
+    ("t1", "", False),         # dirty deployment, clean caller on the same commit
+    ("", "t2", False),         # clean deployment, dirty caller
+])
+def test_dirty_deployments_serve_only_their_own_client(deploy_token, call_token, ok):
+    rec = Recorder()
+    prov = {"PWA_GIT_SHA": "abc123", W.TOKEN_ENV: call_token}
+    out = _worker(rec, token=deploy_token).run(list(ARGV), 0, 1, prov)
+    assert (out["rc"] == 0) == ok
+    if not ok:
+        assert out["rc"] == 2 and "uncommitted changes" in out["error"] and rec.events == []
 
 
 def test_unknown_deploy_sha_does_not_refuse():
@@ -264,6 +287,29 @@ def test_ensure_deployed_deploys_on_change_or_stopped_app(monkeypatch, deploys, 
     assert cmd[:2] == ["modal", "deploy"] and cmd[2].endswith("warm_app.py")
     assert (env["PWA_WARM_IDLE_MIN"], env["PWA_WARM_MAX_CONTAINERS"], env["PWA_WARM_DEPLOY_SHA"]) == ("15", "2", "abc123")
     assert fake.state["fingerprint"] == fp
+    assert env[W.TOKEN_ENV] == ""
+
+
+@pytest.mark.parametrize("stored", [None, "match"])
+def test_ensure_deployed_always_redeploys_a_dirty_checkout(monkeypatch, deploys, stored):
+    s = W.settings({})
+    # Even a stored fingerprint of the same commit (clean or from an earlier dirty run) is not reused.
+    state = {} if stored is None else {"fingerprint": W.fingerprint("abc123", False, s)}
+    fake = FakeModal(FakeDict(state))
+    monkeypatch.setitem(sys.modules, "modal", fake)
+    tokens = []
+    for _ in range(2):  # two snapshots on one commit
+        prov = {"PWA_GIT_SHA": "abc123", "PWA_GIT_DIRTY": "1"}
+        assert W.ensure_deployed(s, prov, "lingbot_world2") is True
+        tokens.append(prov[W.TOKEN_ENV])
+    assert len(deploys) == 2 and fake.hydrated == []
+    assert [env[W.TOKEN_ENV] for _, env in deploys] == tokens and tokens[0] and tokens[0] != tokens[1]
+    assert "fingerprint" not in fake.state  # a clean run on this commit redeploys too
+
+
+def test_warm_app_passes_the_deploy_token_to_the_worker():
+    src = (ROOT / "warm_app.py").read_text()
+    assert "W.TOKEN_ENV: os.environ.get(W.TOKEN_ENV" in src and "deploy_token=os.environ.get(W.TOKEN_ENV" in src
 
 
 def test_cmd_run_calls_one_shard_per_container_and_reports_failures(monkeypatch, tmp_path):
@@ -284,18 +330,26 @@ def test_cmd_run_calls_one_shard_per_container_and_reports_failures(monkeypatch,
     monkeypatch.setattr(W, "existing_names", lambda names: [])
     monkeypatch.setattr(W, "ensure_deployed", lambda s, prov, runner: False)
     monkeypatch.setattr(W, "provenance_env", lambda: dict(PROV))
+    claim = tmp_path / "claimed.txt"
+    monkeypatch.setenv("PWA_CLAIM_FILE", str(claim))
+    monkeypatch.setenv("PWA_RUN_ID", "7-1")
     summary = tmp_path / "warm.json"
     rc = W.main(["run", "--exp", "g", "--arms", "base", "--runner", "lingbot_world2", "--tasks", "GC005",
                  "--num-shards", "2", "--summary", str(summary)])
     assert rc == 1
     (items, kw), = calls
     assert [tuple(i[1:3]) for i in items] == [(0, 2), (1, 2)] and kw["return_exceptions"] is True
+    assert all(i[3]["PWA_RUN_ID"] == "7-1" for i in items)  # recorded as run_id, checked by pwa.arms --owned
+    assert claim.read_text() == "g-a1\n"  # as modal_app.py: the names this launch generates into
     out = json.loads(summary.read_text())
     assert out["shards"][1]["rc"] == 1 and "container died" in out["shards"][1]["error"]
 
 
-def test_cmd_run_refuses_existing_names(monkeypatch, capsys):
+def test_cmd_run_refuses_existing_names(monkeypatch, capsys, tmp_path):
     monkeypatch.setitem(sys.modules, "modal", FakeModal(FakeDict()))
+    claim = tmp_path / "claimed.txt"
+    monkeypatch.setenv("PWA_CLAIM_FILE", str(claim))
     monkeypatch.setattr(W, "existing_names", lambda names: [n for n in names if n == "g-a2"])
     assert W.main(["run", "--exp", "g", "--arms", "base|--x", "--runner", "lingbot_world2"]) == 2
     assert "g-a2 already in the pwa-runs Volume" in capsys.readouterr().err
+    assert not claim.exists()  # a refused launch claims nothing, so the workflow fetches and publishes nothing

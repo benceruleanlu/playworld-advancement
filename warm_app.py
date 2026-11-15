@@ -14,7 +14,9 @@ min_containers is 0: nothing stays up beyond the idle window after the last call
 the GPU rate until the window expires; `python -m pwa.warm stop` ends it at once.
 
 The container runs the code baked in at deploy time. PWA_WARM_DEPLOY_SHA records that commit, and a call
-from another commit is refused (pwa.warm.run redeploys first, which starts cold containers).
+from another commit is refused (pwa.warm.run redeploys first, which starts cold containers). A checkout with
+uncommitted changes always redeploys with a fresh PWA_WARM_DEPLOY_TOKEN, and such a deployment accepts only
+calls carrying that token (from the client that deployed it); a dirty caller is refused by any other deployment.
 """
 from __future__ import annotations
 
@@ -48,7 +50,8 @@ CLS_KW = dict(image=image, gpu=S["gpu"], timeout=S["timeout"], scaledown_window=
 def _worker(runner: str) -> W.WarmWorker:
     from pwa import arms, cli  # noqa: PLC0415
     w = W.WarmWorker(runner, os.environ.get("PWA_WARM_DEPLOY_SHA", ""), run_pwa=cli.main,
-                     reload=runs_vol.reload, commit=runs_vol.commit, free=arms._free_gpu_cache)
+                     reload=runs_vol.reload, commit=runs_vol.commit, free=arms._free_gpu_cache,
+                     deploy_token=os.environ.get(W.TOKEN_ENV, ""))
     from adapters.lingbot_world2 import run  # noqa: PLC0415
     w.load(run.load_pipe)
     print(f"[warm] {runner}: pipe ready in {w.loaded_in}s; idle window {S['scaledown_window']}s", flush=True)
@@ -56,7 +59,8 @@ def _worker(runner: str) -> W.WarmWorker:
 
 
 def _env(runner: str) -> dict:
-    return {"LINGBOT_VARIANT": W.VARIANTS[runner], "PWA_WARM_DEPLOY_SHA": DEPLOY_SHA}
+    return {"LINGBOT_VARIANT": W.VARIANTS[runner], "PWA_WARM_DEPLOY_SHA": DEPLOY_SHA,
+            W.TOKEN_ENV: os.environ.get(W.TOKEN_ENV, "")}
 
 
 @app.cls(env=_env("lingbot_world2"), **CLS_KW)
