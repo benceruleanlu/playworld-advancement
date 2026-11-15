@@ -414,7 +414,7 @@ import * as RunInfo from "./runinfo.js";
   var METHODS = [
     { group: "now", title: "Turn calibration", arms: [["off", "fx14-model-dev-v2-a1"], ["on", "fx14-model-dev-v2-a2"]],
       cells: "of 15 tasks scored in both arms, 0 up a full point and 1 down; 8 and 9 of 24 clips missing and counted as 1.0",
-      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11. The same comparison on the 6 GC tasks alone (orc14-gc-v1) moved 2 tasks up a full point and none down; one of them, GC031, gained 1.95 there and 0.35 here.",
+      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11. The same comparison on the 6 GC tasks alone (orc14-gc-v1) moved 2 tasks up a full point and none down, and the GC mean from 2.18 to 2.58, inside the noise. GC031 gained 1.95 there and 0.35 here, and its 4.00 there comes with a judge comment that the camera never completes the 360-degree turn. The gain did not replicate, so turn calibration is not adopted.",
       also: ["orc14-gc-v1-a1", "orc14-gc-v1-a2"], links: [["#23", PR + "23"]] },
     { group: "now", title: "Caption prompt", arms: [["off", "fx14-model-dev-v2-a2"], ["on", "fx14-model-dev-v2-a3"]], also: ["ins14-base-v2", "ins14-caption-v1"],
       cells: "of 14 tasks scored in both arms, 2 up a full point and 2 down; no insight clip in either arm",
@@ -429,23 +429,24 @@ import * as RunInfo from "./runinfo.js";
       body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on. On insight tasks (dec14-ins-v1, OE001 and OE018, after the decode fix) the schedule lowered both: 3.00 to 1.50 overall. Dropped.",
       links: [["#101", PR + "101"]] },
     { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
-      pending: "control and sink 12 scored (2.35, 2.17); the two local 36 arms failed",
-      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. Control and sink 12 are scored and single tasks move both ways by up to 1.9 points (OE039 up, OE048 down); a repeat measurement found 12 sink latents changed nothing, so these are spread, not an effect. The local 36 arms produced no clips.",
+      pending: "control and sink 12 scored (2.35, 2.17); the two arms with a window of 36 failed",
+      also: ["pm14-fx-v1-a3", "pm14-fx-v2-a4", "win14-fx-v1-a3", "win14-fx-v1-a4"],
+      body: "Changes how many latent frames the model keeps attending to (a sink of 6 opening latents in an attention window of 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. OE039 scored about 3 in all three arms that keep more of the opening view: 3.00 with a sink of 12, and 3.12 in both arms with a sink of 10 in a window of 22 (pm14-fx-v1-a3, pm14-fx-v2-a4), against 1.25 to 2.00 across the control's scorings. The two 10 and 22 arms scored 2.25 and 2.67 on out-of-sight, about 2.46 against 1.83 to 2.10 for control. That is at the noise bar, on one seed. Their two videos are nearly identical, yet they scored 1.50 and 2.88 on OE048. A sink of 12 alone showed no out-of-sight gain (1.86 against 1.93) and dropped OE048 from 3.19 to 1.25. A second seed is running (win14-fx-v1). The two arms with an attention window of 36 produced no clips.",
       links: [["#104", PR + "104"]] },
     { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
       cells: "every scaled arm is lower than the control; dropped",
-      body: "Turns down how strongly later chunks attend to the pinned first frames, to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed actions. Weakening the sink lowered out-of-sight from 2.10 to between 1.25 and 1.65, which fits returns to the start view being served by the sink.",
+      body: "Lowers how strongly later chunks attend to the pinned opening frames (the sink), to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks, fixed action scripts. A weaker sink lowered out-of-sight from 2.10 to between 1.25 and 1.65. That fits the reading that the sink is what lets the camera return to the start view.",
       links: [["#112", PR + "112"]] },
-    { group: "now", title: "Insight prompt: goal, caption, caption with cue", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption + director", "ins14-fx-v2-a3"]],
-      body: "All six insight dev tasks. Insight tasks are wait-only, so the fixed-action rollout equals the closed-loop one.",
+    { group: "now", title: "Insight prompt: goal, caption, or caption with the insight director", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption and director", "ins14-fx-v2-a3"]],
+      body: "Runs on all six insight dev tasks. Insight tasks are wait-only, so the rollout with fixed action scripts is the same as the closed-loop one.",
       links: [["#32", PR + "32"], ["#90", PR + "90"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
       cells: "chunk director lowered 2 of 6 tasks by a full point and raised none; ease turns moved none; re-anchor raised 1 (GC033) and lowered none; one seed",
       body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on a repeat measurement; re-anchor is a weak lead. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
-      cells: "6 tasks, one seed; the first run changed no frame, so differences are spread",
-      body: "Re-inserts past views into the attention sink when the camera returns near them. In the first run the memory never inserted anything, so its arms are the control plus judge spread; a fixed version is in progress (pm14-fx-v2 tests variants). Not a result.",
+      cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread",
+      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. A fix is in progress. Not a result.",
       also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4"], links: [["#123", PR + "123"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
@@ -471,8 +472,8 @@ import * as RunInfo from "./runinfo.js";
       body: "Three changes to how each chunk is sampled or written to the model's memory. Merged behind opt-in flags and not run yet.", links: [["#103", PR + "103"], ["#112", PR + "112"]] }
   ];
   var GROUPS = [
-    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes, one run per arm. The overall figures count missing clips as 1.0, so read the per-task counts."],
-    ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. Not adopted."],
+    ["now", "Testing now: model-side", "Fixed moves (no AI player), 14B, official judge, 2 to 4 passes, one run per arm. Overall figures count a missing clip as 1.0, so read the per-task counts."],
+    ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. None adopted."],
     ["cand", "Candidates, not yet scored", "Off by default. Not results."]
   ];
   function rowText(r) {
@@ -485,8 +486,7 @@ import * as RunInfo from "./runinfo.js";
     if (!m.arms) return { text: "not scored", none: true };
     var rows = m.arms.map(function (a) { return rowByExp(a[1]); });
     if (rows.every(function (r) { return r && r.overall !== null && !isCapped(r); })) {
-      var s = rows.length === 2 ? fmt(rows[0].overall) + " → " + fmt(rows[1].overall) + " overall, " + rows[1].n_tasks + " tasks"
-        : m.arms.map(function (a, i) { return a[0] + " " + fmt(rows[i].overall); }).join(" · ");
+      var s = m.arms.map(function (a, i) { return a[0] + " " + fmt(rows[i].overall); }).join(", ") + (rows.length === 2 ? " overall on " + rows[1].n_tasks + " tasks" : "");
       return { text: s + (m.cells ? "; " + m.cells : ""), none: false };
     }
     if (rows.some(function (r) { return r && isCapped(r); })) return { text: "capped smoke only, no decision", none: true };
@@ -538,37 +538,38 @@ import * as RunInfo from "./runinfo.js";
       say: "Identical controls disagree. The bar is a full point, twice.",
       runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
       watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" } },
-    { id: "turncal", label: "Turn calibration", verdict: "not adopted", title: "Calibrated turns lifted two GC tasks, once",
-      body: "Task prompts name 22.5 degrees per turn key; the model's default turns 34. With the rate calibrated, GC031 and GC036 gained more than a point. On a second run they gained 0.35 and 0.80. Not adopted.",
+    { id: "turncal", prs: [23], label: "Turn calibration", verdict: "not adopted", title: "Calibrated turns lifted two GC tasks, once",
+      body: "Task prompts name 22.5 degrees per turn key; the model's default turns 34. With the rate calibrated, GC031 and GC036 gained more than a point, though the judge's comment on GC031 says the camera never completes its 360. On a second run they gained 0.35 and 0.80. Not adopted.",
       say: "Two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", label: "Pose memory", verdict: "no result, rerun pending", kind: "repeat", title: "Pose memory never fired, and the score still moved",
-      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and no frame changed, yet GC036 moved 1.3 points and failed a gate. A fixed version is being rerun.",
+    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result, rerun pending", kind: "repeat", title: "Pose memory never fired, and the score still moved",
+      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129) and its run is not scored yet.",
       say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
-    { id: "sink", label: "Sink key scale", verdict: "dropped", title: "Turning down the opening frames made out-of-sight worse",
+    { id: "sink", prs: [112], label: "Sink key scale", verdict: "dropped", title: "Turning down the opening frames made out-of-sight worse",
       body: "We expected the pinned opening frames to reset the scene when the camera returns. Turning their attention down lowered every arm, so returns appear to depend on them. Dropped.",
       say: "A hypothesis that failed. Every arm scored below control.",
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
       watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
-    { id: "insight", label: "Caption prompt on insight", verdict: "running", title: "Does the scene caption wake up a static scene?", pending: true,
-      body: "Insight tasks prompt the model with \"wait and observe\", and four of six baseline rollouts were flagged static. This A/B prompts with the scene caption instead.",
-      say: "The model was being prompted with \"wait and observe\".",
+    { id: "insight", prs: [32, 90], label: "Caption prompt on insight", verdict: "not adopted", title: "The scene caption alone did not move insight",
+      body: "Insight tasks prompt the model with \"wait and observe\", and four of six baseline rollouts were flagged static or near static in a judge pass. Prompting with the scene caption moved no task by a full point. Adding the insight director, a fixed sentence about the activity, moved one task up and one down.",
+      say: "Swapping \"wait and observe\" for the scene caption moved nothing by a full point.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
-    { id: "window", label: "Larger attention cache, seed 1", verdict: "running", title: "Does a larger attention cache help the camera come back?", pending: true,
-      body: "On seed 0, three larger-cache arms scored OE039 at 3.0 to 3.1 against 1.25 to 2.0 for three controls, and two of them lost more than a point on OE048. This run repeats it on seed 1.",
+    { id: "window", prs: [104], label: "Larger attention window, seed 1", verdict: "running", title: "Does a larger attention window help the camera come back?", pending: true,
+      body: "On seed 0, three arms that keep more of the opening view scored OE039 at 3.0 to 3.1 against 1.25 to 2.0 for three control scorings, and two of them lost more than a point on OE048. This run repeats the larger window on seed 1.",
       say: "One lead, being repeated on a second seed.",
-      ctl: "win14-fx-v1-a3", arms: [["larger cache", "win14-fx-v1-a4", "sink 10, cache 22, seed 1"]],
+      ctl: "win14-fx-v1-a3", arms: [["larger window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]],
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
     { id: "open", kind: "note", title: "Still open",
       say: "No 171-task score yet, and nothing has repeated on two seeds.",
       points: ["No 171-task score, for the starting model or for a method.",
         "Every A/B here is one seed with fixed moves. Adoption needs the AI player and two seeds.",
         "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads: caption prompt on insight, re-anchoring on GC (weak), pose memory (rerun pending)."],
+        "Leads: a larger attention window on out-of-sight (second seed running), the insight director (one up, one down), re-anchoring on GC (weak).",
+        "Pose memory has no result yet."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
@@ -741,7 +742,7 @@ import * as RunInfo from "./runinfo.js";
       var ev = st !== "ok" ? null : s.kind === "repeat" ? repeatEvidence(s) : s.kind === "note" ? null : abEvidence(s);
       var n = storyShown.length + 1;
       var text = el("div", { class: "st-text" }, [
-        el("h3", null, [el("span", { class: "st-n", text: String(n) }), document.createTextNode(s.title)]), s.body ? el("p", { class: "st-body", text: s.body }) : null]);
+        el("h3", { text: n + ". " + s.title }), s.body ? el("p", { class: "st-body", text: s.body }) : null]);
       if (s.points) text.appendChild(el("ul", { class: "st-points" }, s.points.map(function (t) { return el("li", { text: t }); })));
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
@@ -766,6 +767,13 @@ import * as RunInfo from "./runinfo.js";
         var ps = rows.map(function (r) { return r.passes; }).filter(function (p) { return p !== null; });
         if (ps.length) bd.appendChild(el("span", { class: "badge", text: Math.min.apply(null, ps) + " judge passes" }));
         side.appendChild(bd);
+        // where each number comes from: the pull request that proposed the change and the Actions job of every run
+        var prov = el("p", { class: "st-prov" });
+        (s.prs || []).forEach(function (n) { prov.appendChild(el("a", { href: PR + n, target: "_blank", rel: "noopener", text: "PR #" + n })); });
+        rows.forEach(function (r) {
+          if (r.run_url && /^https:\/\/github\.com\//.test(r.run_url)) prov.appendChild(el("a", { href: r.run_url, target: "_blank", rel: "noopener", title: "GitHub Actions job that generated and scored " + r.exp, text: r.exp + " job" }));
+        });
+        if (prov.firstChild) side.appendChild(prov);
       } else if (s.kind !== "note") {
         side.appendChild(el("p", { class: "st-pend" }, [el("span", { class: "badge " + (st === "running" ? "warn" : ""), text: st === "running" ? "running now" : st === "generated" ? "generated, not scored yet" : "loading scores" }),
           document.createTextNode(" Scores appear here when the judge has scored every arm.")]));
@@ -777,7 +785,7 @@ import * as RunInfo from "./runinfo.js";
           side.appendChild(pb);
         }
       }
-      var li = el("li", { class: "st card" + (ev || s.kind === "note" ? "" : " pend") + (side.firstChild ? "" : " solo"), id: "story-" + s.id }, side.firstChild ? [text, side] : [text]);
+      var li = el("li", { class: "st" + (ev || s.kind === "note" ? "" : " pend") + (side.firstChild ? "" : " solo"), id: "story-" + s.id }, side.firstChild ? [text, side] : [text]);
       ol.appendChild(li); storyShown.push({ s: s, li: li, ev: !!ev });
     });
     if (!storyShown.length) ol.appendChild(el("li", { class: "empty", text: "No findings to show yet." }));
@@ -815,7 +823,7 @@ import * as RunInfo from "./runinfo.js";
     box.hidden = false;
     var nf = noiseFloor();
     box.appendChild(el("p", { class: "vd-rule" }, [el("b", { text: "The bar. " }),
-      document.createTextNode("A task moves only at 1.0 on the mean of 4 judge passes. Adoption needs the gain on two seeds, with the AI player, and no gate broken." +
+      document.createTextNode("A task moves only at 1.0 on the mean of its judge passes (2 to 4). Adoption needs the gain on two seeds, with the AI player, and no gate broken." +
         (nf !== null ? " Measured noise between identical runs: up to " + fmt(nf) + "." : ""))]));
     var hr = el("tr", null, [el("th", { scope: "col", text: "Change" }), el("th", { class: "num", scope: "col", text: "Arms" }), el("th", { class: "num", scope: "col", text: "Tasks" }),
       el("th", { class: "num", scope: "col", text: "Up" }), el("th", { class: "num", scope: "col", text: "Down" }), el("th", { scope: "col", text: "Verdict" })]);
@@ -850,18 +858,13 @@ import * as RunInfo from "./runinfo.js";
         (ADOPTED.length ? "Adopted: " + ADOPTED.join(", ") + "." : "No change adopted.")));
   }
   function renderGlance() {
-    var ul = $("glance"); if (!ul) return; clear(ul);
+    var p = $("glance"); if (!p) return; clear(p);
     var real = realRows(), scored = real.filter(function (r) { return r.overall !== null; });
     var groups = {}; real.forEach(function (r) { var m = /\[arm \d+\/\d+ of ([^:\]]+)/.exec(r.notes || ""); if (m) groups[m[1]] = 1; });
     var judged = 0; scored.forEach(function (r) { judged += (r.n_tasks || 0) * (r.passes || 0); });
     var clipsN = 0; ((scenesIdx && scenesIdx.runs) || []).forEach(function (r) { clipsN += r.n_tasks || 0; });
-    [[real.length, "runs logged", "Every launch writes a row, including failed and cancelled ones."],
-     [Object.keys(groups).length, "A/B groups", "Sets of arms run on the same tasks and seed in one job."],
-     [judged, "official judgments", "Task scores from Gemini 3.1 Pro: tasks times judge passes over every scored run."],
-     [clipsN || null, "clips published", "Rollouts you can watch on this page."]].forEach(function (x) {
-      if (x[0] === null) return;
-      ul.appendChild(el("li", { title: x[2] }, [el("b", { text: String(x[0]) }), el("span", { text: x[1] })]));
-    });
+    var nGroups = Object.keys(groups).length;
+    p.textContent = real.length + " runs logged, failed ones included, in " + nGroups + " A/B groups. " + judged + " official task scores" + (clipsN ? ". " + clipsN + " clips published." : ".");
   }
 
 
@@ -993,12 +996,13 @@ import * as RunInfo from "./runinfo.js";
       var col = kind === "scored" ? "var(--s1)" : kind === "ended" ? "var(--bad)" : kind === "running" ? "var(--warn)" : "var(--ref)";
       var dot = sv("circle", { cx: x(p.c), cy: base - (p.k - 1) * step - R, r: R, fill: kind === "scored" ? col : "var(--surface)", stroke: col, "stroke-width": 1.5 });
       dot.appendChild(sv("title", { text: r.exp + " · " + fmtTime(r.t) + " UTC · " + (kind === "scored" ? "scored " + fmt(r.overall) + " on " + r.n_tasks + " tasks" : kind === "ended" ? (isStale(r) ? "no result" : r.status) : kind) }));
-      svg.appendChild(dot);
+      if (r.run_url && /^https:\/\/github\.com\//.test(r.run_url)) { var ln = sv("a", { href: r.run_url, target: "_blank", rel: "noopener" }); ln.appendChild(dot); svg.appendChild(ln); }
+      else svg.appendChild(dot);
     });
     host.appendChild(svg);
     var hrs = span / hour, cap = $("tl-cap"); clear(cap);
     function key(col, fill, text) { return el("span", { class: "tl-key" }, [el("i", { style: "border-color:" + col + ";background:" + (fill ? col : "transparent") }), document.createTextNode(text)]); }
-    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). "));
+    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). Each dot opens its Actions job. "));
     cap.appendChild(key("var(--s1)", true, n.scored + " scored"));
     cap.appendChild(key("var(--ref)", false, n.generated + " not scored"));
     if (n.running) cap.appendChild(key("var(--warn)", false, n.running + " running"));
@@ -1006,23 +1010,61 @@ import * as RunInfo from "./runinfo.js";
   }
 
   /* ---------- how a test runs ---------- */
+  var GH = "https://github.com/" + REPO + "/";
   var LOOP = [
-    ["Flag", "Every change is a runner flag, off by default, with a counter in the log.", "adapters/lingbot_world2/", "adapters/lingbot_world2"],
-    ["Arms", "One job runs all arms on the same tasks and seed on Modal H100s.", "arms workflow", ".github/workflows/arms.yml"],
-    ["Judge", "PlayWorld's verifier, Gemini 3.1 Pro, four passes per clip.", "pwa score", "pwa/score.py"],
-    ["Decide", "A task moves at a full point. Adoption needs it on two seeds with no gate broken.", "plan of record", "AGENTS.md#plan-of-record"],
-    ["Publish", "Row, judge's reasons and clips land on main. This page reads them live.", "results/", "results"]
+    ["Propose", "A pull request adds one change as a runner flag, off by default, with a counter in the log.", "pull requests", GH + "pulls?q=is%3Apr"],
+    ["Run", "A GitHub Actions workflow runs every arm on the same tasks and seed on Modal H100s.", "arms workflow", GH + "actions/workflows/arms.yml"],
+    ["Judge", "The same job scores each clip with PlayWorld's verifier, Gemini 3.1 Pro, two to four passes.", "experiment workflow", GH + "actions/workflows/experiment.yml"],
+    ["Decide", "A task moves at a full point. Adoption needs it on two seeds with no gate broken.", "plan of record", BLOB + "AGENTS.md#plan-of-record"],
+    ["Publish", "The job commits the row, the judge's reasons and the clips to main. This page reads them live.", "results/", GH + "tree/main/results"]
   ];
   function renderLoop() {
     var ol = $("loop-steps"); if (!ol) return; clear(ol);
     LOOP.forEach(function (x, i) {
-      ol.appendChild(el("li", { class: "card" }, [el("div", { class: "lp-h" }, [el("span", { class: "st-n", text: String(i + 1) }), el("b", { text: x[0] })]),
-        el("p", { text: x[1] }), el("a", { href: (/\.|#/.test(x[3]) ? BLOB : "https://github.com/" + REPO + "/tree/main/") + x[3], target: "_blank", rel: "noopener", text: x[2] })]));
+      ol.appendChild(el("li", null, [el("div", { class: "lp-h" }, [el("b", { text: (i + 1) + ". " + x[0] })]),
+        el("p", { text: x[1] }), el("a", { href: x[3], target: "_blank", rel: "noopener", text: x[2] })]));
     });
     var note = $("loop-note"); clear(note);
     note.appendChild(document.createTextNode("14B model load: about 207 s down to 31 s, bit-identical weights ("));
     note.appendChild(el("a", { href: PR + "79", target: "_blank", rel: "noopener", text: "PR #79" }));
     note.appendChild(document.createTextNode("). CI does not cover GPU generation, scoring or player calls."));
+  }
+
+
+  /* ---------- the audit trail: proposals are pull requests, experiments are Actions runs (counts from the public GitHub API) ---------- */
+  var API = "https://api.github.com/";
+  function ghJson(path) { return get(API + path, 8000).then(JSON.parse); }
+  function renderTrail() {
+    var box = $("trail"); if (!box) return;
+    function stat(n, label, href) { return el("a", { class: "tr-stat", href: href, target: "_blank", rel: "noopener" }, [el("b", { text: n === null ? "-" : String(n) }), el("span", { text: label })]); }
+    function draw(d) {
+      clear(box);
+      var row = el("div", { class: "tr-stats" }, [
+        stat(d.merged, "pull requests merged", GH + "pulls?q=is%3Apr+is%3Amerged"),
+        stat(d.open ? d.open.length : null, "proposals open", GH + "pulls"),
+        stat(d.exp, "experiment workflow runs", GH + "actions/workflows/experiment.yml"),
+        stat(d.arms, "arms workflow runs", GH + "actions/workflows/arms.yml")]);
+      box.appendChild(row);
+      if (d.open && d.open.length) {
+        box.appendChild(el("h3", { text: "Open proposals" }));
+        var ul = el("ul", { class: "tr-list" });
+        d.open.slice(0, 8).forEach(function (pr) {
+          ul.appendChild(el("li", null, [el("a", { href: pr.html_url, target: "_blank", rel: "noopener", text: "#" + pr.number }), document.createTextNode(" " + pr.title)]));
+        });
+        box.appendChild(ul);
+        if (d.open.length > 8) box.appendChild(el("p", { class: "st-cap" }, [el("a", { href: GH + "pulls", target: "_blank", rel: "noopener", text: "All " + d.open.length + " open pull requests" })]));
+      }
+      box.appendChild(el("p", { class: "st-cap", text: d.live ? "Counts from the GitHub API when this page loaded." : "GitHub's API did not answer, so the counts are missing. The links still work." }));
+    }
+    draw({ merged: null, open: null, exp: null, arms: null, live: false });
+    var d = { merged: null, open: null, exp: null, arms: null, live: false };
+    function part(p, set) { return p.then(function (j) { set(j); d.live = true; }, function () {}); }
+    Promise.all([
+      part(ghJson("search/issues?q=repo:" + REPO + "+is:pr+is:merged&per_page=1"), function (j) { d.merged = j.total_count; }),
+      part(ghJson("repos/" + REPO + "/pulls?state=open&per_page=100"), function (j) { d.open = j.map(function (x) { return { number: x.number, title: x.title, html_url: x.html_url }; }); }),
+      part(ghJson("repos/" + REPO + "/actions/workflows/experiment.yml/runs?per_page=1"), function (j) { d.exp = j.total_count; }),
+      part(ghJson("repos/" + REPO + "/actions/workflows/arms.yml/runs?per_page=1"), function (j) { d.arms = j.total_count; })
+    ]).then(function () { draw(d); });
   }
 
   /* ---------- guided tour: a bar that walks the page in order; arrow keys step, Esc exits, ?tour=N deep links ---------- */
@@ -1033,14 +1075,14 @@ import * as RunInfo from "./runinfo.js";
     steps.push({ el: function () { return $("scores"); }, title: "Where we start",
       line: shown ? "Best official score, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks (" + shown.exp + "). Genie 3: " + fmt(TARGET) + "." : "No run big enough to estimate a score yet." });
     steps.push({ el: function () { return $("gallery"); }, title: "What works, what breaks", line: "Four task types. The judge's highest and lowest rollout for each." });
-    if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "Full point, two seeds, AI player. Nothing has cleared it yet." });
+    if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it yet." });
     storyShown.forEach(function (x) {
       var s = x.s;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
       if (s.watch && x.ev) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right. " + (s.say || "") });
       else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: s.say || "" });
     });
-    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One dispatch takes a flag to scored, published clips." });
+    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
     steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
     steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "Each row links its commit and job." });
     tourSteps = steps;
@@ -1053,7 +1095,7 @@ import * as RunInfo from "./runinfo.js";
     $("tour-title").textContent = s.title; $("tour-line").textContent = s.line;
     $("tour-prog").style.width = ((tourAt + 1) / tourSteps.length * 100) + "%";
     $("tour-prev").disabled = tourAt === 0;
-    $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next →";
+    $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next";
     Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
     var node = s.el(); if (node && node.classList && node.id !== "top") node.classList.add("tour-on");
     // presenting: only the section of this step stays at full strength
@@ -1136,7 +1178,7 @@ import * as RunInfo from "./runinfo.js";
     function T(t) { return document.createTextNode(t); }
     f.appendChild(el("h2", { class: "credhead", text: "Method" }));
     f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown. The judge writes its comments mostly in Chinese; English copies are machine-translated for display after scoring, never feed a score, and the judge's original text is authoritative." }));
-    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
+    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 2 to 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
     f.appendChild(el("p", null, [T("Rows come from "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "results/experiments.csv"), T(" (" + source + "). "), A("https://github.com/" + REPO, "Repository"), T(".")]));
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
     var ul = el("ul", { class: "credits", "aria-label": "Credits" });
@@ -1455,7 +1497,7 @@ import * as RunInfo from "./runinfo.js";
   initMode(); wire(); wireScenes(); wireTour(); wireSpy(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; refreshRI(); })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { readUrl(); renderFoot(); renderAll(); loadScenes(); shareData(); });
+    .then(function () { readUrl(); renderFoot(); renderAll(); renderTrail(); loadScenes(); shareData(); });
   // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
   function shareData() {
     window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
