@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -21,6 +22,13 @@ THINKING_LEVELS = ("minimal", "low", "medium", "high")
 
 
 PROVIDERS = ("gemini", "openai")
+# `--judge openai` with no --judge-model: a vision-capable non-reasoning chat model (it takes upstream's
+# temperature 0.1). Override per call with --judge-model, or for every call with PWA_PROXY_JUDGE_MODEL.
+PROXY_DEFAULT_MODEL = "gpt-4.1"
+
+
+def proxy_default_model() -> str:
+    return (os.environ.get("PWA_PROXY_JUDGE_MODEL") or "").strip() or PROXY_DEFAULT_MODEL
 
 
 @dataclass(frozen=True)
@@ -82,7 +90,14 @@ class Judge:
         return self.upstream_model + (f", thinking {self.thinking}" if self.thinking else "")
 
     @property
+    def proxy(self) -> bool:
+        """An OpenAI judge stands in for Gemini while Gemini cannot be called: a proxy, uncalibrated."""
+        return self.provider == "openai"
+
+    @property
     def label(self) -> str:
+        if self.proxy:
+            return f"PROXY JUDGE ({self.name}), not comparable to the leaderboard"
         return f"screening judge: {self.name}, not comparable to the leaderboard"
 
 
@@ -92,6 +107,12 @@ def judges_of(a) -> list[Judge]:
     models = getattr(a, "judge_model", None) or []
     if isinstance(models, str):
         models = [models]
+    if getattr(a, "judge", None) == "openai":  # proxy judge: every model is an openai: one
+        models = [proxy_spec(m) for m in models] or ["openai:" + proxy_default_model()]
+    elif getattr(a, "judge", None) == "gemini":  # an explicit gemini request never runs an OpenAI judge
+        bad = [m for m in models if m.strip().startswith("openai:")]
+        if bad:
+            raise PwaError(f"--judge gemini with --judge-model {bad[0]!r}: drop --judge gemini, or use --judge openai")
     thinking = getattr(a, "judge_thinking", None)
     if not models:
         if thinking:
@@ -104,6 +125,15 @@ def judges_of(a) -> list[Judge]:
     if len(set(slugs)) != len(slugs):
         raise PwaError(f"duplicate screening judge in {' '.join(models)}")
     return judges
+
+
+def proxy_spec(model: str) -> str:
+    """`--judge openai --judge-model M`: M with the openai: prefix (added when missing)."""
+    m = model.strip()
+    if m.startswith("gemini:") or m.startswith("gemini-") or m == "gemini":
+        raise PwaError(f"--judge openai with --judge-model {model!r} names a Gemini model: drop --judge openai "
+                       "(a plain or gemini: model is a Gemini screening judge)")
+    return m if m.startswith("openai:") else "openai:" + m
 
 
 def judge_of(a) -> Judge | None:
@@ -208,12 +238,37 @@ def verifier_env(judge: Judge | None = None) -> dict:
     return {**env, "PYTHONPATH": os.pathsep.join(filter(None, paths))}
 
 
+# stderr note from pwa/judge_openai.py when a model rejects one of upstream's sampling params and the call is
+# retried without it; e.g. "[pwa judge] model rejects temperature=0.1; retrying with the provider default"
+_REJECTS = re.compile(r"\[pwa judge\] model rejects (temperature|top_p|seed)=")
+# params an openai: judge model rejected (by judge slug). Each call is a fresh verifier process, so later calls of
+# this run are told up front (JUDGE_API_NO_TEMPERATURE=1) instead of paying a 400 round trip each.
+_DROPPED: dict[str, set[str]] = {}
+
+
+def dropped_params(judge: Judge | None) -> set[str]:
+    if not (judge and judge.provider == "openai"):
+        return set()
+    out = set(_DROPPED.get(judge.slug, set()))
+    if os.environ.get("JUDGE_API_NO_TEMPERATURE") == "1":
+        out.add("temperature")
+    return out
+
+
 def run_verifier(cmd: list[str], err_path: Path, retries: int, judge: Judge | None = None) -> bool:
     env = verifier_env(judge)
+    if "temperature" in dropped_params(judge):
+        env["JUDGE_API_NO_TEMPERATURE"] = "1"
     for attempt in range(retries + 1):
         try:
             r = subprocess.run(cmd, cwd=PLAYWORLD, env=env, capture_output=True, text=True, timeout=TIMEOUT_S)
             ok, msg = r.returncode == 0, r.stderr[-4000:]
+            if judge and judge.provider == "openai":
+                for param in _REJECTS.findall(r.stderr):
+                    if param not in _DROPPED.setdefault(judge.slug, set()):
+                        log(f"[pwa] WARNING: {judge.spec} rejects {param}; this run samples at the provider "
+                            f"default, not upstream's setting (recorded as judge_dropped in the results)")
+                    _DROPPED[judge.slug].add(param)
         except subprocess.TimeoutExpired:
             ok, msg = False, f"timeout after {TIMEOUT_S}s"
         if ok:
@@ -224,6 +279,15 @@ def run_verifier(cmd: list[str], err_path: Path, retries: int, judge: Judge | No
         if attempt < retries:
             time.sleep(5 * (attempt + 1))
     return False
+
+
+def stamp_dropped(path: Path, params: set[str]) -> None:
+    """Record on an openai: judge result which of upstream's sampling params the model rejected (sampled at the
+    provider default instead), so the report can say so."""
+    res = read_json(path)
+    if isinstance(res, dict):
+        res["judge_dropped"] = sorted(params)
+        path.write_text(json.dumps(res, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def stamp_backend(path: Path, backend: str) -> None:
@@ -271,6 +335,8 @@ def score_task(exp: str, info: dict, k: int, a, judge: Judge | None = None) -> l
                           a.retries, judge)
         if ok and not a.dry_run and on_gcp(judge):
             stamp_backend(out, "gcp")
+        if ok and not a.dry_run and dropped_params(judge):
+            stamp_dropped(out, dropped_params(judge))
         events.append({"task_id": info["task_id"], "pass": k, "mode": mode, "status": "ok" if ok else "failed"})
         log(f"[pwa] pass{k} {info['task_id']} {mode}: {'ok' if ok else 'FAILED (see ' + str(out.with_suffix('.err')) + ')'}")
         if not ok and mode == "score":
@@ -296,7 +362,8 @@ def check_keys(judge: Judge | None) -> None:
         except ValueError as e:
             raise PwaError(str(e)) from e
         if not key:
-            raise PwaError("an openai: judge needs JUDGE_API_KEY or PLAYER_API_KEY (config/env.sh)")
+            raise PwaError("an openai: judge needs JUDGE_API_KEY, or PLAYER_API_KEY when JUDGE_API_URL is unset or the "
+                           "player's URL (config/env.sh)")
     elif gcp_adc(judge):
         if not os.environ.get("GOOGLE_CLOUD_PROJECT"):
             raise PwaError("PWA_JUDGE_BACKEND=gcp without GCP_GEMINI_API_KEY needs GOOGLE_CLOUD_PROJECT and ADC "
@@ -305,6 +372,166 @@ def check_keys(judge: Judge | None) -> None:
         pass  # GCP_GEMINI_API_KEY is set
     elif not os.environ.get("GEMINI_API_KEY"):
         raise PwaError("GEMINI_API_KEY is not set (config/env.sh); use --dry-run to test sampling only")
+
+
+def _upstream_specs():
+    """Upstream's two sampling specs (metrics.vqa.sampling), imported, or None when the submodule is absent."""
+    import importlib  # noqa: PLC0415
+    if str(PLAYWORLD) not in sys.path:
+        sys.path.append(str(PLAYWORLD))
+    try:
+        mod = importlib.import_module("metrics.vqa.sampling")
+        return (mod.PRIMARY_SPEC, mod.DETAIL_SPEC)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ffmpeg_exe() -> str | None:
+    """ffmpeg on PATH (the workflow links imageio-ffmpeg's static build there), else imageio-ffmpeg's own copy."""
+    import shutil  # noqa: PLC0415
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg  # noqa: PLC0415
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+_DURATION = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def video_seconds(video: Path) -> float | None:
+    """Container duration: ffprobe when present, else parsed from `ffmpeg -i` (the Actions runner has no ffprobe)."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                            str(video)], capture_output=True, text=True, timeout=60)
+        return float(r.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    exe = _ffmpeg_exe()
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "-hide_banner", "-i", str(video)], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = _DURATION.search(r.stderr)
+    return int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]) if m else None
+
+
+def image_tokens(w: int, h: int, detail: str = "high") -> int:
+    """OpenAI's published tile count for gpt-4o / gpt-4.1 class models: low = 85; high = fit in 2048x2048, then
+    shortest side down to 768, then 85 + 170 per 512 px tile. Other model families count differently."""
+    if detail == "low":
+        return 85
+    s = min(1.0, 2048 / max(w, h))
+    w, h = w * s, h * s
+    s = min(1.0, 768 / min(w, h))
+    w, h = w * s, h * s
+    return 85 + 170 * math.ceil(w / 512) * math.ceil(h / 512)
+
+
+def _ref_size(path: str) -> tuple[int, int]:
+    try:
+        from PIL import Image  # noqa: PLC0415
+        with Image.open(path) as im:
+            return im.size
+    except Exception:  # noqa: BLE001
+        return (1920, 1080)
+
+
+def estimate_images(info: dict, video: Path, specs=None, detail: str = "high") -> dict | None:
+    """Images and image input tokens one pass sends for one task: upstream's contact sheets per call (primary +
+    detail stream, frames at each spec's fps, frames_per_sheet per full-size sheet), the reference image on the
+    score call, and the gate call for GC (out-of-sight gates only when the score reply lacks its embedded check;
+    counted as 0 here). An estimate: upstream's ffmpeg fps filter may differ by a frame, and prompt text is not
+    counted. None when the duration or the specs are unknown."""
+    specs = specs or _upstream_specs()
+    secs = video_seconds(video) if specs else None
+    if not specs or secs is None:
+        return None
+    per = [math.ceil(max(1, math.ceil(secs * sp.fps)) / sp.frames_per_sheet) for sp in specs]
+    sheets = sum(per)
+    sheet_tok = sum(n * image_tokens(*sp.sheet_size, detail) for n, sp in zip(per, specs))
+    ref = 1 if Path(info["image"]).is_file() else 0
+    ref_tok = image_tokens(*_ref_size(info["image"]), detail) if ref else 0
+    gate = sheets if info["family"] == "gc" else 0
+    return {"score": sheets + ref, "gate": gate, "total": sheets + ref + gate, "calls": 1 + (gate > 0),
+            "score_tokens": sheet_tok + ref_tok, "gate_tokens": sheet_tok if gate else 0}
+
+
+# A task whose duration cannot be read counts as this many images per pass (about a 60 s GC rollout, score + gate).
+UNKNOWN_TASK_IMAGES = 70
+UNKNOWN_TASK_TOKENS = 70 * 1105
+# Default cap on the images one `pwa score` sends to a proxy judge (all passes). About 13M image tokens, ~$27 of
+# gpt-4.1 input: a dev A/B fits, a 2-pass full 171-task run does not without --max-images.
+DEFAULT_MAX_IMAGES = 12000
+# USD per 1M input tokens, list prices when this was written; PWA_PROXY_USD_PER_MTOK overrides. Unknown model = no $.
+USD_PER_MTOK = {"gpt-4.1": 2.00, "gpt-4o": 2.50}
+
+
+def max_images(a) -> int:
+    v = getattr(a, "max_images", None)
+    if v is None:
+        env = (os.environ.get("PWA_PROXY_MAX_IMAGES") or "").strip()
+        try:
+            v = int(env) if env else DEFAULT_MAX_IMAGES
+        except ValueError as e:
+            raise PwaError(f"PWA_PROXY_MAX_IMAGES must be an integer, got {env!r}") from e
+    return v
+
+
+def usd_per_mtok(judge: Judge) -> float | None:
+    env = (os.environ.get("PWA_PROXY_USD_PER_MTOK") or "").strip()
+    try:
+        return float(env) if env else USD_PER_MTOK.get(judge.model)
+    except ValueError:
+        return None
+
+
+def cost_guard(sel: list[dict], a, judge: Judge) -> dict:
+    """Before any proxy call: print the estimated images and image tokens per task and in total, counting only
+    the calls this run will make (results already on disk are skipped unless --force), and refuse to start when
+    the total is over the cap (--max-images, else $PWA_PROXY_MAX_IMAGES, else DEFAULT_MAX_IMAGES; 0 = no cap)."""
+    specs = _upstream_specs()
+    detail = os.environ.get("JUDGE_IMAGE_DETAIL", "high")
+    total, tokens, calls, unknown = 0, 0, 0, []
+    log(f"[pwa] cost guard ({judge.name}, image detail {detail}): estimated images to send per task")
+    for t in sel:
+        est = estimate_images(t, video_path(a.exp, t["task_id"]), specs, detail)
+        n_img = n_tok = n_calls = 0
+        for k in range(1, a.passes + 1):
+            d = eval_dir(a.exp, False, judge) / f"pass{k}"
+            todo_score = getattr(a, "force", False) or not done(d / f"{t['task_id']}_score.json", False)
+            todo_gate = t["family"] == "gc" and (getattr(a, "force", False) or not done(d / f"{t['task_id']}_gate.json", False))
+            if est is None:
+                if todo_score or todo_gate:
+                    n_img, n_tok, n_calls = n_img + UNKNOWN_TASK_IMAGES, n_tok + UNKNOWN_TASK_TOKENS, n_calls + 2
+                continue
+            if todo_score:
+                n_img, n_tok, n_calls = n_img + est["score"], n_tok + est["score_tokens"], n_calls + 1
+            if todo_gate and est["gate"]:
+                n_img, n_tok, n_calls = n_img + est["gate"], n_tok + est["gate_tokens"], n_calls + 1
+        if est is None:
+            unknown.append(t["task_id"])
+        if n_calls:
+            log(f"[pwa]   {t['task_id']}: ~{n_img} images, ~{n_tok} image tokens in {n_calls} call(s) over "
+                f"{a.passes} pass(es)" + (" (duration unknown: assumed)" if est is None else ""))
+        total, tokens, calls = total + n_img, tokens + n_tok, calls + n_calls
+    if unknown:
+        log(f"[pwa]   no duration for {len(unknown)} task(s), counted at {UNKNOWN_TASK_IMAGES} images per pass: "
+            f"{' '.join(unknown)}")
+    price = usd_per_mtok(judge)
+    usd = f", ~${tokens / 1e6 * price:.2f} image input at ${price:g}/1M tokens" if price is not None else ""
+    log(f"[pwa] cost guard: ~{total} images, ~{tokens} image tokens{usd} in ~{calls} calls (gpt-4o/4.1 tile "
+        f"count; prompt text, output and retries not counted)")
+    cap = max_images(a)
+    if cap and total > cap:
+        raise PwaError(f"cost guard: ~{total} images is over the cap of {cap}; nothing was sent. Score fewer tasks "
+                       f"or passes, or raise the cap with --max-images N (or PWA_PROXY_MAX_IMAGES; 0 = no cap)")
+    return {"images": total, "tokens": tokens, "calls": calls, "cap": cap}
 
 
 def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
@@ -323,6 +550,8 @@ def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
     if missing_img:
         log(f"[pwa] WARNING: no reference image for {len(missing_img)} tasks (scored without it): "
             f"{' '.join(missing_img)}. Run ./setup.sh to fetch images.")
+    if judge and judge.proxy and not a.dry_run and with_video:
+        cost_guard(with_video, a, judge)
     jobs = [(t, k) for k in range(1, a.passes + 1) for t in with_video]
     events: list[dict] = []
     with ThreadPoolExecutor(max_workers=max(1, a.workers)) as pool:
