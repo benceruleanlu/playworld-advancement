@@ -40,6 +40,7 @@ import numpy as np
 
 from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import poses as P
+from adapters.lingbot_world2 import repe_steer as REPE
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
 FRAMES_PER_CHUNK = 4 * CHUNK    # pixel frames per chunk after the first latent
@@ -264,6 +265,7 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        self.repe_steered = 0
         self._free()
 
     def _free(self):
@@ -274,10 +276,11 @@ class LingBotSession:
         self._last_frame = None
         self._anchor = None
         self.detector = None
+        self._repe_scale = None
 
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
-              reanchor: bool = False, third_person: bool = False):
+              reanchor: bool = False, third_person: bool = False, repe_scale: float | None = None):
         import torch  # noqa: PLC0415
         import torchvision.transforms.functional as TF  # noqa: PLC0415
         from wan.utils.cam_utils import get_Ks_transformed  # noqa: PLC0415
@@ -300,7 +303,11 @@ class LingBotSession:
 
         pipe.scheduler.set_timesteps(pipe.num_train_timesteps, shift=self.shift)
         self.timesteps = pipe.scheduler.timesteps[list(TIMESTEPS_INDEX)]
-        self.context = encode_prompt(pipe, prompt, self.t5_cache)
+        self._repe_scale = repe_scale
+        self.context = (REPE.encode_steered(pipe, prompt, self.t5_cache, repe_scale, encode_prompt)
+                        if repe_scale is not None else encode_prompt(pipe, prompt, self.t5_cache))
+        if repe_scale is not None:
+            self.repe_steered += 1
         self.prompt = prompt
 
         Ks = torch.tensor([P.INTRINSICS_480P], dtype=torch.float32)
@@ -446,7 +453,10 @@ class LingBotSession:
             raise RuntimeError("reset the session before updating its prompt")
         if prompt == self.prompt:
             return False
-        context = encode_prompt(self.pipe, prompt, self.t5_cache)
+        context = (REPE.encode_steered(self.pipe, prompt, self.t5_cache, self._repe_scale, encode_prompt)
+                   if self._repe_scale is not None else encode_prompt(self.pipe, prompt, self.t5_cache))
+        if self._repe_scale is not None:
+            self.repe_steered += 1
         self.context, self.prompt = context, prompt
         self.cross_init = False  # upstream overwrites text K/V on the next first-call forward
         return True
