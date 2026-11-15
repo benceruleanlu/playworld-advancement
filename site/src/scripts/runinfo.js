@@ -26,6 +26,7 @@ export const FLAG_NAMES = {
   "--lingbot-measured-turn": "measured turn",
   "--lingbot-noise-mean-coupling": "noise mean coupling",
   "--lingbot-cond-schedule": "conditioning schedule",
+  "--lingbot-cond-gc-guard": "preserve first-person GC conditioning",
   "--lingbot-cond-early": function (v) { return +v === 4 ? "all 4 steps" : "first " + v + " steps"; },
   "--lingbot-cond-text": function (v) { return +v === 1 ? "text boost off" : "text boost x" + v; },
   "--lingbot-cond-cam": function (v) { return "still-camera weight " + v; },
