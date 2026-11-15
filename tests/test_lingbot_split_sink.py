@@ -395,6 +395,8 @@ def test_session_scales_denoise_only_restores_before_kv_write_and_reuses_mask(mo
     sess.step(["none"] * 32)  # chunks 4, 5 (active!)
     out = capsys.readouterr().out
     assert out.count("[lingbot] split-sink: built spatial mask") == 1
+    assert out.count("[lingbot] split-sink mask 00 #.\n") == 1  # latent 0 patch dump, once per rollout
+    assert out.count("[lingbot] split-sink mask 01 ..\n") == 1
 
     # 6 sink latents x 4 patches = 24 tokens; patch 0 of each latent gets 0.25, patches 1..3 get 1.0
     expected_scales = np.tile(np.array([0.25, 1.0, 1.0, 1.0], dtype=np.float32), 6)[None, :, None, None]

@@ -759,6 +759,13 @@ class LingBotSession:
         print(f"[lingbot] split-sink: built spatial mask at chunk {self.chunk_id} "
               f"(fg_tokens={fg_tokens}/{n_tokens}, fg={self.split_sink.fg_scale:g}, "
               f"bg={self.split_sink.bg_scale:g}, frac={self.split_sink.fg_frac:g})", flush=True)
+        # once-per-rollout mask dump: latent 0's DiT patches, '#' = foreground (fg_scale), '.' = background,
+        # so a smoke can check from gen.log that the mask lands on the moving subject
+        ph, pw = full_lat.shape[2] // 2, full_lat.shape[3] // 2
+        if fg_tokens and ph * pw == self.frame_seqlen:
+            grid = np.asarray(scales_1d[:ph * pw]).reshape(ph, pw) < self.split_sink.bg_scale
+            for r, row in enumerate(grid):
+                print(f"[lingbot] split-sink mask {r:02d} " + "".join("#" if v else "." for v in row), flush=True)
 
     @contextlib.contextmanager
     def _split_sink_ctx(self):
