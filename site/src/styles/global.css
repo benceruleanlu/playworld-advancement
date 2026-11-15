@@ -463,3 +463,10 @@ body.touring #story.tour-here .vdbox:not(.tour-on) { opacity: .35; }
 .st-prov { margin: 8px 0 0; font-size: 12px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 .tl svg a circle { cursor: pointer; }
 @media (max-width: 700px) { .tr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tr-list { columns: 1; } }
+/* example pull request, merged pull requests on the timeline */
+.tr-pr { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 12px 14px; max-width: 90ch; }
+.tr-pr-h { margin: 0 0 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 15px; }
+.tr-pr-b { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; color: var(--ink2); max-height: 16em; overflow-y: auto; }
+.tl-key i.sq { border-radius: 2px; border: 0; background: var(--ink); }
+.tl svg a rect { cursor: pointer; }
+.tl-key { white-space: normal; } .tr-pr { min-width: 0; } .tr-pr-h b { overflow-wrap: anywhere; min-width: 0; }

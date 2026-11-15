@@ -980,7 +980,14 @@ import * as RunInfo from "./runinfo.js";
       if (k > maxStack) maxStack = k;
       return { r: r, c: c, k: k };
     });
-    var top = 8, base = top + maxStack * step, H = base + 26;
+    // merged pull requests in the same window, stacked downward under the axis (from the GitHub API, when it answered)
+    var prStacks = {}, maxPr = 0, S = R * 2 - 1;
+    var prPts = (MERGED || []).filter(function (q) { return q.t >= t0 && q.t <= t1; }).sort(function (a, b) { return a.t - b.t; }).map(function (q) {
+      var c = Math.min(cols - 1, Math.floor((q.t - t0) / span * (cols - 1) + 0.5)), k = prStacks[c] = (prStacks[c] || 0) + 1;
+      if (k > maxPr) maxPr = k;
+      return { q: q, c: c, k: k };
+    });
+    var top = 8, base = top + maxStack * step, below = maxPr ? 8 + maxPr * step : 0, H = base + below + 26;
     var x = function (c) { return m.l + R + c * ((W - m.l - m.r - 2 * R) / (cols - 1)); };
     var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": rows.length + " runs by the time their row was last written" });
     svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: base + 4, y2: base + 4, stroke: "var(--axis)" }));
@@ -988,7 +995,7 @@ import * as RunInfo from "./runinfo.js";
     for (var h = first; h <= t1; h += hour * every) {
       var hx = m.l + R + (h - t0) / span * (W - m.l - m.r - 2 * R);
       svg.appendChild(sv("line", { x1: hx, x2: hx, y1: base + 4, y2: base + 8, stroke: "var(--axis)" }));
-      svg.appendChild(sv("text", { x: hx, y: base + 21, "text-anchor": "middle", text: pad2(new Date(h).getUTCHours()) + ":00" }));
+      svg.appendChild(sv("text", { x: hx, y: base + below + 21, "text-anchor": "middle", text: pad2(new Date(h).getUTCHours()) + ":00" }));
     }
     var n = { scored: 0, generated: 0, running: 0, ended: 0 };
     pts.forEach(function (p) {
@@ -1000,14 +1007,20 @@ import * as RunInfo from "./runinfo.js";
       if (r.run_url && /^https:\/\/github\.com\//.test(r.run_url)) { var ln = sv("a", { href: r.run_url, target: "_blank", rel: "noopener" }); ln.appendChild(dot); svg.appendChild(ln); }
       else svg.appendChild(dot);
     });
+    prPts.forEach(function (p) {
+      var q = p.q, sq = sv("rect", { x: x(p.c) - S / 2, y: base + 10 + (p.k - 1) * step, width: S, height: S, rx: 1.5, fill: "var(--ink)" });
+      sq.appendChild(sv("title", { text: "PR #" + q.number + " merged " + fmtTime(q.t) + " UTC · " + q.title }));
+      var ln = sv("a", { href: q.url, target: "_blank", rel: "noopener" }); ln.appendChild(sq); svg.appendChild(ln);
+    });
     host.appendChild(svg);
     var hrs = span / hour, cap = $("tl-cap"); clear(cap);
     function key(col, fill, text) { return el("span", { class: "tl-key" }, [el("i", { style: "border-color:" + col + ";background:" + (fill ? col : "transparent") }), document.createTextNode(text)]); }
-    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). A scored run sits at its report time, a failed one at its end, a running one at its launch. Each dot opens its Actions job. "));
+    cap.appendChild(document.createTextNode(rows.length + " runs in " + (hrs >= 10 ? Math.round(hrs) : hrs.toFixed(1)) + " hours (UTC). A scored run sits at its report time, a failed one at its end, a running one at its launch. Each mark opens its job or pull request. "));
     cap.appendChild(key("var(--s1)", true, n.scored + " scored"));
     cap.appendChild(key("var(--ref)", false, n.generated + " not scored"));
     if (n.running) cap.appendChild(key("var(--warn)", false, n.running + " running"));
     cap.appendChild(key("var(--bad)", false, n.ended + " failed or cancelled"));
+    if (prPts.length) cap.appendChild(el("span", { class: "tl-key" }, [el("i", { class: "sq" }), document.createTextNode(prPts.length + " pull requests merged in the same hours, below the line")]));
   }
 
   /* ---------- how a test runs ---------- */
@@ -1034,7 +1047,21 @@ import * as RunInfo from "./runinfo.js";
 
   /* ---------- the audit trail: proposals are pull requests, experiments are Actions runs (counts from the public GitHub API) ---------- */
   var API = "https://api.github.com/";
-  function ghJson(path) { return get(API + path, 8000).then(JSON.parse); }
+  // answers are kept for 10 minutes in sessionStorage, so reloading during a demo does not spend the 60 calls an hour GitHub allows
+  function ghJson(path) {
+    var key = "pwa-gh:" + path;
+    try { var hit = JSON.parse(sessionStorage.getItem(key) || "null"); if (hit && Date.now() - hit.t < 600000) return Promise.resolve(hit.j); } catch (e) { /* storage blocked */ }
+    return get(API + path, 8000).then(JSON.parse).then(function (j) {
+      try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), j: j })); } catch (e) { /* too large or blocked */ }
+      return j;
+    });
+  }
+  // one proposal shown in full as the example of the format; merged pull requests with their merge times for the timeline
+  var EXAMPLE_PR = 123, MERGED = null;
+  function plainBody(md) {
+    return String(md || "").replace(/\r/g, "").replace(/<!--[\s\S]*?-->/g, "").replace(/^#{1,6}\s*/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1")
+      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, "$1").replace(/\n{3,}/g, "\n\n").trim();
+  }
   function renderTrail() {
     var box = $("trail"); if (!box) return;
     function stat(n, label, href) { return el("a", { class: "tr-stat", href: href, target: "_blank", rel: "noopener" }, [el("b", { text: n === null ? "-" : String(n) }), el("span", { text: label })]); }
@@ -1046,26 +1073,29 @@ import * as RunInfo from "./runinfo.js";
         stat(d.exp, "experiment workflow runs", GH + "actions/workflows/experiment.yml"),
         stat(d.arms, "arms workflow runs", GH + "actions/workflows/arms.yml")]);
       box.appendChild(row);
-      if (d.open && d.open.length) {
-        box.appendChild(el("h3", { text: "Open proposals" }));
-        var ul = el("ul", { class: "tr-list" });
-        d.open.slice(0, 8).forEach(function (pr) {
-          ul.appendChild(el("li", null, [el("a", { href: pr.html_url, target: "_blank", rel: "noopener", text: "#" + pr.number }), document.createTextNode(" " + pr.title)]));
-        });
-        box.appendChild(ul);
-        if (d.open.length > 8) box.appendChild(el("p", { class: "st-cap" }, [el("a", { href: GH + "pulls", target: "_blank", rel: "noopener", text: "All " + d.open.length + " open pull requests" })]));
+      if (d.example) {
+        var ex = d.example, body = plainBody(ex.body);
+        box.appendChild(el("h3", { text: "One proposal, as written" }));
+        box.appendChild(el("article", { class: "tr-pr" }, [
+          el("p", { class: "tr-pr-h" }, [el("a", { href: ex.html_url, target: "_blank", rel: "noopener", text: "#" + ex.number }), el("b", { text: " " + ex.title }),
+            el("span", { class: "badge " + (ex.merged_at ? "ok" : ""), text: ex.merged_at ? "merged " + fmtTime(Date.parse(ex.merged_at)) + " UTC" : ex.state })]),
+          el("div", { class: "tr-pr-b", tabindex: "0", role: "region", "aria-label": "Pull request description", text: body || "No description." })]));
       }
       box.appendChild(el("p", { class: "st-cap", text: d.live ? "Counts from the GitHub API when this page loaded." : "GitHub's API did not answer, so the counts are missing. The links still work." }));
     }
-    draw({ merged: null, open: null, exp: null, arms: null, live: false });
-    var d = { merged: null, open: null, exp: null, arms: null, live: false };
+    draw({ merged: null, open: null, exp: null, arms: null, example: null, live: false });
+    var d = { merged: null, open: null, exp: null, arms: null, example: null, live: false };
     function part(p, set) { return p.then(function (j) { set(j); d.live = true; }, function () {}); }
     Promise.all([
       part(ghJson("search/issues?q=repo:" + REPO + "+is:pr+is:merged&per_page=1"), function (j) { d.merged = j.total_count; }),
       part(ghJson("repos/" + REPO + "/pulls?state=open&per_page=100"), function (j) { d.open = j.map(function (x) { return { number: x.number, title: x.title, html_url: x.html_url }; }); }),
       part(ghJson("repos/" + REPO + "/actions/workflows/experiment.yml/runs?per_page=1"), function (j) { d.exp = j.total_count; }),
-      part(ghJson("repos/" + REPO + "/actions/workflows/arms.yml/runs?per_page=1"), function (j) { d.arms = j.total_count; })
-    ]).then(function () { draw(d); });
+      part(ghJson("repos/" + REPO + "/actions/workflows/arms.yml/runs?per_page=1"), function (j) { d.arms = j.total_count; }),
+      part(ghJson("repos/" + REPO + "/pulls/" + EXAMPLE_PR), function (j) { d.example = { number: j.number, title: j.title, body: j.body, html_url: j.html_url, merged_at: j.merged_at, state: j.state }; }),
+      part(ghJson("repos/" + REPO + "/pulls?state=closed&sort=updated&direction=desc&per_page=100"), function (j) {
+        MERGED = j.filter(function (x) { return x.merged_at; }).map(function (x) { return { number: x.number, title: x.title, url: x.html_url, t: Date.parse(x.merged_at) }; });
+      })
+    ]).then(function () { draw(d); renderTimeline(); });
   }
 
   /* ---------- guided tour: a bar that walks the page in order; arrow keys step, Esc exits, ?tour=N deep links ---------- */
