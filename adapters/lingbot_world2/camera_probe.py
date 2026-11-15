@@ -368,3 +368,35 @@ if __name__ == "__main__":
     trials = load_trials(sys.argv[1:])
     print(f"{len(trials)} trials\n\nRendered / commanded yaw, open loop:\n\n{gain_table(trials)}\n\n"
           f"Heading error at the end of the script, degrees:\n\n{arm_table(trials)}")
+
+
+# ------------------------------------------------------- is it the camera?
+
+def rigid_share(frames, tol_px: float = 1.5, tol_rel: float = 0.3) -> float:
+    """Share of consecutive frame pairs whose image motion looks like one camera turn, in [0, 1].
+
+    A yaw shifts the top and bottom halves of the image by the same number of pixels, and the left and right
+    halves too. A subject that moves (an animal, a person, a vehicle) shifts only the part of the image it is in.
+    For each pair the horizontal shift is measured in the four halves of a 416 px wide grey frame; the pair counts
+    as rigid when all four agree within tol_px or tol_rel of their median. A low share means measure() and the
+    servo are reading subject motion, not rotation: the trial is not evidence about the camera."""
+    gray = []
+    for f in frames:
+        g = np.asarray(f, dtype=np.float32)
+        g = g.mean(axis=2) if g.ndim == 3 else g
+        step = max(1, round(g.shape[1] / 416))
+        gray.append(g[::step, ::step])
+    if len(gray) < 2:
+        return 1.0
+    h, w = gray[0].shape
+    halves = (np.s_[:h // 2, w // 8:w - w // 8], np.s_[h // 2:, w // 8:w - w // 8],
+              np.s_[h // 8:h - h // 8, :w // 2], np.s_[h // 8:h - h // 8, w // 2:])
+    ok = 0
+    for a, b in zip(gray, gray[1:]):
+        dx = [MT.shift(a[s], b[s])[0] for s in halves]
+        med = float(np.median(dx))
+        ok += max(abs(d - med) for d in dx) <= max(tol_px, tol_rel * abs(med))
+    return ok / (len(gray) - 1)
+
+
+RIGID_MIN = 0.7   # under this share of rigid pairs a trial's rotation numbers are not about the camera
