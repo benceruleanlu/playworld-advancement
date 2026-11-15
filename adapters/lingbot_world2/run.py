@@ -130,11 +130,12 @@ stateless path. Acts in dataset mode and on wait-only insight tasks (per latent 
 sink_scale.py.
 
 Pose-indexed memory (off by default, session only): `--lingbot-pose-memory` or LINGBOT_POSE_MEMORY=1 stores every
-generated latent chunk's clean latents keyed by its commanded camera pose and, before a chunk whose view matches a
-chunk that has left the KV cache and that the camera had looked away from, recomputes the most recent such chunk
-into the sink slots after the first --lingbot-pose-mem-anchor latents (one extra clean forward per change); the
-original sink is copied back when nothing matches. Knobs --lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,
-latents,anchor,time,fallback,tasks,max-mb}. Acts in dataset mode (per latent chunk inside one step). Refused with
+generated latent chunk's clean latents keyed by its commanded camera pose and, before a chunk whose view a chunk
+that has left the rolling window (opening included) and that the camera had looked away from covers better than the
+window does, recomputes that chunk into the sink slots after the first --lingbot-pose-mem-anchor latents, by default
+at a RoPE time just behind the window (one extra clean forward per chunk while installed); the original sink is
+copied back when nothing matches. Knobs --lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,latents,anchor,time,
+fallback,tasks,max-mb,rule,pick,yaw-scale}; dry run: python -m pwa.pose_mem_plan TASK. Acts in dataset mode (per latent chunk inside one step). Refused with
 --lingbot-stateless, sink 0 / local -1, a sink smaller than anchor + latents, --lingbot-reanchor and
 --lingbot-sink-key-scale. See pose_memory.py.
 
@@ -715,6 +716,7 @@ class LingBotWorld2Engine:
                     STATS.sink_armed()
             if POSE_MEM.enabled:  # only with the flag, so the no-flag reset path stays main's
                 self.session.pose_mem_on = POSE_MEM.applies(name)
+                self.session.pose_mem_name = name
                 if self.session.pose_mem_on:
                     STATS.pose_mem_armed()
         self._configure_if_motion(name, keys)
@@ -767,7 +769,8 @@ class LingBotWorld2Engine:
     def _pose_mem_counts(self) -> dict:
         s = self.session
         return {"stored": s.pm_stored, "installs": s.pm_installs, "restores": s.pm_restores, "latents": s.pm_latents,
-                "forwards": s.pm_forwards, "chunks": s.pm_chunks, "evicted": s.pm_evicted}
+                "forwards": s.pm_forwards, "chunks": s.pm_chunks, "evicted": s.pm_evicted,
+                "retimes": s.pm_retimes}
 
     def _generate_stateless(self, image_path, prompt, action, output_dir, name, num_frames):
         """Write <output_dir>/<name>.mp4 continuing from image_path under `action`.

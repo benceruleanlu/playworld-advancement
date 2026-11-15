@@ -64,7 +64,9 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       pose_mem_restores (original sink copied back: no match), pose_mem_chunks
                                       (chunks generated with memory installed), pose_mem_forwards (extra clean
                                       DiT forwards), pose_mem_evicted (bank entries dropped by the cap),
-                                      pose_mem_mb (peak host MB held: bank plus sink snapshot)
+                                      pose_mem_retimes (an installed memory recomputed at a new RoPE time,
+                                      time recent; not a new retrieval), pose_mem_mb (peak host MB held: bank
+                                      plus sink snapshot)
   --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it),
                                       or turn_step=inactive for a task run as one dataset call (`<task>_full`)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
@@ -88,7 +90,7 @@ from pathlib import Path
 
 
 # --lingbot-pose-memory session counters (run.LingBotWorld2Engine._pose_mem_counts) and their flags-line names
-POSE_MEM_FIELDS = ("stored", "installs", "latents", "restores", "chunks", "forwards", "evicted")
+POSE_MEM_FIELDS = ("stored", "installs", "latents", "restores", "chunks", "forwards", "evicted", "retimes")
 POSE_MEM_NAMES = {"installs": "retrievals"}
 
 
