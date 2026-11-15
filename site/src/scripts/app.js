@@ -1,6 +1,6 @@
 // Client-side results page: fetches results/experiments.csv from main at view time.
 import * as RunInfo from "./runinfo.js";
-import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from "./ui.js";
+import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFull } from "./ui.js";
 (function () {
   var REPO = "benceruleanlu/playworld-advancement";
   var RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/experiments.csv";
@@ -575,6 +575,11 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
   function taskOf(exp, task) { var m = MANS[exp]; return m ? (m.tasks || []).filter(function (t) { return t.task_id === task; })[0] || null : null; }
   // closing a player also cancels its pending start, so a closed player never begins playing detached videos
   var inlineStop = null;
+  function watchSel(s) {
+    if (s.kind !== "repeat") return s.watch;
+    function lab(exp) { var r = s.runs.filter(function (x) { return x[1] === exp; })[0]; return r ? r[0] : exp; }
+    return { task: s.watch.task, b: s.watch.b, c: s.watch.c, roles: [lab(s.watch.b), lab(s.watch.c)] };
+  }
   function closeInline() {
     if (inlineStop) { inlineStop(); inlineStop = null; }
     Array.prototype.forEach.call(document.querySelectorAll(".st-play"), function (n) {
@@ -584,7 +589,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
   }
   function playIn(id, sel) {
     var li = $("story-" + id); if (!li) return;
-    var pairs = [[sel.b, sel.c ? "Control" : ""], [sel.c, "Treatment"]].filter(function (p) { return p[0]; })
+    // sel.roles names the two clips when they are not a control and a treatment (the same settings run twice)
+    var pairs = [[sel.b, sel.roles ? sel.roles[0] : sel.c ? "Control" : ""], [sel.c, sel.roles ? sel.roles[1] : "Treatment"]].filter(function (p) { return p[0]; })
       .map(function (p) { return { exp: p[0], role: p[1], t: taskOf(p[0], sel.task) }; }).filter(function (p) { return p.t && p.t.video; });
     if (!pairs.length) { if (sel.c) watch(sel); else openScene(sel.b, sel.task); return; }
     closeInline();
@@ -594,7 +600,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       v.muted = true; vids.push(v);
       var ri = RI.get(p.exp), sc = cellVal(p.t);
       return el("figure", { class: "sp-slot" }, [v, el("figcaption", null, [p.role ? el("span", { class: "cvlab", text: p.role }) : null,
-        el("b", { text: ri && ri.armLabel && p.role ? ri.armLabel : sel.task }), sc !== null ? el("span", { class: "sc", title: passesText(p.t), text: fmt(sc) + " / 5" }) : null,
+        sel.roles ? null : el("b", { text: ri && ri.armLabel && p.role ? ri.armLabel : sel.task }), sc !== null ? el("span", { class: "sc", title: passesText(p.t), text: fmt(sc) + " / 5" }) : null,
         el("code", { class: "rawid", text: p.exp })])]);
     });
     // start together once every clip can play; when all have ended, start again
@@ -607,9 +613,12 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     var startTimer = setTimeout(startAll, 4000);
     inlineStop = function () { closed = true; clearTimeout(startTimer); };
     var close = el("button", { type: "button", class: "linkbtn", text: "Close" }); close.addEventListener("click", closeInline);
-    var bar = el("p", { class: "sp-bar" }, [el("b", { text: sel.task }), close]);
-    if (sel.c) { var full = el("button", { type: "button", class: "linkbtn", text: "Frame by frame in the compare player" }); full.addEventListener("click", function () { closeInline(); watch(sel); }); bar.insertBefore(full, close); }
+    var fs = el("button", { type: "button", class: "linkbtn", title: "Full screen (F)", text: "Full screen" });
+    var bar = el("p", { class: "sp-bar" }, [el("b", { text: sel.task }), fs, close]);
+    if (sel.c) { var full = el("button", { type: "button", class: "linkbtn", text: "Frame by frame" }); full.addEventListener("click", function () { closeInline(); watch(sel); }); bar.insertBefore(full, fs); }
     var box = el("div", { class: "st-play" + (pairs.length === 1 ? " one" : "") }, [bar, el("div", { class: "sp-grid" }, slots)]);
+    fs.addEventListener("click", function () { toggleFull(box); });
+    box.addEventListener("fullscreenchange", function () { fs.textContent = document.fullscreenElement === box ? "Exit full screen" : "Full screen"; });
     li.appendChild(box);
     // in the tour the clips take the screen; on a click they only scroll into view if they are off it
     if (tourAt >= 0) scrollToEl(box); else if (box.scrollIntoView) box.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -718,7 +727,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
         var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task });
-        wb.addEventListener("click", function () { playIn(s.id, s.watch); }); acts.appendChild(wb);
+        wb.addEventListener("click", function () { playIn(s.id, watchSel(s)); }); acts.appendChild(wb);
       }
       if (s.scene && MANS[s.scene[0]]) {
         var sb = el("button", { type: "button", class: "cvbtn primary", text: s.sceneLabel || "Watch " + s.scene[1] });
@@ -931,6 +940,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var v = el("video", { playsinline: "", loop: "", preload: calm ? "none" : "auto", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id });
     v.muted = true; if (calm) v.setAttribute("controls", ""); else { v.autoplay = true; var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); }); }
+    v.title = "Click for full screen"; v.addEventListener("click", function () { toggleFull(v); });
     fig.appendChild(v);
     var cap = el("figcaption", null, [el("b", { text: c.t.task_id + ", scored " + fmt(c.mean) + " of 5." }),
       document.createTextNode(" Our highest-scored rollout" + (c.row && !isClosed(c.row) ? ", fixed moves" : "") + ". ")]);
@@ -1082,7 +1092,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     storyShown.forEach(function (x) {
       var s = x.s;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
-      if (s.watch && x.ev) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right. " + (s.say || "") });
+      if (s.watch && x.ev) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, watchSel(s)); }, title: "Watch " + s.watch.task, line: (s.kind === "repeat" ? "" : "Control left, treatment right. ") + (s.say || "") });
       else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: s.say || "" });
     });
     steps.push({ el: function () { return $("loop"); }, title: "Method", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
@@ -1146,6 +1156,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     $("tour-exit").addEventListener("click", tourExit);
     $("tour-auto").addEventListener("click", function () { tourAuto = !tourAuto; tourArm(); });
     document.addEventListener("keydown", function (e) {
+      if ((e.key === "f" || e.key === "F") && !e.altKey && !e.ctrlKey && !e.metaKey && !/^(SELECT|INPUT|TEXTAREA)$/.test(e.target && e.target.tagName || "")) {
+        var open = document.querySelector(".st-play"); if (open) { e.preventDefault(); toggleFull(open); return; }
+      }
       if (tourAt < 0 || e.altKey || e.ctrlKey || e.metaKey) return;
       var tg = e.target && e.target.tagName;
       if (tg === "SELECT" || tg === "INPUT" || tg === "TEXTAREA" || tg === "VIDEO") return;

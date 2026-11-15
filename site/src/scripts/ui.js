@@ -62,3 +62,9 @@ export function segmented(label, items, current, onPick) {
   });
   return box;
 }
+// put a node in the browser's full-screen mode, or leave it if this node is already there
+export function toggleFull(node) {
+  var d = document, cur = d.fullscreenElement || d.webkitFullscreenElement;
+  if (cur) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+  var fn = node.requestFullscreen || node.webkitRequestFullscreen; if (fn) { var pr = fn.call(node); if (pr && pr.catch) pr.catch(function () {}); }
+}
