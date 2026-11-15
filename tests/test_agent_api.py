@@ -62,7 +62,7 @@ def test_openai_headers_payload_parse(stub, monkeypatch):
     assert r["headers"]["Authorization"] == "Bearer sekrit"
     assert "x-api-key" not in {k.lower() for k in r["headers"]}
     b = r["body"]
-    assert b["model"] == "m-1" and b["max_completion_tokens"] == 128
+    assert b["model"] == "m-1" and b["max_completion_tokens"] == 1024
     content = b["messages"][0]["content"]
     assert [c["type"] for c in content] == ["image_url", "image_url", "text"]
     assert content[0]["image_url"]["url"] == "data:image/jpeg;base64,QUJD" and content[2]["text"] == "pick"

@@ -171,7 +171,7 @@ Cut: fine-tuning, full pose-indexed spatial memory. Re-injecting the first frame
 
 - Generation (SANA-WM, Matrix-Game 3.0) needs CUDA GPUs: run it on Modal, sharded.
 - Mac Studio (96 GB): `pwa`, scoring (Gemini), agent player and planner calls (OpenAI), proxy metrics on short clips, reviewing rollouts. The upstream SANA runner falls back to CPU off CUDA, so do not generate there.
-- Agent player: OpenAI `gpt-4.1-mini` by default (`PLAYER_API_PROVIDER=openai`). Scorer stays Gemini 3.1 Pro so numbers compare to the leaderboard.
+- Agent player: the `experiment` workflow's `player_model` input (default `gpt-6-luna`, OpenAI) is passed to the runner as `--agent-model` and checked by the preflight step; `adapters/common/agent_api.py` falls back to `gpt-4.1-mini` outside the workflow (`PLAYER_API_PROVIDER=openai`). The baseline `lb14-session-agent-dev-v1` used gpt-4.1-mini, which reversed direction 9 to 25 times per camera task and never ended a rollout early (#49). Keep one player for every run that is compared. Scorer stays Gemini 3.1 Pro so numbers compare to the leaderboard.
 
 ## Judging
 

@@ -23,7 +23,8 @@ from types import SimpleNamespace
 
 DEFAULTS = {
     "openai": {"PLAYER_API_URL": "https://api.openai.com/v1",
-               # non-reasoning + vision: 128 completion tokens can be eaten by hidden reasoning
+               # the reply is one action word; the completion budget (PLAYER_MAX_COMPLETION_TOKENS, 1024)
+               # leaves room for models that reason before answering
                "PLAYER_MODEL": "gpt-4.1-mini"},
     "anthropic": {"PLAYER_API_URL": "https://api.anthropic.com/v1",
                   "PLAYER_MODEL": "claude-haiku-4-5-20251001"},
@@ -51,7 +52,7 @@ def build_payload(model: str, prompt: str, images_b64: list[str]) -> dict:
     parts = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}} for b64 in images_b64]
     parts.append({"type": "text", "text": prompt})
     return {"model": model,
-            "max_completion_tokens": int(os.environ.get("PLAYER_MAX_COMPLETION_TOKENS", "128")),
+            "max_completion_tokens": int(os.environ.get("PLAYER_MAX_COMPLETION_TOKENS", "1024")),
             "messages": [{"role": "user", "content": parts}]}
 
 
