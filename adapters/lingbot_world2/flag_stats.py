@@ -19,6 +19,10 @@ Only with --lingbot-return-stop the line also ends with (so lines without the fl
   return_stop    on (the goal armed the stop) | skip (no single final return in the goal, or no player)
   return_stops   decisions answered by the stop (WAIT or END) instead of the player
 
+With --lingbot-gc-completion-hint, also add gc_completion=on,
+gc_completion_hints (GC decisions receiving the reminder), and gc_completion_ends
+(END replies from those decisions). They are observations, not forced stops.
+
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
 """
@@ -30,12 +34,13 @@ from pathlib import Path
 
 class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
-                 return_stop: bool = False):
+                 return_stop: bool = False, gc_completion: bool = False):
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
+        self.gc_completion = bool(gc_completion)
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
-                       "return_stops": 0}
+                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -46,6 +51,7 @@ class FlagStats:
         self.player_hints = 0
         self.return_stop_armed = False
         self.return_stops = 0
+        self.gc_completion_hints = self.gc_completion_ends = 0
 
     def caption(self, used: bool):
         if used:
@@ -69,6 +75,18 @@ class FlagStats:
         elif kind == "stop":
             self.return_stops += 1
 
+    def completion_hint(self):
+        self.gc_completion_hints += 1
+
+    def completion_end(self):
+        self.gc_completion_ends += 1
+
+    def completion_summary(self, counts) -> dict:
+        if not self.gc_completion:
+            return {}
+        return {"gc_completion": "on", **{k: counts[k] for k in
+                ("gc_completion_hints", "gc_completion_ends")}}
+
     # -- output ----------------------------------------------------------------
     def summary(self, task_id) -> dict:
         if self.prompt_mode == "goal":
@@ -83,6 +101,7 @@ class FlagStats:
              "player_hint": "on" if self.player_hint else "off", "player_hints": self.player_hints}
         if self.return_stop:
             s.update(return_stop="on" if self.return_stop_armed else "skip", return_stops=self.return_stops)
+        s.update(self.completion_summary(vars(self)))
         return s
 
     @staticmethod
@@ -94,7 +113,8 @@ class FlagStats:
         return (f"[lingbot] flags total tasks={t['tasks']} turn_cal={int(self.turn_cal)} "
                 f"caption_used={t['caption_used']} caption_fallback={t['caption_fallback']} "
                 f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}"
-                + (f" return_stops={t['return_stops']}" if self.return_stop else ""))
+                + (f" return_stops={t['return_stops']}" if self.return_stop else "")
+                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items()))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -105,6 +125,8 @@ class FlagStats:
         t["reanchor_events"] += self.reanchor_events
         t["player_hints"] += self.player_hints
         t["return_stops"] += self.return_stops
+        t["gc_completion_hints"] += self.gc_completion_hints
+        t["gc_completion_ends"] += self.gc_completion_ends
         print(self.line(s), flush=True)
         return s
 
