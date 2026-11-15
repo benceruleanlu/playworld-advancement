@@ -53,13 +53,15 @@ class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
                  return_stop: bool = False, gc_completion: bool = False,
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
-                 insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False):
+                 insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
+                 gc_director: bool = False):
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
         self.insight_director = bool(insight_director)
         self.if_repeat = bool(if_repeat)
         self.if_slow = bool(if_slow)
+        self.gc_director = bool(gc_director)
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
@@ -68,7 +70,8 @@ class FlagStats:
                        "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
-                       "if_repeat_checks": 0, "if_translation_frames": 0}
+                       "if_repeat_checks": 0, "if_translation_frames": 0,
+                       "gc_director_chunks": 0, "gc_director_updates": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -78,6 +81,7 @@ class FlagStats:
         self.insight_director_prompts = 0
         self.if_repeat_checks = 0
         self.if_translation_frames = 0
+        self.gc_director_chunks = self.gc_director_updates = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -137,6 +141,10 @@ class FlagStats:
         return {"gc_completion": "on", **{k: counts[k] for k in
                 ("gc_completion_hints", "gc_completion_ends")}}
 
+    def director_summary(self, counts):
+        return ({"gc_director": "on", **{k: counts[k] for k in
+                 ("gc_director_chunks", "gc_director_updates")}} if self.gc_director else {})
+
     # -- output ----------------------------------------------------------------
     def if_horizon_event(self, kind: str, cap: int):
         """if_horizon.wrap on_event: "armed" or "end", with the task's chunk budget."""
@@ -167,6 +175,7 @@ class FlagStats:
             s.update(if_repeat="on", if_repeat_checks=self.if_repeat_checks)
         if self.if_slow:
             s.update(if_slow="on", if_translation_frames=self.if_translation_frames)
+        s.update(self.director_summary(vars(self)))
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -190,7 +199,8 @@ class FlagStats:
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
                 + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
-                   if self.if_horizon else ""))
+                   if self.if_horizon else "")
+                + "".join(f" {k}={v}" for k, v in self.director_summary(t).items()))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -201,6 +211,8 @@ class FlagStats:
         t["if_repeat_checks"] += self.if_repeat_checks
         t["if_translation_frames"] += self.if_translation_frames
         t["tasks"] += 1
+        t["gc_director_chunks"] += self.gc_director_chunks
+        t["gc_director_updates"] += self.gc_director_updates
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
