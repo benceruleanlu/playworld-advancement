@@ -380,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     run_agent.SanaWMEngine = LingBotWorld2Engine
     prompts.install(run_agent)
     STATS.install(run_agent)
-    print(f"[adapter] agent provider: {agent_api.patch(run_agent, flags["player"])}", flush=True)
+    print(f"[adapter] agent provider: {agent_api.patch(run_agent, flags['player'])}", flush=True)
     if PLAYER_HINT:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
                                          session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
