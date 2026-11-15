@@ -1,0 +1,432 @@
+{
+ "exp": "clstk14-dev-v1-a2",
+ "release_tag": "run-clstk14-dev-v1-a2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-clstk14-dev-v1-a2",
+ "generated": "2026-11-15T09:02:58Z",
+ "git_sha": "b3d9201fd0a8e19f0136a26a302cd6920c84802d",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "agent",
+ "scored": false,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--agent-model",
+  "gpt-6-luna",
+  "--lingbot-turn-cal",
+  "--lingbot-caption-prompt",
+  "--lingbot-insight-director",
+  "--lingbot-if-slow-translation",
+  "--lingbot-sink-size",
+  "10",
+  "--lingbot-local-attn",
+  "22",
+  "--lingbot-yaw-servo"
+ ],
+ "player_model": "gpt-6-luna",
+ "notes": "closed loop: no flags vs stack plus servo vs same without IF slow translation, 24 dev tasks [arm 2/3 of clstk14-dev-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo]",
+ "labels": [
+  "not scored",
+  "arm 2/3 of clstk14-dev-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo"
+ ],
+ "report": "clstk14-dev-v1-a2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC005",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "GC016",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC016.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC016.jpg"
+  },
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC036.jpg"
+  },
+  {
+   "task_id": "GC038",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC038.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/GC038.jpg"
+  },
+  {
+   "task_id": "IF002",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "IF010",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/IF010.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/IF010.jpg"
+  },
+  {
+   "task_id": "IF017",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "IF031",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "IF034",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/IF034.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/IF034.jpg"
+  },
+  {
+   "task_id": "IF052",
+   "family": "if",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE001",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE005",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/OE005.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/OE005.jpg"
+  },
+  {
+   "task_id": "OE018",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE035",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE064",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/OE064.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-clstk14-dev-v1-a2/OE064.jpg"
+  },
+  {
+   "task_id": "OE074",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE034",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE058",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE069",
+   "family": "outsight",
+   "mean": null,
+   "status": [
+    "missing"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": null,
+   "poster": null
+  }
+ ]
+}
