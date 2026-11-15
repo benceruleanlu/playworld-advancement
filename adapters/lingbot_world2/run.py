@@ -19,9 +19,14 @@ arrow-key rates so one dataset token turns 22.5 deg (yaw) / 20 deg (pitch); see 
 Caption prompt (off by default): `--lingbot-caption-prompt` or LINGBOT_PROMPT_MODE=auto conditions
 the model on the task's scene caption instead of the agent goal ("wait and observe" for Insight);
 see adapters/common/prompts.py. The agent player still gets the goal.
+
 Re-anchoring (off by default, session mode only): `--lingbot-reanchor` or LINGBOT_REANCHOR=1.
 When the commanded camera track of a GC task returns to the start pose, the input image is
 given to the model again at that latent; see session.ReturnDetector.
+
+Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 tells the
+closed-loop player how far one action turns the camera and where the commanded camera
+is relative to the start; see player_hint.py. The world model's inputs do not change.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -35,6 +40,7 @@ Env:
   LINGBOT_REANCHOR  1 = same as --lingbot-reanchor
   LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
   LINGBOT_REANCHOR_DEG / LINGBOT_REANCHOR_TRANS   return tolerance: degrees / key units (6 / 2)
+  LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 """
@@ -46,6 +52,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
@@ -57,8 +64,9 @@ PROMPT_MODE = "auto" if "--lingbot-caption-prompt" in sys.argv else os.environ.g
 if PROMPT_MODE not in prompts.MODES:
     raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {PROMPT_MODE!r}")
 REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR", "0") == "1"
+PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
 sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
-                                              "--lingbot-reanchor")]
+                                              "--lingbot-reanchor", "--lingbot-player-hint")]
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -195,4 +203,8 @@ class LingBotWorld2Engine:
 run_agent.SanaWMEngine = LingBotWorld2Engine
 prompts.install(run_agent)
 print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
+if PLAYER_HINT:
+    run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
+                                     session=not STATELESS, turn_cal=TURN_CAL)
+    print("[lingbot] player hint: on", flush=True)
 raise SystemExit(run_agent.main())
