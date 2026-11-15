@@ -83,6 +83,7 @@ def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn
         if p["both_sides"]:
             left = left and lo <= -yaw_step / 2 and hi >= yaw_step / 2
         home = abs(s["heading"]) <= yaw_step / 2 and abs(s["tilt"]) <= pitch_step / 2 and dist <= 0.5
+        home = home and s["upright"] > 0  # heading and tilt come from the forward axis alone
         if left and home:
             return k
     return None

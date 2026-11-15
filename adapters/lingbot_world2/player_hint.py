@@ -59,7 +59,8 @@ def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, un
     heading, tilt = _angles(pose)
     step = float(step_keys(1, chunk_frames, session))  # frames of translation in one later action
     return {"heading": heading, "tilt": tilt, "forward": pose[2, 3] / step, "right": pose[0, 3] / step,
-            "turned_left": turned["left"], "turned_right": turned["right"]}
+            "turned_left": turned["left"], "turned_right": turned["right"],
+            "upright": float(pose[1, 1])}  # camera down axis on world down: negative when rolled over
 
 
 def step_size(chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20) -> tuple[float, float]:

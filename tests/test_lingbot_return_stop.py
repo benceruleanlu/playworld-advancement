@@ -62,6 +62,12 @@ def test_wrong_side_or_axis_does_not_count_as_having_left():
     assert at(FULL_TURN, "L7") == 7            # no direction named: either way round
 
 
+def test_a_camera_rolled_over_the_top_is_not_home():
+    # three RIGHT then ten UP: the forward axis points near the start again, but the view is upside down
+    assert at(OUT_BACK, "R3 U10") is None
+    assert at(OUT_BACK, "R2 L2") == 4
+
+
 def test_full_turn_fires_when_the_heading_wraps_to_the_start():
     assert at(FULL_TURN, "R6") is None         # 323 degrees, 37 short
     assert at(FULL_TURN, "R10 L1") == 7        # GC031 baseline actions: 378 degrees after 7
