@@ -320,15 +320,16 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     var f = fullRuns(); if (!f.start && !f.method) { box.hidden = true; return; }
     box.hidden = false;
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
-    var cols = [["Genie 3, paper", GENIE], ["LingBot v2, paper", lb]];
-    if (f.start) cols.push(["Starting model, ours", f.start]);
-    if (f.method) cols.push(["Method, ours", f.method]);
-    var hr = el("tr", null, [el("th", { scope: "col", text: "Task type" })].concat(cols.map(function (c) { return el("th", { class: "num", scope: "col", text: c[0] }); })));
-    if (f.start && f.method) hr.appendChild(el("th", { class: "num", scope: "col", text: "Change" }));
+    // [label, short label for phones, row]
+    var cols = [["Genie 3, paper", "G3", GENIE], ["LingBot v2, paper", "LB", lb]];
+    if (f.start) cols.push(["Starting model, ours", "Start", f.start]);
+    if (f.method) cols.push(["Method, ours", "Method", f.method]);
+    var hr = el("tr", null, [el("th", { scope: "col", text: "Task type" })].concat(cols.map(function (c) { return el("th", { class: "num", scope: "col" }, headLabel([0, c[0], 0, 0, c[1]])); })));
+    if (f.start && f.method) hr.appendChild(el("th", { class: "num", scope: "col" }, headLabel([0, "Change", 0, 0, "+/-"])));
     var tb = el("tbody");
     FAMS.map(function (x) { return [x[0], FAMINFO[x[0]].name]; }).concat([["overall", "Overall"]]).forEach(function (k) {
       var tr = el("tr", { class: k[0] === "overall" ? "total" : "" }, [el("th", { scope: "row", text: k[1] })]);
-      cols.forEach(function (c) { var td = el("td", { class: "num" }); if (c[1][k[0]] === null || c[1][k[0]] === undefined) dashCell(td); else td.textContent = fmt(c[1][k[0]]); tr.appendChild(td); });
+      cols.forEach(function (c) { var td = el("td", { class: "num" }); if (c[2][k[0]] === null || c[2][k[0]] === undefined) dashCell(td); else td.textContent = fmt(c[2][k[0]]); tr.appendChild(td); });
       if (f.start && f.method) {
         var a = f.start[k[0]], b2 = f.method[k[0]], td2 = el("td", { class: "num" });
         if (typeof a !== "number" || typeof b2 !== "number") dashCell(td2);
@@ -339,7 +340,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     });
     var complete = [f.start, f.method].every(function (r) { return !r || leftOut(r) === 0; });
     box.appendChild(el("h2", { text: complete ? "All 171 tasks, AI played" : "171-task runs, AI played, not every task scored" }));
-    box.appendChild(el("div", { class: "scroll" }, [el("table", { class: "fullres" }, [el("thead", null, [hr]), tb])]));
+    box.appendChild(el("div", { class: "card flat" }, [el("table", { class: "fullres" }, [el("thead", null, [hr]), tb])]));
     var note = [];
     [["Starting model", f.start], ["Method", f.method]].forEach(function (x) {
       var r = x[1]; if (!r) return;
