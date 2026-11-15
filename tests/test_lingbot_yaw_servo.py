@@ -160,3 +160,95 @@ def test_step_stands_down_when_the_motion_is_not_rigid():
     servo = YS.YawServo()
     YS.step(s, servo, ["l"] * 12 + ["l"] * 16, RATE, _measure(s), rigid=lambda frames: 0.4)
     assert servo.est["l"] == 1.0 and servo.untrusted == 2 and [g for _n, g in s.calls] == [(1.0, 1.0), (1.0, 1.0)]
+
+
+# ------------------------------------------- through the runner, next to no-flag arms
+
+class _RunnerSession:
+    """The runner's session interface with a camera that renders g x the yaw the model track commands.
+    Uses the real PoseTrack, so the gain reaches the model the way it does on a GPU."""
+
+    def __init__(self, g_left, g_right):
+        from adapters.lingbot_world2 import session as S
+        self.S, self.g = S, {"j": g_left, "l": g_right}
+        self.started, self.chunk_id, self.reanchor_events, self.track = False, 0, 0, S.PoseTrack()
+        self.heading, self.steps, self.gains = 0.0, 0, []
+
+    def reset(self, *a, **kw):
+        self.started, self.chunk_id, self.track, self.heading = True, 0, self.S.PoseTrack(), 0.0
+
+    def step(self, keys, **kw):
+        from adapters.lingbot_world2 import poses as P
+        import math
+        gain = self.track.yaw_gain or (1.0, 1.0)
+        rel = self.track.advance(keys)
+        self.chunk_id += len(rel) // self.S.CHUNK
+        self.steps += 1
+        self.gains.append(gain)
+        out = np.zeros((len(keys) + 1, 2, 2, 3), dtype=np.float64)
+        out[0] = self.heading
+        for i, key in enumerate(keys, 1):
+            y = YS.yaw_part(key)
+            if y:
+                self.heading += YS.SIGN[y] * math.degrees(P.YAW) * (gain[0] if y == "j" else gain[1]) * self.g[y]
+            out[i] = self.heading
+        return out
+
+
+def test_runner_arms_servo_corrects_and_neighbours_are_untouched(monkeypatch, capsys, tmp_path):
+    import functools
+    import sys
+    from pathlib import Path
+    from types import ModuleType
+
+    from PIL import Image
+
+    from adapters.lingbot_world2 import run as R
+    img = tmp_path / "in.png"
+    Image.new("RGB", (8, 8)).save(img)
+    torch = ModuleType("torch")
+    torch.cuda = SimpleNamespace(reset_peak_memory_stats=lambda: None, max_memory_allocated=lambda: 0)
+    imageio = ModuleType("imageio")
+    imageio.mimsave = lambda *a, **kw: None
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "imageio", imageio)
+    pipe = SimpleNamespace(model=None, _t5_cache={})
+    monkeypatch.setattr(R, "load_pipe", lambda environ=None: (SimpleNamespace(sample_shift=5.0), pipe, Path("."), False))
+    monkeypatch.setattr(R.agent_api, "patch", lambda ra, *a: "test")
+    monkeypatch.setattr(R.agent_api, "finish", lambda ra: None)
+    # the fake frames carry the heading instead of an image: read it back, and skip the image-based rigid test
+    monkeypatch.setattr(R.MT, "chunk_turn", lambda frames: (float(frames[-1, 0, 0, 0] - frames[0, 0, 0, 0]), 0.0, 1.0))
+    monkeypatch.setattr(R.YSV, "step", functools.partial(YS.step, rigid=None))
+    seen = []
+
+    def fake_import(fresh=True):
+        def run_task(task, eng, out, args):
+            eng.generate(str(img), "p", "j-80,l-80,none-12", tmp_path, "GC033_full", 173)   # left 90, right 90, dataset mode
+            return {"task_id": task["task_id"], "success": False}
+
+        ra = SimpleNamespace(run_task=run_task, decide_action=lambda *a, **kw: "WAIT", to_sana_key=lambda a: "none")
+
+        def run_main():
+            eng = ra.SanaWMEngine(SimpleNamespace(max_total_frames=961, seed=0, fps=16, action_frame_unit=20))
+            eng.session = _RunnerSession(1.237, 0.935)        # GC033 as measured on the 14B
+            seen.append(eng.session)
+            ra.run_task({"task_id": "GC033"}, eng, tmp_path, None)
+        ra.main = run_main
+        return ra
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    assert R.main(["run.py", "--lingbot-turn-cal"]) == 0
+    assert R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"]) == 0
+    assert R.main(["run.py", "--lingbot-turn-cal"]) == 0
+    base, servo, again = seen
+    assert base.heading == pytest.approx(-90 * 1.237 + 90 * 0.935, abs=0.01)       # 27 degrees left of the start
+    assert abs(servo.heading) < 2.0                                                # the servo arm comes back
+    assert again.heading == pytest.approx(base.heading) and again.steps == base.steps == 1 and again.gains == [(1.0, 1.0)]
+    assert servo.steps == 11 and servo.gains[0] == (1.0, 1.0) and any(g != (1.0, 1.0) for g in servo.gains)
+    assert R.YAW_SERVO is False
+    out = capsys.readouterr().out
+    modes = [ln for ln in out.splitlines() if ln.startswith("[lingbot] mode:")]
+    assert "yaw servo" not in modes[0] and ", yaw servo on" in modes[1] and "yaw servo" not in modes[2]
+    flags = [ln for ln in out.splitlines() if ln.startswith("[lingbot] flags task=")]
+    assert "yaw_servo" not in flags[0] and "yaw_servo=on yaw_servo_chunks=11 yaw_servo_untrusted=0" in flags[1] and "yaw_servo" not in flags[2]
+    assert out.count("[lingbot] yaw servo: GC033_full est L") == 1
