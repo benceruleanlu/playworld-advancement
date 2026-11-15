@@ -2,7 +2,7 @@
 
 How long can a generated world hold together while an agent plays in it?
 
-We take an open world model, LingBot-World v2 14B, and change how it is run at inference time to raise its [PlayWorld](https://kxding.github.io/project/PlayWorld/) score toward Genie 3 (2.12). The track allows fine-tuning; we chose not to train for lack of time (reasons in [research/red-team-and-plan.md](research/red-team-and-plan.md)). Iterate hackathon, Track 4: World Models.
+We take an open world model, LingBot-World v2 14B, change how it is run at inference time, and score the changes on [PlayWorld](https://kxding.github.io/project/PlayWorld/) dev tasks. No run covers all 171 tasks, so there is no score to set against Genie 3 (2.12). The track allows fine-tuning; we chose not to train for lack of time (reasons in [research/red-team-and-plan.md](research/red-team-and-plan.md)). Iterate hackathon, Track 4: World Models.
 
 ## Status
 

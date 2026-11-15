@@ -263,13 +263,20 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     realRows().forEach(function (r) { if (isFinal(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
     return best;
   }
+  // best closed-loop 171-task run that is not final (missing tasks, unmerged code): the ruler's mark when no final score exists
+  function rulerFull() {
+    var best = null;
+    realRows().forEach(function (r) { if (isClosed(r) && isFull(r) && !isSmoke(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
+    return best;
+  }
   // runs whose AI player differs from every run compared since
   var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "Older AI player than later runs. Diagnostic only." };
   function renderStatus() {
     var box = $("status"), fin = bestFinal(), shown = fin || bestClosed();
     box.className = "scorecard card" + (fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD) ? " ok" : "");
     clear(box);
-    box.appendChild(el("div", { class: "label", text: fin ? "Final score" : "Best official score so far" }));
+    box.setAttribute("aria-label", fin ? "Final score" : "Best official dev-subset score");
+    box.appendChild(el("div", { class: "label", text: fin ? "Final score" : "Best official dev-subset score" }));
     var big = el("div", { class: "big" }, [document.createTextNode(shown ? fmt(shown.overall) : "-")]);
     if (shown && shown.overall_std !== null) big.appendChild(el("span", { class: "pm", text: " ± " + fmt(shown.overall_std) }));
     box.appendChild(big);
@@ -284,9 +291,12 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       box.appendChild(b);
       box.appendChild(el("p", { class: "vs" }, [el("code", { class: "rawid", text: shown.exp })]));
       if (PLAYER_NOTE[shown.exp]) box.appendChild(el("p", { class: "vs", text: PLAYER_NOTE[shown.exp] }));
+      // keys [] = no method flags, known once the run's manifest or notes say so
+      var ri = RI.get(shown.exp), keys = ri && ri.keys;
+      if (!fin) box.appendChild(el("p", { class: "vs", text: (isClosed(shown) ? "Closed loop" : "Open loop") + (keys && !keys.length ? ", base model with no method" : "") + ", Gemini 3.1 Pro. A " + shown.n_tasks + "-task mean, not comparable to the paper's 171-task scores." }));
     } else box.appendChild(el("p", { class: "vs", text: "No run big enough to estimate a score yet (24 or more tasks, 2 or more judge passes)." }));
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
-    box.appendChild(el("p", { class: "vs", text: "Paper, 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
+    if (fin) box.appendChild(el("p", { class: "vs", text: "Paper, 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
   }
   // starting model against method on all 171 tasks. Hidden until a closed-loop, uncapped, 171-task run with 2+ passes is scored.
   // The starting model is the full run with no method flags; the method is the best other full run.
@@ -363,20 +373,22 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   function renderFull() {
     var full = realRows().filter(function (r) { return isFull(r) && r.overall !== null; });
     var most = 0; realRows().forEach(function (r) { if (r.overall !== null && r.n_tasks > most) most = r.n_tasks; });
-    $("full").textContent = full.length ? "" : "No " + FULL_TASKS + "-task score yet. Scored runs cover at most " + most + " tasks, so none compares directly with the paper rows.";
+    $("full").textContent = full.length ? "" : "Each mark is a model's " + FULL_TASKS + "-task score in the PlayWorld paper. No run of ours covers all " + FULL_TASKS + " tasks (the most is " + most + "), so none is placed on this line.";
     $("full").hidden = !!full.length;
   }
   function renderRuler() {
     var host = $("ruler"); clear(host);
     var W = Math.max(300, host.clientWidth || 700), narrow = W < 520, H = narrow ? 150 : 124;
     var m = { l: 14, r: 14 };
-    var fin = bestFinal(), ours = fin || bestClosed();
+    // our mark only for a run of all 171 tasks: a dev-subset mean on this axis would read as a benchmark score
+    var fin = bestFinal(), ours = fin || rulerFull();
+    if ($("scores-h2")) $("scores-h2").textContent = ours ? "Where that leaves us against the published models" : "Published full-benchmark scores, from the PlayWorld paper";
     var hi = Math.max(3, ours ? Math.ceil((ours.overall + 0.3) * 2) / 2 : 3);
     var x = function (v) { return m.l + ((v - 1) / (hi - 1)) * (W - m.l - m.r); };
     var axisY = narrow ? 80 : 64;
     var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
       "aria-label": "Overall score on a 1 to " + hi + " axis. " + REFS.map(function (r) { return r.exp + " " + fmt(r.overall); }).join(", ") +
-        (ours ? ". Ours " + fmt(ours.overall) + (fin ? "" : " (partial)") : ". Ours: not yet scored") });
+        (ours ? ". Ours " + fmt(ours.overall) + (fin ? "" : " (171 tasks, not every check passed)") : ". Ours: no 171-task run, not placed") });
     svg.appendChild(sv("rect", { x: x(1), y: axisY - 3, width: x(TARGET) - x(1), height: 6, rx: 3, fill: "var(--wash)" }));
     svg.appendChild(sv("rect", { x: x(TARGET), y: axisY - 3, width: x(hi) - x(TARGET), height: 6, rx: 3, fill: "var(--good)", opacity: 0.18 }));
     svg.appendChild(sv("line", { x1: x(1), x2: x(hi), y1: axisY, y2: axisY, stroke: "var(--axis)" }));
@@ -401,7 +413,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       svg.appendChild(sv("circle", { cx: ox, cy: axisY, r: 7, fill: partial ? "var(--surface)" : "var(--s1)", stroke: "var(--s1)", "stroke-width": 2.5 }));
       var an = ox < 120 ? "start" : (ox > W - 120 ? "end" : "middle");
       svg.appendChild(sv("text", { class: "lab", x: ox, y: oy, "text-anchor": an, style: "fill:var(--s1)",
-        text: "Ours " + fmt(ours.overall) + (partial ? " (" + ours.n_tasks + " tasks, partial)" : "") }));
+        text: "Ours " + fmt(ours.overall) + (partial ? " (171 tasks, not final)" : "") }));
     }
     host.appendChild(svg);
   }
@@ -1018,12 +1030,14 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   function renderVerdict() {
     var p = $("verdict"); if (!p) return; clear(p);
     var fin = bestFinal(), shown = fin || bestClosed();
+    // with a final 171-task score the hero asks the Genie 3 question it can now answer
+    if (fin) { $("hero-h1").textContent = "Can inference-time changes lift an open world model past Genie 3 on PlayWorld?"; $("hero-scope").textContent = "all of"; }
     if (!shown) { p.hidden = true; return; }
     p.hidden = false;
     var beat = fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD);
-    p.appendChild(el("b", { text: fin ? (beat ? "Yes. " : "No. ") : "Not yet. " }));
+    p.appendChild(el("b", { text: fin ? (beat ? "Yes. " : "No. ") : "No full-benchmark run. " }));
     p.appendChild(document.createTextNode(fin ? "Final score " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks. Genie 3: " + fmt(TARGET) + "."
-      : "Best official score " + fmt(shown.overall) + " on " + shown.n_tasks + " of " + FULL_TASKS + " tasks. Genie 3: " + fmt(TARGET) + ". " +
+      : "No run covers all " + FULL_TASKS + " tasks, so there is no score to set against Genie 3's " + fmt(TARGET) + ". " +
         (ADOPTED.length ? "Adopted: " + ADOPTED.join(", ") + "." : "No change adopted.")));
   }
   function renderGlance() {
@@ -1294,10 +1308,12 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   var tourSteps = [], tourAt = -1, tourFull = false;
   function tourStart(full) { tourFull = !!full; buildTour(); tourGo(0); $("tour-next").focus(); }
   function buildTour() {
-    var shown = bestFinal() || bestClosed();
-    var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can we lift an open world model past Genie 3 (" + fmt(TARGET) + ") without retraining it?" }];
-    if (tourFull) steps.push({ el: function () { return $("scores"); }, title: "Where we start",
-      line: shown ? "Best official score, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks (" + shown.exp + "). Genie 3: " + fmt(TARGET) + "." : "No run big enough to estimate a score yet." });
+    var fin = bestFinal(), shown = fin || bestClosed();
+    var steps = [fin ? { el: function () { return $("top"); }, title: "The question", line: "Can we lift an open world model past Genie 3 (" + fmt(TARGET) + ") without retraining it?" }
+      : { el: function () { return $("top"); }, title: "What we did", line: "We changed how LingBot-World v2 runs, without retraining, and scored it on PlayWorld dev tasks. No run covers all " + FULL_TASKS + " tasks." }];
+    if (tourFull) steps.push({ el: function () { return $("scores"); }, title: fin ? "Where we start" : "The published scores",
+      line: !shown ? "No run big enough to estimate a score yet." : fin ? "Final score, AI played: " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks (" + fin.exp + "). Genie 3: " + fmt(TARGET) + "."
+        : "These are the paper's " + FULL_TASKS + "-task scores. Our best official score, " + fmt(shown.overall) + " on " + shown.n_tasks + " dev tasks (" + shown.exp + "), is not placed among them." });
     if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it yet." });
     storyShown.forEach(function (x) {
       var s = x.s;
@@ -1627,7 +1643,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       refreshRI();
       // every manifest, for task families and recorded flags in the run names
       Promise.all(runs.map(function (r) { return getJson(r.exp + ".json").then(function (m) { if (m && m.exp === r.exp) MANS[r.exp] = m; }, function () {}); }))
-        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGallery(); renderGlance(); renderFullResult(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
+        .then(function () { refreshRI(); renderStatus(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGallery(); renderGlance(); renderFullResult(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
       return scenesExp ? loadManifest() : null;
     }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); renderBoard(); syncUrl(); });
   }
