@@ -543,7 +543,7 @@ import * as RunInfo from "./runinfo.js";
       say: "Two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result, rerun pending", kind: "repeat", title: "Pose memory never fired, and the score still moved",
+    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result", kind: "repeat", title: "Pose memory never fired, and the score still moved",
       body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129) and its run is not scored yet.",
       say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
@@ -558,9 +558,9 @@ import * as RunInfo from "./runinfo.js";
       say: "Swapping \"wait and observe\" for the scene caption moved nothing by a full point.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
-    { id: "window", prs: [104], label: "Larger attention window, seed 1", verdict: "running", title: "Does a larger attention window help the camera come back?", pending: true,
-      body: "On seed 0, three arms that keep more of the opening view scored OE039 at 3.0 to 3.1 against 1.25 to 2.0 for three control scorings, and two of them lost more than a point on OE048. This run repeats the larger window on seed 1.",
-      say: "One lead, being repeated on a second seed.",
+    { id: "window", prs: [104], label: "Larger attention window", verdict: "lead, one seed of two", title: "A larger attention window lifted OE039 on the second seed, not on a fresh first-seed arm",
+      body: "On seed 0, three arms that keep more of the opening view scored OE039 at 3.0 to 3.1 against 1.25 to 2.0 for three control scorings. On seed 1 the window raised OE039 from 1.00 to 3.44 and OE069 from 2.00 to 3.00, and lowered no task by a full point. A fresh seed-0 arm of the same flags in the same run scored OE039 1.75, so the gain has not yet held on two seeds.",
+      say: "The larger window lifted two out-of-sight tasks on seed 1. A fresh seed-0 arm did not repeat the OE039 gain.",
       ctl: "win14-fx-v1-a3", arms: [["larger window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]],
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
     { id: "open", kind: "note", title: "Still open",
@@ -568,7 +568,7 @@ import * as RunInfo from "./runinfo.js";
       points: ["No 171-task score, for the starting model or for a method.",
         "Every A/B here is one seed with fixed moves. Adoption needs the AI player and two seeds.",
         "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads: a larger attention window on out-of-sight (second seed running), the insight director (one up, one down), re-anchoring on GC (weak).",
+        "Leads: a larger attention window on out-of-sight (up on seed 1, not repeated on a fresh seed-0 arm), the insight director (one up, one down), re-anchoring on GC (weak).",
         "Pose memory has no result yet."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
@@ -941,8 +941,9 @@ import * as RunInfo from "./runinfo.js";
       var k = f[0], list = pool.filter(function (c) { return c.t.family === k; });
       var best = pickBest(list), worst = pickWorst(list, best);
       var info = FAMINFO[k];
-      var scores = el("p", { class: "gf-scores" }, [document.createTextNode("Genie 3 "), el("b", { text: fmt(GENIE[k]) }), document.createTextNode(" · LingBot v2 "), el("b", { text: fmt(lb[k]) }),
-        document.createTextNode(b && b[k] !== null ? " · ours " : ""), b && b[k] !== null ? el("b", { text: fmt(b[k]) }) : null]);
+      var scores = el("p", { class: "gf-scores" }, [document.createTextNode("Genie 3 "), el("b", { text: fmt(GENIE[k]) }), document.createTextNode(" and LingBot v2 "), el("b", { text: fmt(lb[k]) }),
+        document.createTextNode(" on all " + FULL_TASKS + " tasks" + (b && b[k] !== null ? "; ours " : ".")), b && b[k] !== null ? el("b", { text: fmt(b[k]) }) : null,
+        document.createTextNode(b && b[k] !== null ? " on " + b.n_tasks + " tasks (partial)." : "")]);
       var head = el("div", { class: "gf-head" }, [el("h3", { text: info.name }), el("p", { class: "gf-q", text: info.ask }), scores]);
       var cards = el("div", { class: "gf-cards" });
       if (best) cards.appendChild(clipCard(best, "highest"));
@@ -950,22 +951,42 @@ import * as RunInfo from "./runinfo.js";
       if (!best) cards.appendChild(el("p", { class: "callout", text: "Nothing to show for this family yet." }));
       box.appendChild(el("div", { class: "gfam", id: "gallery-" + k }, [head, cards]));
     });
-    $("gal-note").textContent = "Quotes are the official judge's comments, machine-translated. Chosen from " + pool.length + " scored 14B rollouts by pass mean; ties on the lowest go to the longest comment. Most use fixed moves.";
+    $("gal-note").textContent = "English quotes were machine-translated after scoring; show original has the judge's text. Chosen from " + pool.length + " officially scored 14B rollouts by pass mean; ties on the lowest go to the longest comment. Most use fixed action scripts.";
     renderHeroClip(pool);
   }
-  // header: the highest-scored rollout so far, looping muted; labelled as one rollout, never as the score
+  // header: one rollout, from a control arm only (memory arms with clips identical to control would just pick the judge's maximum),
+  // labelled with its driver and run id and never as the score. Poster and play button first; it plays by itself only on wide
+  // screens without reduced motion or data saver, and fetches no video before that.
+  function isControlArm(row) { var m = row && /\[arm (\d+)\/\d+ of /.exec(row.notes || ""); return !!m && m[1] === "1"; }
   function renderHeroClip(pool) {
     var fig = $("heroclip"); if (!fig) return;
-    var c = pickBest(pool); if (!c) { fig.hidden = true; return; }
+    var c = pickBest(pool.filter(function (x) { return isControlArm(x.row); })); if (!c) { fig.hidden = true; return; }
     if (fig.getAttribute("data-clip") === c.exp + "/" + c.t.task_id) return;
     clear(fig); fig.hidden = false; fig.setAttribute("data-clip", c.exp + "/" + c.t.task_id);
-    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var v = el("video", { playsinline: "", loop: "", preload: calm ? "none" : "auto", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id });
-    v.muted = true; if (calm) v.setAttribute("controls", ""); else { v.autoplay = true; var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); }); }
-    fig.appendChild(v);
-    var cap = el("figcaption", null, [el("b", { text: c.t.task_id + ", scored " + fmt(c.mean) + " of 5." }),
-      document.createTextNode(" Our highest-scored rollout" + (c.row && !isClosed(c.row) ? ", fixed moves" : "") + ". ")]);
-    var a = el("a", { href: "#gallery", text: "What breaks" }); cap.appendChild(a);
+    var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+    var save = !!(navigator.connection && navigator.connection.saveData);
+    var auto = mq("(min-width: 900px)") && !mq("(prefers-reduced-motion: reduce)") && !save;
+    var media = el("div", { class: "media" });
+    function start(withControls) {
+      var v = el("video", { playsinline: "", loop: "", preload: "metadata", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id + " from " + c.exp });
+      v.muted = true; if (withControls) v.setAttribute("controls", "");
+      clear(media); media.appendChild(v);
+      var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); });
+    }
+    if (auto) start(false);
+    else {
+      media.appendChild(el("img", { src: c.t.poster || "", alt: "First frame of " + c.t.task_id, loading: "lazy" }));
+      var pb = el("button", { class: "play", type: "button", "aria-label": "Play " + c.t.task_id });
+      pb.addEventListener("click", function () { start(true); });
+      media.appendChild(pb);
+    }
+    fig.appendChild(media);
+    var np = (c.t.pass_scores || []).length;
+    var cap = el("figcaption", null, [el("b", { text: c.t.task_id }), document.createTextNode(" from "), el("code", { class: "rawid", text: c.exp }),
+      document.createTextNode(", " + (c.row && isOpen(c.row) ? "fixed action scripts (open loop, A/B only)" : c.row && isScripted(c.row) ? "scripted moves, test only" : "AI player") +
+        ". One rollout of a control arm, judge mean " + fmt(c.mean) + (np ? " over " + np + " passes" : "") + "; not a score. "),
+      driverBadge(c.row), document.createTextNode(" ")]);
+    var a = el("a", { href: "#gallery", text: "More clips" }); cap.appendChild(a);
     fig.appendChild(cap);
   }
 

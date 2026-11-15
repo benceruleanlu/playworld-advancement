@@ -172,8 +172,8 @@ tr.skrow td { padding: 9px; border-bottom: 1px solid var(--grid); }
 .scene { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; }
 .scene .media { position: relative; aspect-ratio: 16 / 9; background: var(--wash); border-radius: 6px; overflow: hidden; }
 .scene .media img, .scene .media video { width: 100%; height: 100%; object-fit: cover; display: block; border: 0; padding: 0; background: var(--wash); }
-.scene .media button.play { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.scene .media button.play::after { content: "\25B6"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; line-height: 40px; text-align: center; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: 16px; }
+.scene .media button.play, .heroclip .media button.play { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.scene .media button.play::after, .heroclip .media button.play::after { content: "\25B6"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; line-height: 40px; text-align: center; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: 16px; }
 .scene .media .novid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink2); font-size: 13px; }
 .scene .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .scene .row b { font-weight: 600; overflow-wrap: anywhere; }
@@ -379,7 +379,10 @@ footer { padding-top: 24px; }
 /* hero clip, gallery, run timeline, tour auto */
 .hero { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
 .hero-side { display: grid; gap: 12px; min-width: 0; }
-.heroclip { margin: 0; border-radius: 12px; overflow: hidden; background: #000; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 14px 34px -14px rgba(0,0,0,.35); }
+.heroclip { margin: 0; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
+.heroclip .media { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.heroclip .media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.heroclip .rawid { color: #d9d8d3; display: inline; }
 .heroclip[hidden] { display: none; }
 .heroclip video { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }
 .heroclip figcaption { padding: 9px 12px 10px; font-size: 12.5px; line-height: 1.45; color: #d9d8d3; background: #121211; }
