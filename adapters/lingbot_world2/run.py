@@ -57,7 +57,6 @@ IF slow translation (off by default, session only): `--lingbot-if-slow-translati
 LINGBOT_IF_SLOW_TRANSLATION=1 halves IF per-frame camera translation before normalisation (and in the
 player hint's replay); rejected with --lingbot-stateless.
 
-<<<<<<< HEAD
 GC chunk director (off by default, session + caption only): `--lingbot-gc-chunk-director` or
 LINGBOT_GC_CHUNK_DIRECTOR=1 appends one sentence for the chunk's own single-key camera command to the
 GC caption and refreshes only the text cross-attention on continuation (session.update_prompt); requires
@@ -77,11 +76,10 @@ Its counter if_subject_prompts counts generate() calls (about 30 per closed-loop
 Model prompt composition, in order: caption prompt (prompts.model_prompt), insight director (insight
 tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
 replaces the prompt with its structured form). Each applies to one family, so at most one rewrites a task.
-=======
+
 Conditioning schedule (off by default, session only): `--lingbot-cond-schedule` or LINGBOT_COND_SCHEDULE=1
 scales DiT camera FiLM and cross-attention output on early denoising steps of stationary and third-person
 chunks, restoring (1, 1) on late steps and the t=0 KV write (--lingbot-cond-early/cam/3p/text; cond_schedule.py).
->>>>>>> 6c7ac48 (lingbot: opt-in denoising-step conditioning schedule and text boost)
 
 decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
 return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
