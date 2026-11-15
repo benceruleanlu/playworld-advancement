@@ -440,7 +440,7 @@ import * as RunInfo from "./runinfo.js";
       body: "All six insight dev tasks. Insight tasks are wait-only, so the fixed-action rollout equals the closed-loop one.",
       links: [["#32", PR + "32"], ["#90", PR + "90"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
-      cells: "chunk director lowered 3 of 6 tasks by a full point and raised 1; re-anchor raised none by a full point except GC033; one seed",
+      cells: "chunk director lowered 2 of 6 tasks by a full point and raised none; ease turns moved none; re-anchor raised 1 (GC033) and lowered none; one seed",
       body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. 6 GC dev tasks, caption prompt and turn calibration in all arms. The chunk director and turn easing were dropped as harmful or null on a repeat measurement; re-anchor is a weak lead. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
