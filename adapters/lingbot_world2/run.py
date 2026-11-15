@@ -106,6 +106,7 @@ from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
+from adapters.lingbot_world2 import if_identity as IFI  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
@@ -114,7 +115,7 @@ from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
-              "--lingbot-gc-completion-hint")
+              "--lingbot-gc-completion-hint", "--lingbot-if-identity-cue")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -131,14 +132,18 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
         "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
+        "if_identity": "--lingbot-if-identity-cue" in argv or environ.get("LINGBOT_IF_IDENTITY_CUE", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    if flags["if_identity"] and mode != "auto":
+        raise SystemExit("--lingbot-if-identity-cue requires auto caption prompting (scene plus IF goal)")
     flags["stall"], argv = W.parse(argv, environ)
     flags["player"], argv = agent_api.configure(argv, environ)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
 # Set by main() from configure(); the engine reads them at call time.
+IF_IDENTITY = False  # --lingbot-if-identity-cue / LINGBOT_IF_IDENTITY_CUE=1, off by default
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
@@ -280,6 +285,13 @@ class LingBotWorld2Engine:
             if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
                 print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
                       f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
+        if IF_IDENTITY:
+            directed = IFI.compose(prompts._current.get("task"), prompt, name)
+            if directed is not None:
+                prompt = directed
+                STATS.if_identity_prompts += 1
+                if (S.parse_chunk_name(name) or (name, 1))[1] == 1:
+                    print(f"[lingbot] {name}: IF identity cue: {prompt!r}", flush=True)
         with W.watch(name, STALL):
             if self.session is None:
                 return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
@@ -366,14 +378,16 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL
+    global CPU_THREADS, STALL, IF_IDENTITY
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
+    IF_IDENTITY = flags["if_identity"]
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
+                                 if_identity=IF_IDENTITY)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
