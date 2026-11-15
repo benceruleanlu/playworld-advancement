@@ -43,12 +43,15 @@ weights_vol = modal.Volume.from_name("pwa-weights", create_if_missing=True)
 image = _lingbot_image(ROOT, "lingbot_world2_1p3b" if VARIANT == "1.3b" else "lingbot_world2")
 # The container imports this file again: give it the deploy-time settings so it builds the same definition.
 ENV = {"PWA_EDITOR_VARIANT": VARIANT, "LINGBOT_VARIANT": VARIANT, "PWA_MODAL_GPU": GPU, "PWA_EDITOR_IDLE": str(IDLE),
-       "LINGBOT_CPU_THREADS": "auto",  # the 14B runs T5 on the CPU: one thread takes about 68 s per new prompt
+       "LINGBOT_CPU_THREADS": "auto", "PWA_EDITOR_MAX_CONTAINERS": os.environ.get("PWA_EDITOR_MAX_CONTAINERS", "1"),  # the 14B runs T5 on the CPU: one thread takes about 68 s per new prompt
        **({"LINGBOT_FAST_DIT": "1", "LINGBOT_FAST_LOAD": "1"} if VARIANT == "14b" else {})}  # GPU-side load (#79)
 CPU = float(os.environ.get("PWA_EDITOR_CPU", "8"))
+# More than one container runs batches in parallel, but then cells no longer share one namespace: keep 1 for
+# interactive work and make every batch cell self-contained (and write to its own file) when raising it.
+MAX_CONTAINERS = int(os.environ.get("PWA_EDITOR_MAX_CONTAINERS", "1"))
 
 
-@app.cls(image=image, gpu=GPU, timeout=3600, startup_timeout=1800, scaledown_window=IDLE, max_containers=1,
+@app.cls(image=image, gpu=GPU, timeout=3600, startup_timeout=1800, scaledown_window=IDLE, max_containers=MAX_CONTAINERS,
          volumes={"/weights": weights_vol}, env=ENV, cpu=CPU)
 class Kernel:  # the name is pwa.kernel.CLS
     @modal.enter()
