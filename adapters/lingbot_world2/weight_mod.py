@@ -34,9 +34,11 @@ def detach_model(model) -> None:
 
 class WeightModulator:
     def __init__(self, model, cam_static: float | None = None, cam_move: float | None = None,
-                 cam_3p: float | None = None, text_scale: float | None = None, text_move: float | None = None):
+                 cam_3p: float | None = None, text_scale: float | None = None, text_move: float | None = None,
+                 text_static: float | None = None):
         self.cam_static, self.cam_move = _scale(cam_static, "LINGBOT_CAM_WEIGHT_STATIC", 0.0), _scale(cam_move, "LINGBOT_CAM_WEIGHT_MOVE", 1.0)
         self.cam_3p, self.text_gain = _scale(cam_3p, "LINGBOT_CAM_WEIGHT_3P", 0.85), _scale(text_scale, "LINGBOT_TEXT_WEIGHT_SCALE", 1.0)
+        self.text_static = _scale(text_static, "LINGBOT_TEXT_WEIGHT_STATIC", self.text_gain)
         self.text_move, self.cam_scale, self.text_scale, self._model = _scale(text_move, "LINGBOT_TEXT_WEIGHT_MOVE", 1.0), 1.0, 1.0, model
         detach_model(model)
         gc, gt = (lambda: self.cam_scale), (lambda: self.text_scale)
@@ -45,7 +47,7 @@ class WeightModulator:
         model._weight_mod = self
 
     def step(self, rel: np.ndarray, third_person: bool = False) -> bool:
-        self.cam_scale, self.text_scale = ((self.cam_static, self.text_gain) if is_stationary(rel)
+        self.cam_scale, self.text_scale = ((self.cam_static, self.text_static) if is_stationary(rel)
                                            else (self.cam_3p, self.text_gain) if third_person else (self.cam_move, self.text_move))
         return self.cam_scale != 1.0 or self.text_scale != 1.0
 
