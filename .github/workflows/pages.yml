@@ -46,6 +46,8 @@ jobs:
           if [ -d ../results/media ]; then cp -r ../results/media public/media; fi  # fallback for the Scenes section
           npm run build
       - name: Build slides into site/dist/slides
+        # A broken deck must not block results and site deploys: on failure /slides/ is absent from this deploy.
+        continue-on-error: true
         working-directory: slides
         run: |
           npm ci --no-audit --no-fund

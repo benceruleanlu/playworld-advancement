@@ -16,9 +16,9 @@ drawings:
 
 # LingBot-World v2 on PlayWorld: what we built and what we measured
 
-We changed how an open world model runs at inference time and built a harness to score it. No full-benchmark run finished, so there is no leaderboard number, and on our six-task comparisons the judge's own noise (about 0.5) is as large as most flag effects.
+We changed how an open world model runs at inference time and built a harness to score it. No full-benchmark run was launched, so there is no leaderboard number, and on our six-task comparisons the judge's own noise (about 0.5) is as large as most flag effects.
 
-<div class="mt-10 text-sm opacity-80">
+<div class="mt-10 text-sm">
 
 Hackathon entry, November 2026<br>
 Repo: github.com/benceruleanlu/playworld-advancement<br>
@@ -27,9 +27,9 @@ Site: benceruleanlu.github.io/playworld-advancement
 </div>
 
 <!--
-One sentence version: we have a working harness, about a hundred logged runs and many inference-time flags, but no full-benchmark score. The full run was stopped by lost judge credits and GPU access, and on six-task comparisons the judge disagrees with itself by about as much as most flags moved scores.
+One sentence version: we have a working harness, about a hundred logged runs and many inference-time flags, but no full-benchmark score: no 171-task run was launched before judge credits and GPU access ran out, and on six-task comparisons the judge disagrees with itself by about as much as most flags moved scores.
 
-The slides follow that order: benchmark, what we built, the one official score, the judge noise, then what the model does and what our flags changed, then what stopped the full run.
+The slides follow that order: benchmark, what we built, the best official score, the judge noise, then what the model does and what our flags changed, then what ran out before a full run.
 
 Every number in this deck comes from AGENTS.md ("Status against the timeline" and "Reference scores"), results/experiments.csv or results/reports/ on main.
 -->
@@ -69,15 +69,15 @@ The red-team review in research/red-team-and-plan.md estimated that out-of-sight
 
 ---
 
-# We built a scoring harness and 28 opt-in inference-time flags for LingBot-World v2, without retraining
+# We built a scoring harness and more than 30 opt-in inference-time flags for LingBot-World v2, without retraining
 
 <div class="text-sm mt-4">
 
 - `pwa` CLI: generate, score, report and compare runs; refuses to reuse an existing run name.
 - GitHub Actions workflows that generate on Modal H100s in shards, score with the judge and log one row per run.
-- 101 runs in `results/experiments.csv` (4 pipeline tests excluded), 44 of them scored. Failed and cancelled runs stay in the log.
+- 101 runs in `results/experiments.csv` (4 pipeline tests excluded), 42 of them scored. Failed and cancelled runs stay in the log.
 - A persistent session that keeps LingBot's attention cache across agent steps (`adapters/lingbot_world2/session.py`).
-- 28 method flags on main, all off by default: turn calibration, caption prompt, insight director, attention window sizes, yaw servo, pose memory and others.
+- More than 30 method flags on main, all off by default: turn calibration, caption prompt, insight director, attention window sizes, yaw servo, pose memory and others.
 - A results site, and every scored run's clips published as a GitHub Release.
 
 </div>
@@ -85,14 +85,14 @@ The red-team review in research/red-team-and-plan.md estimated that out-of-sight
 <!--
 The model weights and modules run unchanged. The session file re-implements LingBot's sampling loop so that state survives between the player's steps, so our use is not "unmodified".
 
-The run count is the rows of results/experiments.csv minus the four fake_runner pipeline tests. Of 101, 44 have status scored, 34 generated, 15 cancelled, 7 failed and 5 predate the status column.
+The run count is the rows of results/experiments.csv minus the four fake_runner pipeline tests. Of 101, 42 have status scored, 34 generated, 15 cancelled, 7 failed and 3 predate the status column (45 rows carry a score if those 3 are counted).
 
-The flag count, 28, is from AGENTS.md "Status against the timeline". None of them has decision-tier evidence, which the next slides explain.
+The flag count: AGENTS.md recorded 28 method flags at 22:25, and #115, #116, #121, #132, #133, #139, #144 and #147 added more since; the "Adapters" section documents more than 30 opt-in --lingbot-* switches besides the stateless baseline. None of them has decision-tier evidence, which the next slides explain.
 -->
 
 ---
 
-# Our only official score is 1.64 ± 0.13 on 24 dev tasks, with no method, and it is not comparable to the paper
+# Our best official closed-loop dev score is 1.64 ± 0.13 on 24 tasks, with no method
 
 <div class="grid grid-cols-2 gap-8 mt-4 text-sm">
 <div>
@@ -109,7 +109,7 @@ The flag count, 28, is from AGENTS.md "Status against the timeline". None of the
 </div>
 <div>
 
-- No run covers all 171 tasks, for the base model or any method.
+- Not comparable to the paper: no run covers all 171 tasks, for the base model or any method.
 - 24 tasks against 171: the task-sampling error is roughly 0.2 per family.
 - The paper's LingBot row (1.82) is all 171 tasks through its web demo. Our run used the `gpt-4.1-mini` player.
 - No flag is adopted. The 123 heldout tasks are unscored.
@@ -118,7 +118,7 @@ The flag count, 28, is from AGENTS.md "Status against the timeline". None of the
 </div>
 
 <!--
-Source: results/experiments.csv row lb14-session-agent-dev-v1 (overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and the "Ours" row in AGENTS.md "Reference scores".
+Source: results/experiments.csv row lb14-session-agent-dev-v1 (overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and the "Ours" row in AGENTS.md "Reference scores". Other Gemini-scored rows exist (the arms runs on slide 10), but they are fixed-action or six-task subsets, so this is the best closed-loop dev number.
 
 This is the base model with every flag off. It is not the starting-model number for the plan, because the plan fixed the player as gpt-6-luna and this run used gpt-4.1-mini.
 
@@ -202,7 +202,7 @@ Source: AGENTS.md "Adapters", the KV window bullet: local_attn_size 18, sink_siz
 
 AGENTS.md is explicit that this reach is the configuration, not a measurement. The cache_model script counts how often dataset actions revisit an evicted view, on CPU.
 
-Two flags change this window: keep-first 10 and attention window 22. They appear in the stack two slides on.
+Two flags change this window: keep-first 10 and attention window 22. They appear in the stack three slides on (slide 9).
 -->
 
 ---
@@ -216,7 +216,8 @@ Two flags change this window: keep-first 10 and attention window 22. They appear
 <div class="text-sm">
 
 - Rendered turns differ from commanded turns. Rendered over commanded, 8 static first-person scenes, one seed: 0.88 to 1.99 left, 0.56 to 1.44 right (PR #125).
-- The servo measures the rendered rotation each chunk and corrects the next command (design from PR #125, merged in #131).
+- The servo measures the rendered rotation each chunk and corrects the next command (design, code and GPU trials by benceruleanlu in PR #125, merged in #131).
+- Heading is read with the servo's own estimator; independent frame check on GC033 and GC036 only. GC022 is from the stack run.
 - End-of-clip similarity to the first frame: GC033 -0.09 to 0.52, GC036 0.07 to 0.63.
 - No Gemini score exists for a servo clip. Under Luna the deltas are noise.
 
@@ -228,7 +229,7 @@ Heading is measured by phase correlation, the same estimator the servo steers wi
 
 Sources: AGENTS.md "Status against the timeline", the yaw servo bullet, and the camera-response study bullet for the left and right ratios.
 
-GC038 improved least, 96 to 49 degrees. Walking-only GC tasks give byte-identical clips with and without the servo, which is where Luna's identical-clip noise numbers on the previous judge slide came from.
+GC038 improved least, 96 to 49 degrees. Walking-only GC tasks give byte-identical clips with and without the servo, which is where Luna's identical-clip noise numbers on the judge slide (slide 5) came from.
 
 The servo does not support out-of-sight tasks yet.
 -->
@@ -244,6 +245,8 @@ GC033, fixed dataset actions, LingBot-World v2 14B. Control: no servo (<code>svg
 <!--
 Play both and compare the last second with the first frame. The servo clip's end-of-clip similarity to frame 0 is 0.52, the control's is -0.09.
 
+Source: AGENTS.md "Status against the timeline", the yaw servo bullet (end-heading error 28 to 0.3 degrees, end similarity -0.09 to 0.52); the run names are in results/media/svgc14-fx-v1-a1.json and -a2.json.
+
 These are open-loop clips: both arms replay the dataset's actions, so the only difference is the servo.
 
 The same comparison for GC036 is svgc14-fx-v1-a1 against a2, task GC036. The site's compare view loads either pair.
@@ -256,7 +259,7 @@ The same comparison for GC036 is svgc14-fx-v1-a1 against a2, task GC036. The sit
 <div class="grid grid-cols-[1fr_1.25fr] gap-6 mt-2">
 <div class="text-sm">
 
-- Stack: turn calibration, caption prompt, insight director, IF slow translation, keep-first 10, attention window 22.
+- Stack: turn calibration, caption prompt, insight director, IF slow translation, sink 10 (keep the first 10 latents, up from 6), window 22 (up from 18).
 - Against no flags, fixed actions, six out-of-sight tasks per pair, Luna: +1.02, +0.92, +0.98.
 - Out-of-sight is the only family above Luna's 0.6 bar in all three pairs.
 - Luna agrees weakly with Gemini on out-of-sight (0.41), so this may not hold under Gemini.
@@ -281,7 +284,7 @@ The 0.6 bar is the one from the judge-noise slide.
 
 ---
 
-# Two flags lowered scores under Gemini, three did not repeat on a second seed, and pose memory showed no gain
+# No single flag beat the judge noise: on six tasks or fewer, the moves we saw were inside it or downward
 
 <div class="text-sm mt-4">
 
@@ -290,14 +293,18 @@ Lowered scores (Gemini 3.1 Pro, one seed, six tasks or fewer):
 - Sink key scale, out-of-sight: control 2.10; scaled arms 1.65, 1.33 and 1.25 (`sks14-fx-v1`).
 - Conditioning schedule, insight: 3.00 to 1.50 on two tasks (`dec14-ins-v1`).
 
-Did not repeat on a second seed: turn calibration, caption prompt, larger attention window alone.
+Inside the noise:
+
+- Turn calibration: the same comparison run twice on GC031 gave +1.95 and +0.35.
+- Caption prompt: 2 tasks up and 2 down by a full point in one run.
+- Sink 10 with window 22: raised OE039 1.00 to 3.44 at seed 1, but 1.75 at seed 0, inside the controls (`win14-fx-v1`).
 
 Pose memory: retrieves as planned after #129, no geometric gain, +0.20 under Luna against a bar of 0.34. Dropped.
 
 </div>
 
 <!--
-Sources: AGENTS.md "Status against the timeline": the sks14-fx-v1 and dec14-ins-v1 bullets, the "What the fixed-action results say so far" bullet, and the pose memory bullet.
+Sources: AGENTS.md "Status against the timeline": the sks14-fx-v1 and dec14-ins-v1 bullets, the win14-fx-v1 bullet, the "What the fixed-action results say so far" bullet, and the pose memory bullet. Generation is deterministic, so the +1.95 against +0.35 spread is a config difference or judge spread, not rollout noise.
 
 Sink key scale 0.7 lowered out-of-sight by 0.45, which is inside the six-task noise from the judge slide; scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight on the two tasks it ran, OE001 and OE018.
 
@@ -306,15 +313,15 @@ These are drops on small samples, the same caution as the stack lead in the othe
 
 ---
 
-# The full run stopped when judge credits and GPU access ran out; a score we could trust needs 171 tasks at 2 or more passes
+# No full-benchmark run was launched before judge credits and GPU access ran out
 
 <div class="grid grid-cols-2 gap-8 mt-4 text-sm">
 <div>
 
-**What stopped it**
+**What ran out**
 
 - About 03:40 UTC Nov 15: Gemini AI Studio prepaid credits ran out. Later runs have Luna scores only.
-- 09:01 UTC Nov 15: the GPU provider workspace was disabled during `clstk14-dev-v1`, the only closed-loop test of stack plus servo. Base 23 of 24 tasks, stack plus servo 8 of 24.
+- 09:01 UTC Nov 15: the GPU provider workspace was disabled during `clstk14-dev-v1`, a 24-task dev run and the only closed-loop test of stack plus servo. Base 23 of 24 tasks, stack plus servo 8 of 24.
 
 </div>
 <div>
@@ -333,7 +340,7 @@ Sources: AGENTS.md "Status against the timeline" (credits, the clstk14-dev-v1 bu
 
 The 0.1 figure is an estimate, not a measurement. Scoring through Google Cloud is wired (#148) but no live call has been made.
 
-No closed-loop comparison of stack plus servo exists, so there is no candidate number to report either.
+AGENTS.md says the starting-model 171 run was never launched. No closed-loop comparison of stack plus servo exists, so there is no candidate number to report either.
 -->
 
 ---
@@ -344,6 +351,7 @@ No closed-loop comparison of stack plus servo exists, so there is no candidate n
 
 - Results site: benceruleanlu.github.io/playworld-advancement. Every run, its scores, and a compare view that plays control and treatment together.
 - Clips: `github.com/benceruleanlu/playworld-advancement/releases/download/run-<EXP>/<TASK>.mp4`, 480p, with a `.jpg` poster.
+- Blind review page: benceruleanlu.github.io/playworld-advancement/review/. It hides which clip is control and which is treatment until you finish; it records a preference by eye, not a score.
 - Pairs in this deck: GC033 and GC036 in `svgc14-fx-v1` a1 against a2; OE039 in `stk14-fx-dev-v1` a1 against a2.
 - Per-task scores with the judge's reasons: `results/reports/<EXP>.md`. Full status and caveats: `AGENTS.md`.
 
@@ -352,7 +360,7 @@ No closed-loop comparison of stack plus servo exists, so there is no candidate n
 <!--
 The site's compare view opens a pair from the URL, for example ?compare=GC033&b=svgc14-fx-v1-a1&c=svgc14-fx-v1-a2#compare-clips.
 
-Given the judge noise on the earlier slide, looking at the clips is a fair check on any claim here. A blind side-by-side review page is not on main at the time of writing.
+Given the judge noise on slide 5, looking at the clips is a fair check on any claim here. The review page (#164, site/src/pages/review.astro) shuffles sides per reviewer and reveals arms and a sign test only after "Finish and reveal". Clips load from release URLs that name the run, so blinding holds only if reviewers do not open developer tools.
 -->
 
 ---

@@ -235,7 +235,7 @@ Attribution must stay correct everywhere it appears: the site's footer credits a
 
 ### Slides
 
-`slides/` is a Slidev deck of what was built and measured, separate from the site, with Slidev pinned to an exact version at least two weeks old. Run it with `cd slides && npm ci && npx slidev`; every number on a slide cites its source in that slide's speaker notes. CI's `slides` job builds it on every PR, and `pages.yml` builds it with `--base /playworld-advancement/slides/` into `site/dist/slides`, so it is served at https://benceruleanlu.github.io/playworld-advancement/slides/.
+`slides/` is a Slidev deck of what was built and measured, separate from the site, with Slidev pinned to an exact version at least two weeks old. Run it with `cd slides && npm ci && npx slidev`; every number on a slide cites its source in that slide's speaker notes. CI's `slides` job builds it on every PR, and `pages.yml` builds it with `--base /playworld-advancement/slides/` into `site/dist/slides`, so it is served at https://benceruleanlu.github.io/playworld-advancement/slides/; that step is `continue-on-error`, so a broken deck drops `/slides/` from the deploy instead of blocking it.
 
 ## Plan of record
 

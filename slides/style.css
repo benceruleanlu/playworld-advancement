@@ -3,3 +3,4 @@
 .slidev-layout table { font-size: 0.8rem; }
 .slidev-layout th, .slidev-layout td { padding: 0.25rem 0.5rem; }
 .slidev-layout.cover h1 { font-size: 2.6rem; line-height: 1.15; }
+.slidev-layout.cover p { opacity: 0.9; }
