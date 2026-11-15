@@ -146,7 +146,7 @@ Levers, biggest first: one family per dispatch for dev arms; shared baselines (e
 | lb14-session-agent-gc005-v1 | lingbot_world2 | 1 | 1 | H100 | <=16 min | <=16 (incl. load) | closed loop; upper bound, gen start to job end incl. scoring |
 | lb14-session-agent-dev-v1 | lingbot_world2 | 24 | 4 | H100 | 142 min | ~18 wall clock incl. queueing; ~9.5 per agent rollout on the GPU | closed loop, gpt-4.1-mini player; every agent task ran 28 to 30 chunks |
 
-Capped smoke tier (`max_chunks`, unverified until its first run): from the one-task timing above (model load ~280 s, first chunk ~103 s, then ~11 s per chunk), `max_chunks=4` is about 280 + 103 + 3x11 = ~7 min of GPU time per shard, and `stage=gen-only` drops scoring; the Actions setup, prefetch and the Modal image start are on top and not measured separately.
+Capped smoke tier: `smk-gc-hint-c10-v1` (14B, 3 GC tasks on 3 GPUs, 10 chunks via `extra=--num-chunks 10`, one screening pass) took 11 min 11 s end to end, with a 289 s model load, a 97 s first chunk and about 11 s per later chunk (figures as recorded on the site's Iteration speed block in #71; not recomputed here). The `max_chunks` input itself is unverified until `smk13-gc-*-c10-v2` land. Estimate for `max_chunks=4`: about 280 + 103 + 3x11 = ~7 min of GPU time per shard, and `stage=gen-only` drops scoring; the Actions setup, prefetch and the Modal image start are on top and not measured separately. #70 moved the FFmpeg install to the background and merged the setup pip installs; the saving is not measured.
 
 ### Results site
 
@@ -169,7 +169,7 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 - Model: LingBot-World v2 14B, persistent session. The starting model is the same runner with every method flag off.
 - Player: `gpt-6-luna` for every compared run (#61, the workflow's `player_model` default). The gpt-4.1-mini baseline is a diagnostic only.
 - Official judge: Gemini 3.1 Pro at upstream settings, for every reported number.
-- Screening judge: `gemini-4-hydrogen` (`--judge-model`), for dev loops only, kept in its own eval folder and never written to `results/experiments.csv`. Used only if a calibration on the 24 baseline videos shows it agrees with the official judge.
+- Screening judge: `gemini-4-hydrogen` (`--judge-model`), for dev loops only, kept in its own eval folder and never written to `results/experiments.csv`. Used only if a calibration on the 24 baseline videos shows it agrees with the official judge. Calibration so far (thinking `low`, 2 passes, `results/reports/lb14-session-agent-dev-v1.gemini-4-hydrogen-think-low.md`): it does not agree. On the same videos it gives 2.52 ± 0.06 overall where the official judge gives 1.64 ± 0.13, and it passes 6/6 GC and 6/6 out-of-sight gates where the official judge passes 4/6 and 4/6. Keep it out of adoption decisions until task-level agreement is read; a thinking `high` run is in progress.
 - The dataset `image_caption` may be used as model input, and this is disclosed. Upstream's Genie 3 player sends it to Genie 3.
 - The coordinator session launches experiment runs, merges the integration branch when CI is green (`method/candidate-v1`, merged as #63 with every flag off), and freezes and launches the final run.
 
@@ -177,7 +177,7 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 
 | When | What |
 |---|---|
-| Saturday 16:50 | Player check with `gpt-6-luna` on the 6 out-of-sight and 6 GC dev tasks, read from action logs: reversals, return to start, early END. Caption prompt on the 6 insight tasks (`lb14-cap-ins-s42`). |
+| Saturday 16:50 | Player check with `gpt-6-luna` on the 6 out-of-sight and 6 GC dev tasks, read from action logs: reversals, return to start, early END. Caption prompt on the 6 insight tasks (`lb14-cap-ins-s42`). Not done: see "Status against the timeline". |
 | After the player check | Starting-model run on all 171 tasks, generation only, 8 shards. Scored at freeze. |
 | To about 19:00 | Integration branch: caption prompt (#32), GC re-anchor (#46), player hint (#59), each behind an off-by-default flag with per-task counters. Screening-judge option and its calibration. |
 | 19:00 to 22:30 | Second seeds for whatever moved; caption guard runs on the camera families; re-anchor. |
@@ -186,6 +186,16 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 | To 10:30 | Scoring, refills, second seeds if GPUs allow. Numbers freeze at 10:30. |
 | Overnight | Rigour: failure taxonomy per family, horizon curve from scored rollout prefixes, judge-noise table, failure gallery. |
 | 10:30 to 13:45 | Video, description, submit. |
+
+### Status against the timeline
+
+Saturday 17:20 Pacific. Update this when a step lands or fails.
+
+- The first-wave runs all ended in Modal generation with a bare `RemoteError` or incomplete rollouts, before scoring: `lb14-luna-gc-s42`, `lb14-luna-oos-s42`, `lb14-cap-ins-s42` and `cand1-smoke-gc-v1` (issue #9). The cause is not identified. Check the Modal app events and the `pwa-runs` volume for finished videos before rerunning an arm.
+- So there is no `gpt-6-luna` player check on 14B yet, and the starting-model 171 run, which waits on it, has not been launched.
+- The player check moved to capped smoke runs (10 chunks, GC005, GC033, GC036). On 14B the hint arm `smk-gc-hint-c10-v1` (turn calibration plus player hint) generated 3/3 videos, and its no-flags control `smk-gc-base-c10-v1` was cancelled in generation, so the 14B arm is unpaired. The 1.3B pair finished: `smk13-gc-hint-c10-v1` and `smk13-gc-base-c10-v1`. The screening judge (one pass) prefers the hint arm on both models (reports in `results/reports/`). That is directional only: the judge is the lenient one above, the arm turns on two flags at once, and the 1.3B hint arm logged three fallback actions with no player API errors (issue #6), so check the raw player replies before calling it closed loop. No action log from these runs has been read for reversals, returns or early END.
+- `smk13-gc-base-c10-v2` and `smk13-gc-hint-c10-v2` are the first runs of the `max_chunks` input and of clip publishing for unscored runs (#69). Until one lands, `results/media/` does not exist on main and the site's Scenes section is empty.
+- Open PRs, none merged: return stop (#75, a new method flag), Compare clips player on the site (#74), warm Modal containers (#73), start-up timing and fast-start flags (#72, timing run `smk-gc-fast-c10-v1`), multi-arm dispatch (#67), memory probe (#37).
 
 ### Testing tiers and the adoption rule
 
