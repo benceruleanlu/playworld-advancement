@@ -1,8 +1,13 @@
 """Download the default SANA-WM inference assets into the shared Modal cache."""
 
+import os
+
 import modal
 
 app = modal.App("playworld-sana-prefetch")
+# Public weights need no secret; HF_TOKEN is passed from the launching environment when it is set, so this
+# runs in any Modal workspace without a `pwa` secret (the workflows still create that for the generation apps).
+HF_SECRET = [modal.Secret.from_dict({"HF_TOKEN": os.environ["HF_TOKEN"]})] if os.environ.get("HF_TOKEN") else []
 weights = modal.Volume.from_name("pwa-weights", create_if_missing=True)
 image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "huggingface_hub", "hf_xet"
@@ -12,7 +17,7 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
 @app.function(
     image=image,
     volumes={"/weights": weights},
-    secrets=[modal.Secret.from_name("pwa")],
+    secrets=HF_SECRET,
     timeout=1800,
     cpu=2,
 )

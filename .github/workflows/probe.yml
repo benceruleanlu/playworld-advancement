@@ -36,6 +36,9 @@ on:
         type: choice
         options: [H100, A100-80GB, L40S]
         default: H100
+      modal_account:
+        description: "Whose Modal workspace runs and pays: NAME uses repo secrets MODAL_TOKEN_ID_NAME / MODAL_TOKEN_SECRET_NAME. Empty = your default (repo variable MODAL_ACCOUNT_<your GitHub login>), else the shared workspace; 'shared' forces the shared one."
+        default: ""
 
 concurrency:
   group: probe-${{ inputs.exp }}
@@ -52,8 +55,12 @@ env:
   HOLDS: ${{ inputs.holds }}
   WINDOWS: ${{ inputs.windows }}
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
-  MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-  MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+  # Whose Modal workspace runs and pays for this job: the modal_account input, else the dispatcher's default
+  # (repo variable MODAL_ACCOUNT_<GitHub login>), else the shared workspace (also: modal_account=shared).
+  # A named account uses repo secrets MODAL_TOKEN_ID_<NAME> / MODAL_TOKEN_SECRET_<NAME> and never falls back.
+  MODAL_ACCOUNT: ${{ inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '' }}
+  MODAL_TOKEN_ID: ${{ (inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '') == '' && secrets.MODAL_TOKEN_ID || secrets[format('MODAL_TOKEN_ID_{0}', inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '')] }}
+  MODAL_TOKEN_SECRET: ${{ (inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '') == '' && secrets.MODAL_TOKEN_SECRET || secrets[format('MODAL_TOKEN_SECRET_{0}', inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '')] }}
   PWA_MODAL_GPU: ${{ inputs.gpu }}
 
 jobs:
@@ -67,6 +74,14 @@ jobs:
       - name: Validate inputs
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+          # Modal workspace: a named account must have its own token pair; it never falls back to the shared one.
+          if [[ -n "$MODAL_ACCOUNT" ]]; then
+            [[ "$MODAL_ACCOUNT" =~ ^[A-Za-z0-9_]+$ ]] || { echo "modal_account must match [A-Za-z0-9_]+ (it names repo secrets)" >&2; exit 2; }
+            [[ -n "$MODAL_TOKEN_ID" && -n "$MODAL_TOKEN_SECRET" ]] || { echo "modal_account=$MODAL_ACCOUNT: repo secrets MODAL_TOKEN_ID_$MODAL_ACCOUNT / MODAL_TOKEN_SECRET_$MODAL_ACCOUNT are missing; add them with gh secret set. Not falling back to the shared workspace." >&2; exit 2; }
+            echo "::notice title=Modal workspace::$MODAL_ACCOUNT (its own tokens; volumes, weights and the pwa secret are per workspace)"
+          else
+            echo "::notice title=Modal workspace::shared (repo secrets MODAL_TOKEN_ID / MODAL_TOKEN_SECRET)"
+          fi
           [[ "$TASKS" =~ ^[A-Za-z0-9_,]+$ ]] || { echo "tasks must be comma-separated task IDs" >&2; exit 2; }
           [[ "$ANGLES" =~ ^[0-9.,]+$ && "$HOLDS" =~ ^[0-9,]+$ ]] || { echo "angles and holds must be comma-separated numbers" >&2; exit 2; }
           [[ "$WINDOWS" =~ ^-?[0-9]+:[0-9]+(,-?[0-9]+:[0-9]+)*$ ]] || { echo "windows must look like 18:6,-1:0" >&2; exit 2; }

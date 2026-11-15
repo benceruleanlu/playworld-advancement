@@ -1,9 +1,9 @@
 name: experiment
 # Shown in the Actions list and the API, so a run can be identified while it is still in progress.
-run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.judge_model && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.max_chunks && format(' · SMOKE capped {0} chunks', inputs.max_chunks) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
+run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.judge_model && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.max_chunks && format(' · SMOKE capped {0} chunks', inputs.max_chunks) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}${{ inputs.modal_account && format(' · modal {0}', inputs.modal_account) || '' }}"
 
 # Manual: Actions tab -> experiment -> Run workflow.
-# backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
+# backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET, or a modal_account's own pair).
 # backend=local: generation runs on this runner (no GPU; use runner=tests/fake_runner.py to test the pipeline).
 # Scoring (Gemini) and reporting always run on this runner. The results/experiments.csv row is committed to main.
 
@@ -64,6 +64,9 @@ on:
       max_chunks:
         description: "Smoke tier: cap each closed-loop rollout at N agent chunks (official 30; upstream --num-chunks). Empty = uncapped. Capped runs are labelled smoke everywhere and never an official score."
         default: ""
+      modal_account:
+        description: "Whose Modal workspace runs and pays: NAME uses repo secrets MODAL_TOKEN_ID_NAME / MODAL_TOKEN_SECRET_NAME. Empty = your default (repo variable MODAL_ACCOUNT_<your GitHub login>), else the shared workspace; 'shared' forces the shared one."
+        default: ""
 
 concurrency:
   group: experiment-${{ inputs.exp }}
@@ -83,8 +86,12 @@ env:
   PLAYER_MODEL: ${{ vars.PLAYER_MODEL || 'gpt-4.1-mini' }}
   PLAYER_API_KEY: ${{ secrets.PLAYER_API_KEY }}
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
-  MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-  MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+  # Whose Modal workspace runs and pays for this job: the modal_account input, else the dispatcher's default
+  # (repo variable MODAL_ACCOUNT_<GitHub login>), else the shared workspace (also: modal_account=shared).
+  # A named account uses repo secrets MODAL_TOKEN_ID_<NAME> / MODAL_TOKEN_SECRET_<NAME> and never falls back.
+  MODAL_ACCOUNT: ${{ inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '' }}
+  MODAL_TOKEN_ID: ${{ (inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '') == '' && secrets.MODAL_TOKEN_ID || secrets[format('MODAL_TOKEN_ID_{0}', inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '')] }}
+  MODAL_TOKEN_SECRET: ${{ (inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '') == '' && secrets.MODAL_TOKEN_SECRET || secrets[format('MODAL_TOKEN_SECRET_{0}', inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '')] }}
   PWA_MODAL_GPU: ${{ inputs.gpu }}
   PWA_MODAL_CPU: ${{ inputs.cpu }}
   PWA_RUNNER: ${{ inputs.runner }}
@@ -104,6 +111,14 @@ jobs:
           ACTION_SOURCE: ${{ inputs.action_source }}
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+          # Modal workspace: a named account must have its own token pair; it never falls back to the shared one.
+          if [[ -n "$MODAL_ACCOUNT" ]]; then
+            [[ "$MODAL_ACCOUNT" =~ ^[A-Za-z0-9_]+$ ]] || { echo "modal_account must match [A-Za-z0-9_]+ (it names repo secrets)" >&2; exit 2; }
+            [[ -n "$MODAL_TOKEN_ID" && -n "$MODAL_TOKEN_SECRET" ]] || { echo "modal_account=$MODAL_ACCOUNT: repo secrets MODAL_TOKEN_ID_$MODAL_ACCOUNT / MODAL_TOKEN_SECRET_$MODAL_ACCOUNT are missing; add them with gh secret set. Not falling back to the shared workspace." >&2; exit 2; }
+            echo "::notice title=Modal workspace::$MODAL_ACCOUNT (its own tokens; volumes, weights and the pwa secret are per workspace)"
+          else
+            echo "::notice title=Modal workspace::shared (repo secrets MODAL_TOKEN_ID / MODAL_TOKEN_SECRET)"
+          fi
           # Time budget for the optional media steps (fetch, encode, upload): the job timeout-minutes (350) less a
           # 10-minute reserve for the commit, status-marker and artifact steps. Keep in step with timeout-minutes.
           echo "MEDIA_DEADLINE=$(( $(date +%s) + (350 - 10) * 60 ))" >> "$GITHUB_ENV"

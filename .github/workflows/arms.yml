@@ -76,6 +76,9 @@ on:
       warm_max_containers:
         description: "warm=on: max warm containers per runner (1-8; a change redeploys, cold)"
         default: "3"
+      modal_account:
+        description: "Whose Modal workspace runs and pays: NAME uses repo secrets MODAL_TOKEN_ID_NAME / MODAL_TOKEN_SECRET_NAME. Empty = your default (repo variable MODAL_ACCOUNT_<your GitHub login>), else the shared workspace; 'shared' forces the shared one."
+        default: ""
 
 concurrency:
   group: arms-${{ inputs.exp }}
@@ -93,8 +96,12 @@ env:
   PLAYER_MODEL: ${{ vars.PLAYER_MODEL || 'gpt-4.1-mini' }}
   PLAYER_API_KEY: ${{ secrets.PLAYER_API_KEY }}
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
-  MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-  MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+  # Whose Modal workspace runs and pays for this job: the modal_account input, else the dispatcher's default
+  # (repo variable MODAL_ACCOUNT_<GitHub login>), else the shared workspace (also: modal_account=shared).
+  # A named account uses repo secrets MODAL_TOKEN_ID_<NAME> / MODAL_TOKEN_SECRET_<NAME> and never falls back.
+  MODAL_ACCOUNT: ${{ inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '' }}
+  MODAL_TOKEN_ID: ${{ (inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '') == '' && secrets.MODAL_TOKEN_ID || secrets[format('MODAL_TOKEN_ID_{0}', inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '')] }}
+  MODAL_TOKEN_SECRET: ${{ (inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '') == '' && secrets.MODAL_TOKEN_SECRET || secrets[format('MODAL_TOKEN_SECRET_{0}', inputs.modal_account != 'shared' && (inputs.modal_account || vars[format('MODAL_ACCOUNT_{0}', github.actor)]) || '')] }}
   PWA_MODAL_GPU: ${{ inputs.gpu }}
   PWA_MODAL_CPU: ${{ inputs.cpu }}
   PWA_RUNNER: ${{ inputs.runner }}
@@ -138,6 +145,14 @@ jobs:
           WARM_IDLE: ${{ inputs.warm_idle_minutes }}
           WARM_MAX: ${{ inputs.warm_max_containers }}
         run: |
+          # Modal workspace: a named account must have its own token pair; it never falls back to the shared one.
+          if [[ -n "$MODAL_ACCOUNT" ]]; then
+            [[ "$MODAL_ACCOUNT" =~ ^[A-Za-z0-9_]+$ ]] || { echo "modal_account must match [A-Za-z0-9_]+ (it names repo secrets)" >&2; exit 2; }
+            [[ -n "$MODAL_TOKEN_ID" && -n "$MODAL_TOKEN_SECRET" ]] || { echo "modal_account=$MODAL_ACCOUNT: repo secrets MODAL_TOKEN_ID_$MODAL_ACCOUNT / MODAL_TOKEN_SECRET_$MODAL_ACCOUNT are missing; add them with gh secret set. Not falling back to the shared workspace." >&2; exit 2; }
+            echo "::notice title=Modal workspace::$MODAL_ACCOUNT (its own tokens; volumes, weights and the pwa secret are per workspace)"
+          else
+            echo "::notice title=Modal workspace::shared (repo secrets MODAL_TOKEN_ID / MODAL_TOKEN_SECRET)"
+          fi
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
           if [[ "$WARM" == on ]]; then
             [[ "$WARM_IDLE" =~ ^[0-9]+$ ]] && (( WARM_IDLE >= 1 && WARM_IDLE <= 20 )) || { echo "warm_idle_minutes must be 1-20" >&2; exit 2; }
@@ -408,7 +423,8 @@ jobs:
             # extra only labels the run title here; a score-only run generates nothing
             gh workflow run experiment.yml --ref "$GITHUB_REF_NAME" -f exp="$name" -f stage=score-only \
               -f backend=modal -f split="$SPLIT" -f tasks="$TASKS" -f runner="$RUNNER" -f action_source="$ACTION_SOURCE" \
-              -f passes="$PASSES" -f judge_model="$JUDGE" -f player_model="$PLAYER_MODEL_IN" -f gpu="$GPU" -f extra="$spec"
+              -f passes="$PASSES" -f judge_model="$JUDGE" -f player_model="$PLAYER_MODEL_IN" -f gpu="$GPU" -f extra="$spec" \
+              -f modal_account="${MODAL_ACCOUNT:-shared}"
             echo "$name" >> "$RUNNER_TEMP/dispatched.txt"
             echo "dispatched score-only run for $name (arm $idx)"
             sleep 2
