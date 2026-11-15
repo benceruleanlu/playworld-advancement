@@ -43,6 +43,10 @@ Env:
   LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
+
+Flag counters (flag_stats.py): after each task one greppable line, e.g.
+  [lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30
+and a `[lingbot] flags total ...` line at the end; also "lingbot_flags" in <task>_result.json.
 """
 import os
 import sys
@@ -52,6 +56,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
@@ -67,6 +72,7 @@ REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR"
 PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
 sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
                                               "--lingbot-reanchor", "--lingbot-player-hint")]
+STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -111,7 +117,8 @@ class LingBotWorld2Engine:
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
-              + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else ""),
+              + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
+              + (", player hint on" if PLAYER_HINT else ""),
               flush=True)
 
     def _calibrate(self, name, n_keys):
@@ -123,6 +130,7 @@ class LingBotWorld2Engine:
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
         if PROMPT_MODE != "goal":
             goal, prompt = prompt, prompts.model_prompt(prompt, name, PROMPT_MODE)
+            STATS.caption(prompt != goal)
             if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
                 print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
                       f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
@@ -147,11 +155,16 @@ class LingBotWorld2Engine:
         torch.cuda.reset_peak_memory_stats()
         if not cont:
             horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
+            reanchor = REANCHOR and S.reanchor_task(name)
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
-                               reanchor=REANCHOR and S.reanchor_task(name))
+                               reanchor=reanchor)
+            if reanchor:
+                STATS.armed()
         start = self.session.chunk_id
+        anchored = self.session.reanchor_events
         frames = self.session.step(keys)
+        STATS.reanchored(self.session.reanchor_events - anchored)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
@@ -202,9 +215,12 @@ class LingBotWorld2Engine:
 
 run_agent.SanaWMEngine = LingBotWorld2Engine
 prompts.install(run_agent)
+STATS.install(run_agent)
 print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
 if PLAYER_HINT:
     run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
-                                     session=not STATELESS, turn_cal=TURN_CAL)
+                                     session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
     print("[lingbot] player hint: on", flush=True)
-raise SystemExit(run_agent.main())
+_rc = run_agent.main()
+print(STATS.total_line(), flush=True)
+raise SystemExit(_rc)

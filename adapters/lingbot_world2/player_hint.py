@@ -88,8 +88,9 @@ def hint(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit
     )
 
 
-def wrap(decide_action, to_key, session: bool, turn_cal: bool):
-    """Wrap upstream decide_action so the goal it shows the player ends with hint()."""
+def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_hint=None):
+    """Wrap upstream decide_action so the goal it shows the player ends with hint().
+    on_hint() is called once per hint sent (flag_stats counter)."""
 
     def decide(task, frame, recent_actions, chunk_idx, num_chunks, args, *rest, **kw):
         if not kw.get("stationary_only"):
@@ -97,6 +98,8 @@ def wrap(decide_action, to_key, session: bool, turn_cal: bool):
                         turn_cal, int(getattr(args, "action_frame_unit", 20) or 20))
             print(f"    [lingbot] player hint: {text.split('Commanded camera now, ', 1)[1]}", flush=True)
             task = {**task, "prompt": f"{task.get('prompt', '')}\n{text}"}
+            if on_hint is not None:
+                on_hint()
         return decide_action(task, frame, recent_actions, chunk_idx, num_chunks, args, *rest, **kw)
 
     return decide

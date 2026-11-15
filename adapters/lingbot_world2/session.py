@@ -217,6 +217,7 @@ class LingBotSession:
         self.stream_decode = stream_decode
         self.chunk_id = 0
         self.started = False
+        self.reanchor_events = 0  # _anchor_y calls over the session's life (flag_stats reads deltas)
         self._free()
 
     def _free(self):
@@ -335,6 +336,7 @@ class LingBotSession:
                 self._anchor = self.pipe.vae.encode([still])[0][:, -1]
         self.y[:4, g] = 1
         self.y[4:, g] = self._anchor.to(self.y.dtype)
+        self.reanchor_events += 1
         print(f"[lingbot] session: re-anchored latent {g} (frame {4 * g}) to the input image", flush=True)
 
     def _plucker(self, rel: np.ndarray):

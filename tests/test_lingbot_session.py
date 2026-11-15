@@ -193,6 +193,7 @@ def test_anchor_y_marks_only_the_returned_latent():
     s._anchor_y(5)
     s._anchor_y(6)
     assert VAE.calls == 1  # the anchor latent is encoded once per rollout
+    assert s.reanchor_events == 2  # counted for the [lingbot] flags line
     assert (s.y[:4, 5:7] == 1).all() and (s.y[4:, 5:7] == 7).all()
     untouched = torch.cat([s.y[:, :5], s.y[:, 7:]], dim=1)
     assert (untouched == 0).all()
