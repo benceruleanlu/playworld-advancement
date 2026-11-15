@@ -45,7 +45,7 @@ Two mirrored scripts per scene: left 90 then right 90, and right 90 then left 90
 
 - Left turns render more than right turns in every one of the eight scenes: the ratio of the two gains is 1.13 to 1.42, mean 1.25.
 - The level differs by scene. Right-turn gain runs from 0.56 to 1.44 (mean 1.11), left from 0.88 to 1.99 (mean 1.40). No single constant makes "90 degrees" render as 90 everywhere.
-- Mirror control: {{MIRROR}}
+- Mirror control: flipping the start image left to right does not flip the fast direction. Mean gains over the two mirrored scripts: GC033 left 1.17 / right 0.92 on the original image and 1.16 / 0.90 on the mirrored one; GC005 1.46 / 1.12 and 1.48 / 1.15. So the difference between the directions does not come from what a scene holds on each side. It belongs to the model or to the pose path into it; which of the two was not investigated.
 
 ## 3. It follows the direction, not the reversal
 
