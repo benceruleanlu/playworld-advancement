@@ -18,7 +18,7 @@ A redeploy does NOT replace containers that are already up: they keep taking cal
 with (seen 2026-11-14: three containers from two earlier deploys took the next three batches and their results were
 lost). After changing adapters/, pwa/ or this file run `modal app stop pwa-editor` first, then deploy.
 
-Set at deploy time: PWA_EDITOR_VARIANT (1.3b default, or 14b), PWA_MODAL_GPU (H100; the 14B peaks near 64 GiB,
+Set at deploy time: PWA_EDITOR_APP (another name for a second deployment), PWA_EDITOR_VARIANT (1.3b default, or 14b), PWA_MODAL_GPU (H100; the 14B peaks near 64 GiB,
 the 1.3B near 27), PWA_EDITOR_IDLE, PWA_EDITOR_CPU (8), PWA_EDITOR_MAX_CONTAINERS (1). The pipe is loaded by the
 runner's own load_pipe (adapters/lingbot_world2/run.py), so the kernel measures the model the runs use.
 """
@@ -43,7 +43,7 @@ app = modal.App(APP)
 weights_vol = modal.Volume.from_name("pwa-weights", create_if_missing=True)
 image = _lingbot_image(ROOT, "lingbot_world2_1p3b" if VARIANT == "1.3b" else "lingbot_world2")
 # The container imports this file again: give it the deploy-time settings so it builds the same definition.
-ENV = {"PWA_EDITOR_VARIANT": VARIANT, "LINGBOT_VARIANT": VARIANT, "PWA_MODAL_GPU": GPU, "PWA_EDITOR_IDLE": str(IDLE),
+ENV = {"PWA_EDITOR_APP": APP, "PWA_EDITOR_VARIANT": VARIANT, "LINGBOT_VARIANT": VARIANT, "PWA_MODAL_GPU": GPU, "PWA_EDITOR_IDLE": str(IDLE),
        "LINGBOT_CPU_THREADS": "auto", "PWA_EDITOR_MAX_CONTAINERS": os.environ.get("PWA_EDITOR_MAX_CONTAINERS", "1"),  # the 14B runs T5 on the CPU: one thread takes about 68 s per new prompt
        **({"LINGBOT_FAST_DIT": "1", "LINGBOT_FAST_LOAD": "1"} if VARIANT == "14b" else {})}  # GPU-side load (#79)
 CPU = float(os.environ.get("PWA_EDITOR_CPU", "8"))

@@ -16,7 +16,9 @@ from pathlib import Path
 
 from .core import ROOT, PwaError
 
-APP, CLS = "pwa-editor", "Kernel"
+# PWA_EDITOR_APP names another deployment of the same app (set it for `modal deploy` and for the client), e.g. to
+# keep a 1.3B and a 14B kernel side by side or to bring up changed code without stopping a running batch.
+APP, CLS = os.environ.get("PWA_EDITOR_APP") or "pwa-editor", "Kernel"
 HINT = ("Is the kernel deployed (`modal deploy editor_app.py`) and is this machine logged in to Modal "
         "(`modal token new`, or MODAL_TOKEN_ID / MODAL_TOKEN_SECRET in config/env.sh)?")
 
