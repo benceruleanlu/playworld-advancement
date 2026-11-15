@@ -405,30 +405,35 @@ import * as RunInfo from "./runinfo.js";
   };
   // group: now (model-side A/B) | parked (player-side, tried) | cand (merged or proposed, unscored)
   // arms: [label, exp] pairs read from results/experiments.csv; the first is the control. cells: per-task readout from results/reports/.
+  // pending: shown while not every arm has a score (the CSV says "failed" for an arm whose clips exist but whose scoring failed).
   var METHODS = [
     { group: "now", title: "Turn calibration", arms: [["off", "fx14-model-dev-v2-a1"], ["on", "fx14-model-dev-v2-a2"]],
-      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11.",
-      links: [["#23", PR + "23"]] },
+      cells: "of 15 tasks scored in both arms, 0 up a full point and 1 down; 8 and 9 of 24 clips missing and counted as 1.0",
+      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11. The same comparison on the 6 GC tasks alone (orc14-gc-v1) moved 2 tasks up a full point and none down; one of them, GC031, gained 1.95 there and 0.35 here.",
+      also: ["orc14-gc-v1-a1", "orc14-gc-v1-a2"], links: [["#23", PR + "23"]] },
     { group: "now", title: "Caption prompt", arms: [["off", "fx14-model-dev-v2-a2"], ["on", "fx14-model-dev-v2-a3"]], also: ["ins14-base-v2", "ins14-caption-v1"],
-      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. Earlier ins14 runs (closed-loop harness, but insight tasks are wait-only, so the player is never called): the control ins14-base-v2 was generated, and the caption arm ins14-caption-v1 was cancelled.",
-      links: [["#32", PR + "32"], ["#63", PR + "63"]] },
+      cells: "of 14 tasks scored in both arms, 2 up a full point and 2 down; no insight clip in either arm",
+      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. It was aimed at insight, and these runs have no insight clips: every insight task ran out of memory in the decode step, fixed since (#120). Earlier ins14 runs: the control ins14-base-v2 was generated and not scored, and the caption arm ins14-caption-v1 was cancelled.",
+      links: [["#32", PR + "32"], ["#63", PR + "63"], ["#120", PR + "120"]] },
     { group: "now", title: "Insight director, IF slow translation (re-anchor on, cannot fire with fixed actions)", arms: [["without", "fx14-model-dev-v2-a3"], ["with", "fx14-model-dev-v2-a4"]],
-      body: "Adds an insight prompt cue and half-speed camera translation on IF tasks, on top of the caption prompt. Re-anchoring is switched on in the second arm, but fixed action scripts replay each task as one call, so it never fires there; its test is the scripted-player GC A/B below.",
+      cells: "of 11 tasks scored in both arms, 1 up a full point and 0 down; no insight clip in either arm, 10 and 13 of 24 clips missing",
+      body: "Adds an insight prompt cue and half-speed camera translation on IF tasks, on top of the caption prompt. The one task that moved a full point is a GC task (GC031), which none of the added flags should change with fixed actions, so that move is unexplained. Re-anchoring is switched on in the second arm, but fixed action scripts replay each task as one call, so it never fires there; its test is the scripted-player GC A/B below.",
       links: [["#46", PR + "46"], ["#90", PR + "90"]] },
     { group: "now", title: "Conditioning strength per denoising step", arms: [["control", "cs14-fx-v1-a1"], ["schedule", "cs14-fx-v1-a2"], ["+ text 1.0", "cs14-fx-v1-a3"], ["early 4", "cs14-fx-v1-a4"]],
+      cells: "3 of 7 tasks scored, all 4 insight clips missing and counted as 1.0; the GC task lost a full point in 2 of 3 schedule arms, the 2 IF tasks gained less than a point",
       body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on.",
       links: [["#101", PR + "101"]] },
-    { group: "now", title: "Camera-conditioning weight modulation", arms: [["control", "wm14-fx-v1-a1"], ["weight-mod", "wm14-fx-v1-a2"]], also: ["wm14-ctl-c10-v1", "wm14-arm-c10-v1"],
-      body: "Scales how strongly the model follows the camera command, per chunk: off on still chunks, slightly lower on moving third-person chunks. Both arms have the caption prompt and turn calibration on. The earlier c10 runs were capped smoke checks from the PR branch.",
-      links: [["#87", PR + "87"], ["#104", PR + "104"]] },
-    { group: "now", title: "IF identity cue", arms: [["control", "wm14-fx-v1-a1"], ["cue", "wm14-fx-v1-a3"]],
-      body: "Appends a fixed sentence about keeping each subject's identity to the model prompt on third-person IF tasks.",
-      links: [["#104", PR + "104"]] },
     { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
-      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Aimed at insight.",
+      pending: "1 of 4 arms scored, no pair yet",
+      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. Only the sink 12 arm is scored; the control has clips and no score, and the two local 36 arms failed, so there is no pair to compare.",
       links: [["#104", PR + "104"]] },
+    { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
+      pending: "clips generated, not scored yet",
+      body: "Turns down how strongly later chunks attend to the pinned first frames, to test whether those frames pull a returning camera back to the scene as it was at the start. 6 out-of-sight dev tasks. All four arms have clips; none is scored yet.",
+      links: [["#112", PR + "112"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
-      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. Not a closed-loop score.",
+      pending: "clips generated, not scored yet",
+      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. All four arms have clips for the 6 GC dev tasks; none is scored yet. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
@@ -439,15 +444,22 @@ import * as RunInfo from "./runinfo.js";
     { group: "parked", title: "Player hint", arms: [["no flags", "smk14-arms-gc-v2-a1"], ["turn cal + hint", "smk14-arms-gc-v2-a2"]],
       body: "Tells the player how far one action turns the camera and where the commanded camera is. Turn calibration is also on in the second arm. Only capped smoke runs exist, which never count as scores.",
       links: [["#59", PR + "59"]] },
+    { group: "cand", title: "Camera-conditioning weight modulation, IF identity cue",
+      body: "Weight modulation scales how strongly the model follows the camera command, per chunk; the identity cue adds a sentence about keeping each subject's identity on third-person IF tasks. Both fixed-action runs (wm14-fx-v1, wm14-fx-a100-v1) were cancelled before finishing; only a capped smoke check of weight modulation exists.",
+      also: ["wm14-arm-c10-v1"], links: [["#87", PR + "87"], ["#104", PR + "104"]] },
     { group: "cand", title: "Proposal batch 2: IF horizon, IF camera hint, history endpoints, IF repeat check",
       body: "Merged behind opt-in flags. Its insight director and IF slow translation are in the model-side runs above.", links: [["#90", PR + "90"]] },
     { group: "cand", title: "Proposal batch 3: IF subject director",
       body: "Merged behind opt-in flags. The batch's GC chunk director and GC ease turns are in the scripted-player GC A/B above.", links: [["#100", PR + "100"]] },
     { group: "cand", title: "Proposal batch 4: weight-modulation knobs, measured turn",
-      body: "Merged behind opt-in flags and not run yet. Weight modulation, the IF identity cue and the attention window are under test above.", links: [["#104", PR + "104"]] }
+      body: "Merged behind opt-in flags and not run yet. The attention window is under test above.", links: [["#104", PR + "104"]] },
+    { group: "cand", title: "Camera rates: turn step, yaw gain",
+      body: "Turn step sets how many degrees one closed-loop turn covers, so an out-and-back fits inside the model's attention window. Yaw gain scales the yaw sent to the model. Merged behind opt-in flags and not run yet.", links: [["#105", PR + "105"], ["#119", PR + "119"]] },
+    { group: "cand", title: "Sampling: noise mean coupling, noisy KV writes, early-step self-guidance",
+      body: "Three changes to how each chunk is sampled or written to the model's memory. Merged behind opt-in flags and not run yet.", links: [["#103", PR + "103"], ["#112", PR + "112"]] }
   ];
   var GROUPS = [
-    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes."],
+    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes, one run per arm. The overall figures count missing clips as 1.0, so read the per-task counts."],
     ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. Not adopted."],
     ["cand", "Candidates, not yet scored", "Off by default. Not results."]
   ];
@@ -466,6 +478,7 @@ import * as RunInfo from "./runinfo.js";
       return { text: s + (m.cells ? "; " + m.cells : ""), none: false };
     }
     if (rows.some(function (r) { return r && isCapped(r); })) return { text: "capped smoke only, no decision", none: true };
+    if (m.pending) return { text: m.pending, none: true };
     if (rows.some(function (r) { return r && r.status === "running" && !isStale(r); })) return { text: "running", none: true, run: true };
     if (rows.some(function (r) { return r && r.status === "generated"; })) return { text: "generated, not scored", none: true };
     if (rows.some(function (r) { return r && isEnded(r); })) return { text: "no result yet", none: true };
