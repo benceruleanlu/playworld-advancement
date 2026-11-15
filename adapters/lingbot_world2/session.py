@@ -246,7 +246,8 @@ class LingBotSession:
     """Stateful wrapper around a loaded wan.WanI2VCausal (causal_fast)."""
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
-                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, cond_sched=None):
+                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
+                 cond_sched=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -260,7 +261,9 @@ class LingBotSession:
         self.chunk_id = 0
         self.started = False
         self.reanchor_events = 0  # _anchor_y calls over the session's life (flag_stats reads deltas)
-        self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls, self.third_person = cond_sched, 0, 0, False
+        # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
+        self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
+        self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
         self._free()
 
     def _free(self):
@@ -336,6 +339,8 @@ class LingBotSession:
         self.track = PoseTrack()
         self.detector = ReturnDetector() if reanchor else None
         self.third_person = bool(third_person)
+        if self.weight_mod is not None:
+            self.weight_mod.reset()
         if self.cond_sched is not None:
             self.cond_sched.reset()
         if self.stream_decode:
@@ -479,10 +484,15 @@ class LingBotSession:
             for i in self.detector.update(self.track.latents):
                 self._anchor_y(self.chunk_id * CHUNK + i)
 
-        new = []
-        with (self.cond_sched or contextlib.nullcontext()), torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
+        new, modulated = [], False
+        with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
+                torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
-                cid, rel_c, chunk_hit = self.chunk_id, rel[c * CHUNK:(c + 1) * CHUNK], False
+                cid, chunk_hit = self.chunk_id, False
+                rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
+                if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
+                    modulated = True
+                    self.weight_mod_chunks += 1
                 with torch.autocast("cuda", enabled=False):
                     emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
@@ -500,6 +510,8 @@ class LingBotSession:
                 }
                 ts = self.timesteps
                 for i in range(len(ts)):
+                    if self.weight_mod is not None:
+                        self.weight_mod.denoise_step(i, len(ts))
                     if self.cond_sched is not None and self.cond_sched.set_step(rel_c, i, third_person=self.third_person):
                         self.cond_sched_calls += 1
                         chunk_hit = True
@@ -514,6 +526,8 @@ class LingBotSession:
                         noise = torch.randn(x0.shape, generator=self.gen, device=x0.device, dtype=x0.dtype)
                         latent = pipe.scheduler.add_noise(x0, noise, ts[i + 1])
                 new.append(x0)
+                if self.weight_mod is not None:
+                    self.weight_mod.end_chunk()  # the clean KV write uses the chunk's base scale
                 if self.cond_sched is not None:
                     self.cond_sched.reset()
                 if chunk_hit:
@@ -526,6 +540,8 @@ class LingBotSession:
             mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")
             video = self._decode(lat)
             mark("step0.decode", f"({lat.shape[1]} latents)")
+        if modulated:
+            self.weight_mod_steps += 1
 
         frames = ((video.clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 3, 0).cpu().numpy()
         del video
