@@ -58,6 +58,13 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       are refused),
                                       sink_scaled_chunks (latent chunks whose denoising forwards ran with
                                       scaled sink keys)
+  --lingbot-pose-memory               pose_mem=on (session reset of a task matching --lingbot-pose-mem-tasks) | skip,
+                                      pose_mem_stored (latent chunks stored), pose_mem_retrievals (installs of
+                                      retrieved memory), pose_mem_latents (latents recomputed into the sink),
+                                      pose_mem_restores (original sink copied back: no match), pose_mem_chunks
+                                      (chunks generated with memory installed), pose_mem_forwards (extra clean
+                                      DiT forwards), pose_mem_evicted (bank entries dropped by the cap),
+                                      pose_mem_mb (peak host MB held: bank plus sink snapshot)
   --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it),
                                       or turn_step=inactive for a task run as one dataset call (`<task>_full`)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
@@ -80,6 +87,11 @@ import json
 from pathlib import Path
 
 
+# --lingbot-pose-memory session counters (run.LingBotWorld2Engine._pose_mem_counts) and their flags-line names
+POSE_MEM_FIELDS = ("stored", "installs", "latents", "restores", "chunks", "forwards", "evicted")
+POSE_MEM_NAMES = {"installs": "retrievals"}
+
+
 class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
                  return_stop: bool = False, gc_completion: bool = False,
@@ -89,7 +101,9 @@ class FlagStats:
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
-                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = ""):
+                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
+                 pose_mem: bool = False):
+        self.pose_mem = bool(pose_mem)
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
@@ -126,7 +140,7 @@ class FlagStats:
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
                        "scripted_chunks": 0, "scripted_ends": 0,
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
-                       "yaw_gain_frames": 0}
+                       "yaw_gain_frames": 0, **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS}}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -146,6 +160,7 @@ class FlagStats:
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
         self.sink_scale_armed, self.sink_scaled_chunks = False, 0
+        self.pose_mem_on, self.pose_mem_counts, self.pose_mem_bytes = False, dict.fromkeys(POSE_MEM_FIELDS, 0), 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
         self.kv_noise_chunks = 0
         self.yaw_gain_frames = 0
@@ -217,6 +232,18 @@ class FlagStats:
 
     def sink_scaled(self, chunks: int = 0):
         self.sink_scaled_chunks += int(chunks)
+
+    def pose_mem_armed(self):
+        self.pose_mem_on = True
+
+    def pose_mem_counted(self, deltas: dict, peak_bytes: int = 0):
+        """--lingbot-pose-memory: per-step counter deltas from the session, and the rollout's peak host bytes."""
+        for k in POSE_MEM_FIELDS:
+            self.pose_mem_counts[k] += int(deltas.get(k, 0))
+        self.pose_mem_bytes = max(self.pose_mem_bytes, int(peak_bytes))
+
+    def pose_mem_summary(self, counts: dict) -> dict:
+        return {f"pose_mem_{POSE_MEM_NAMES.get(k, k)}": counts[k] for k in POSE_MEM_FIELDS}
 
     def cond_scheduled(self, chunks: int = 0, calls: int = 0):
         self.cond_sched_chunks += int(chunks)
@@ -319,6 +346,9 @@ class FlagStats:
                      commanded_tilt=round(m.get("commanded_tilt", 0)), measured_tilt=round(m.get("measured_tilt", 0)))
         if self.sink_scale:
             s.update(sink_scale="on" if self.sink_scale_armed else "skip", sink_scaled_chunks=self.sink_scaled_chunks)
+        if self.pose_mem:
+            s.update(pose_mem="on" if self.pose_mem_on else "skip", **self.pose_mem_summary(self.pose_mem_counts),
+                     pose_mem_mb=f"{self.pose_mem_bytes / 2 ** 20:.0f}")
         if self.scripted:
             s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
@@ -360,7 +390,9 @@ class FlagStats:
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
                    if self.scripted else "")
-                + (f" sink_scaled_chunks={t['sink_scaled_chunks']}" if self.sink_scale else ""))
+                + (f" sink_scaled_chunks={t['sink_scaled_chunks']}" if self.sink_scale else "")
+                + ("".join(f" {k}={v}" for k, v in self.pose_mem_summary(
+                    {k: t[f"pose_mem_{k}"] for k in POSE_MEM_FIELDS}).items()) if self.pose_mem else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -397,6 +429,8 @@ class FlagStats:
         t["stg_calls"] += self.stg_calls
         t["sink_scaled_chunks"] += self.sink_scaled_chunks
         t["yaw_gain_frames"] += self.yaw_gain_frames
+        for k in POSE_MEM_FIELDS:
+            t[f"pose_mem_{k}"] += self.pose_mem_counts[k]
         print(self.line(s), flush=True)
         return s
 

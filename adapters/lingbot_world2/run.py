@@ -129,6 +129,15 @@ chunk index >= --lingbot-sink-scale-after K (default 8), in tasks matching --lin
 stateless path. Acts in dataset mode and on wait-only insight tasks (per latent chunk inside one step). See
 sink_scale.py.
 
+Pose-indexed memory (off by default, session only): `--lingbot-pose-memory` or LINGBOT_POSE_MEMORY=1 stores every
+generated latent chunk's clean latents keyed by its commanded camera pose and, before a chunk whose view matches a
+chunk that has left the KV cache and that the camera had looked away from, recomputes the most recent such chunk
+into the sink slots after the first --lingbot-pose-mem-anchor latents (one extra clean forward per change); the
+original sink is copied back when nothing matches. Knobs --lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,
+latents,anchor,time,fallback,tasks,max-mb}. Acts in dataset mode (per latent chunk inside one step). Refused with
+--lingbot-stateless, sink 0 / local -1, a sink smaller than anchor + latents, --lingbot-reanchor and
+--lingbot-sink-key-scale. See pose_memory.py.
+
 IF identity cue (off by default): `--lingbot-if-identity-cue` or LINGBOT_IF_IDENTITY_CUE=1 appends a fixed sentence
 group about keeping each subject's identity (if_identity.CUE) to the model prompt of third-person IF tasks that have
 an image_caption; requires LINGBOT_PROMPT_MODE=auto (--lingbot-caption-prompt), so the IF goal is in the prompt.
@@ -189,6 +198,8 @@ Env:
   LINGBOT_SINK_SIZE / LINGBOT_LOCAL_ATTN_SIZE   attention window (6 / 18)
   LINGBOT_SINK_KEY_SCALE / LINGBOT_SINK_SCALE_AFTER / LINGBOT_SINK_SCALE_TASKS   same as --lingbot-sink-key-scale /
                     --lingbot-sink-scale-after / --lingbot-sink-scale-tasks (1.0 = off / 8 / ".*")
+  LINGBOT_POSE_MEMORY  1 = same as --lingbot-pose-memory (knobs LINGBOT_POSE_MEM_DEG / _TRANS / _LEAVE_DEG /
+                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -256,6 +267,7 @@ from adapters.lingbot_world2 import measured_turn as MT  # noqa: E402
 from adapters.lingbot_world2 import if_subject as IFS  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
+from adapters.lingbot_world2 import pose_memory as PM  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
@@ -407,6 +419,15 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["sink_scale"].enabled and (flags["stateless"] or flags["sink"] == 0):
         raise SystemExit("--lingbot-sink-key-scale needs session mode and an attention sink (sink > 0, not local -1); "
                          "here it would run as a no-op arm")
+    flags["pose_mem"], argv = PM.parse(argv, environ)
+    if flags["pose_mem"].enabled:
+        if flags["stateless"]:
+            raise SystemExit("--lingbot-pose-memory needs session mode (the bank lives in the persistent KV cache)")
+        PM.check_window(flags["pose_mem"], flags["local_attn"], flags["sink"])
+        if flags["reanchor"]:
+            raise SystemExit("--lingbot-pose-memory and --lingbot-reanchor both target GC returns; use one per arm")
+        if flags["sink_scale"].enabled:
+            raise SystemExit("--lingbot-pose-memory and --lingbot-sink-key-scale both rewrite the sink; use one per arm")
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     flags["player"], argv = agent_api.configure(argv, environ)
@@ -429,6 +450,7 @@ COND_SCHED = CS.ScheduleConfig()
 KV_NOISE = KVN.KVNoiseConfig()  # --lingbot-kv-noise / LINGBOT_KV_NOISE=1, session only, off by default
 STG = STGM.StgConfig()  # --lingbot-stg / LINGBOT_STG=1, off by default; session only
 SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
+POSE_MEM = PM.PoseMemoryConfig()  # --lingbot-pose-memory / LINGBOT_POSE_MEMORY=1, session only, off by default
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
@@ -547,7 +569,8 @@ class LingBotWorld2Engine:
                                             **({"cond_sched": sched} if sched is not None else {}),
                                             **({"kv_noise": KVN.KVNoise(KV_NOISE)} if KV_NOISE.enabled else {}),
                                             **({"stg": stg} if stg is not None else {}),
-                                            **({"sink_scale": SINK_SCALE} if SINK_SCALE.enabled else {}))
+                                            **({"sink_scale": SINK_SCALE} if SINK_SCALE.enabled else {}),
+                                            **({"pose_mem": POSE_MEM} if POSE_MEM.enabled else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -567,6 +590,7 @@ class LingBotWorld2Engine:
               + ((", sink key scale ignored (stateless)" if STATELESS
                   else ", sink key scale inert (sink 0)" if SINK == 0 else f", {SINK_SCALE.describe()}")
                  if SINK_SCALE.enabled else "")
+              + (f", {POSE_MEM.describe()}" if POSE_MEM.enabled else "")
               + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
                  else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
@@ -689,6 +713,10 @@ class LingBotWorld2Engine:
                 self.session.sink_scale_on = SINK > 0 and SINK_SCALE.applies(name)
                 if self.session.sink_scale_on:
                     STATS.sink_armed()
+            if POSE_MEM.enabled:  # only with the flag, so the no-flag reset path stays main's
+                self.session.pose_mem_on = POSE_MEM.applies(name)
+                if self.session.pose_mem_on:
+                    STATS.pose_mem_armed()
         self._configure_if_motion(name, keys)
         if YAW_GAIN.enabled:  # only with the flag, so the no-flag track stays main's
             self.session.track.yaw_gain = YAW_GAIN.pair()
@@ -705,6 +733,7 @@ class LingBotWorld2Engine:
         kvn_chunks = getattr(self.session, "kv_noise_chunks", 0)
         stg_chunks, stg_calls = getattr(self.session, "stg_chunks", 0), getattr(self.session, "stg_calls", 0)
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
+        pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
@@ -719,6 +748,9 @@ class LingBotWorld2Engine:
                               getattr(self.session, "stg_calls", 0) - stg_calls)
         if SINK_SCALE.enabled:
             STATS.sink_scaled(self.session.sink_scaled_chunks - sk_chunks)
+        if pm_before is not None:
+            STATS.pose_mem_counted({k: v - pm_before[k] for k, v in self._pose_mem_counts().items()},
+                                   self.session.pm_peak_bytes)
         if self.weight_mod is not None:
             STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
@@ -731,6 +763,11 @@ class LingBotWorld2Engine:
               f"{len(frames)} frames {frames.shape[2]}x{frames.shape[1]} in {dt:.1f}s ({len(frames) / dt:.1f} fps), "
               f"peak VRAM {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB", flush=True)
         return out
+
+    def _pose_mem_counts(self) -> dict:
+        s = self.session
+        return {"stored": s.pm_stored, "installs": s.pm_installs, "restores": s.pm_restores, "latents": s.pm_latents,
+                "forwards": s.pm_forwards, "chunks": s.pm_chunks, "evicted": s.pm_evicted}
 
     def _generate_stateless(self, image_path, prompt, action, output_dir, name, num_frames):
         """Write <output_dir>/<name>.mp4 continuing from image_path under `action`.
@@ -786,7 +823,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -799,6 +836,7 @@ def main(argv: list[str] | None = None) -> int:
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
     COND_SCHED = flags["cond_sched"]
     SINK_SCALE = flags["sink_scale"]
+    POSE_MEM = flags["pose_mem"]
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     KV_NOISE = flags["kv_noise"]
     kvn_mode = "off" if not KV_NOISE.enabled else ("skip" if STATELESS else "on")
@@ -818,7 +856,7 @@ def main(argv: list[str] | None = None) -> int:
                                  kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
                                  sink_scale=SINK_SCALE.enabled, noise_mean=NOISE_MEAN, turn_step=flags["turn_step"],
-                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "")
+                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "", pose_mem=POSE_MEM.enabled)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
