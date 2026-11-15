@@ -29,7 +29,9 @@ def at(goal, spec, turn_cal=False):
 
 
 def test_plan_arms_only_on_one_final_return():
-    assert R.plan(OUT_BACK) == {"deg": 67.5, "steps": None, "both_sides": False}
+    assert R.plan(OUT_BACK) == {"deg": 67.5, "steps": None, "both_sides": False, "side": "right"}
+    assert R.plan(FULL_TURN)["side"] == "yaw" and R.plan(FULL_TURN.replace("degrees", "degrees clockwise"))["side"] == "right"
+    assert R.plan("Tilt the camera downward 90 degrees, then return to the original view.")["side"] == "down"
     assert R.plan("Move right 10 steps, then move back to the original position.")["steps"] == 7.5
     assert R.plan("Pan slowly from left to right, then back to center")["both_sides"]
     # something is ordered after the return, two returns, or no return at all: the player keeps control
@@ -51,6 +53,13 @@ def test_dithering_never_counts_as_having_left():
     # baseline player on GC036 / OE047: R1 L1 repeated; the net turn never reaches 0.75 x 90
     assert at(OUT_BACK, "R1 L1 R1 L1 R1 L1 R1 L1") is None
     assert at(FULL_TURN, "R2 L2") is None      # 103 degrees is not a full turn
+
+
+def test_wrong_side_or_axis_does_not_count_as_having_left():
+    assert at(OUT_BACK, "L2 R2") is None       # the goal turns right; a left excursion is not it
+    assert at(OUT_BACK, "U4 Dn4") is None      # nor is a tilt
+    assert at(OUT_BACK, "L2 R4 L2") == 8       # home after the rightward turn
+    assert at(FULL_TURN, "L7") == 7            # no direction named: either way round
 
 
 def test_full_turn_fires_when_the_heading_wraps_to_the_start():

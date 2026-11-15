@@ -30,6 +30,9 @@ AFTER_RE = re.compile(r"\bthen\b", re.I)
 DEG_RE = re.compile(r"(\d+)[- ]degrees?", re.I)
 STEPS_RE = re.compile(r"(\d+) steps?", re.I)
 SIDES_RE = re.compile(r"left to right|right to left", re.I)
+DIR_RE = re.compile(r"\b(left|right|up|upward|down|downward|clockwise)\b", re.I)
+YAW_RE = re.compile(r"rotat|turn|pan", re.I)
+DIRS = {"upward": "up", "downward": "down", "clockwise": "right"}
 DEFAULT_DEG, DEFAULT_STEPS = 40.0, 2.0
 
 
@@ -40,8 +43,12 @@ def plan(goal: str, frac: float = 0.75) -> dict | None:
         return None
     degs = [float(m) for m in DEG_RE.findall(goal)]
     steps = [float(m) for m in STEPS_RE.findall(goal)]
+    # the side an angle goal must go out on: the first direction word before the return, else either
+    # yaw side for a turn, else any rotation
+    side = DIR_RE.search(goal, 0, hits[0].start()) if degs else None
+    side = side.group(1).lower() if side else ("yaw" if degs and YAW_RE.search(goal) else "any")
     return {"deg": frac * max(degs) if degs else None, "steps": frac * max(steps) if steps else None,
-            "both_sides": bool(SIDES_RE.search(goal))}
+            "both_sides": bool(SIDES_RE.search(goal)), "side": DIRS.get(side, side)}
 
 
 def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20):
@@ -49,13 +56,15 @@ def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn
     and is back at the start, or None."""
     yaw_step, pitch_step = H.step_size(chunk_frames, session, turn_cal, unit)
     tokens_per_step = H.step_keys(1, chunk_frames, session) / float(unit)  # dataset "steps" per W/S/A/D action
-    rot = pos = lo = hi = 0.0
+    pos = lo = hi = t_lo = t_hi = 0.0
     for k in range(1, len(actions) + 1):
         s = H.replay(actions[:k], to_key, chunk_frames, session, turn_cal, unit)
         net = s["turned_right"] - s["turned_left"]
         dist = math.hypot(s["forward"], s["right"])
-        rot, pos = max(rot, abs(net), abs(s["tilt"])), max(pos, dist)
-        lo, hi = min(lo, net), max(hi, net)
+        pos, lo, hi = max(pos, dist), min(lo, net), max(hi, net)
+        t_lo, t_hi = min(t_lo, s["tilt"]), max(t_hi, s["tilt"])
+        sides = {"right": hi, "left": -lo, "up": t_hi, "down": -t_lo, "yaw": max(hi, -lo)}
+        rot = sides.get(p.get("side", "any"), max(hi, -lo, t_hi, -t_lo))
         if p["deg"] is None and p["steps"] is None:
             left = rot >= DEFAULT_DEG or pos >= DEFAULT_STEPS
         else:
