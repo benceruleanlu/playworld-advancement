@@ -96,14 +96,19 @@ an image_caption; requires LINGBOT_PROMPT_MODE=auto (--lingbot-caption-prompt), 
 Its counter if_identity_prompts counts prompts that are encoded with the cue: one per session reset (chunk 01 or
 `<task>_full`), every call on the stateless path. See if_identity.py.
 
+Measured turn (off by default, player-side): `--lingbot-measured-turn` or LINGBOT_MEASURED_TURN=1 measures the
+rotation each finished turn/tilt chunk shows in the video (phase correlation, measured_turn.py), logs it next to the
+command and, on GC tasks only (LINGBOT_MEASURED_TURN_TELL, a regex, default GC), adds one sentence with both totals
+to the player's goal. No effect with --action-source dataset (decide_action is never called there).
+
 Model prompt composition, in order: caption prompt (prompts.model_prompt), insight director (insight
 tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
 replaces the prompt with its structured form), IF identity cue (third-person IF; appends to whatever the
 prompt is by then, so it survives the subject director). Only the two IF ones can touch the same task.
 
-decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
+decide_action wrappers, innermost first: player hint, measured turn, IF repeat check, IF camera hint, GC completion hint,
 return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
-IF repeat) + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
+IF repeat) + measured turn + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
 replies never reach the hints or their counters.
 
 Env:
@@ -133,6 +138,7 @@ Env:
   LINGBOT_GC_CHUNK_DIRECTOR  1 = same as --lingbot-gc-chunk-director
   LINGBOT_GC_EASE_TURNS  1 = same as --lingbot-gc-ease-turns
   LINGBOT_IF_SUBJECT_DIRECTOR  1 = same as --lingbot-if-subject-director
+  LINGBOT_MEASURED_TURN  1 = same as --lingbot-measured-turn; LINGBOT_MEASURED_TURN_TELL  task-id regex told (GC)
   LINGBOT_IF_IDENTITY_CUE  1 = same as --lingbot-if-identity-cue
   LINGBOT_WEIGHT_MOD  1 = same as --lingbot-weight-mod (scale knobs above)
   LINGBOT_SINK_SIZE / LINGBOT_LOCAL_ATTN_SIZE   attention window (6 / 18)
@@ -195,6 +201,7 @@ from adapters.lingbot_world2 import if_camera as IC  # noqa: E402
 from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
 from adapters.lingbot_world2 import if_identity as IFI  # noqa: E402
 from adapters.lingbot_world2 import if_repeat as IR  # noqa: E402
+from adapters.lingbot_world2 import measured_turn as MT  # noqa: E402
 from adapters.lingbot_world2 import if_subject as IFS  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
@@ -209,7 +216,8 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
               "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
-              "--lingbot-if-subject-director", "--lingbot-weight-mod", "--lingbot-if-identity-cue")
+              "--lingbot-if-subject-director", "--lingbot-weight-mod", "--lingbot-if-identity-cue",
+              "--lingbot-measured-turn")
 
 
 def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
@@ -293,6 +301,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
         "if_subject": "--lingbot-if-subject-director" in argv or environ.get("LINGBOT_IF_SUBJECT_DIRECTOR", "0") == "1",
         "if_identity": "--lingbot-if-identity-cue" in argv or environ.get("LINGBOT_IF_IDENTITY_CUE", "0") == "1",
+        "measured_turn": "--lingbot-measured-turn" in argv or environ.get("LINGBOT_MEASURED_TURN", "0") == "1",
         "weight_mod": "--lingbot-weight-mod" in argv or environ.get("LINGBOT_WEIGHT_MOD", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
@@ -452,6 +461,7 @@ class LingBotWorld2Engine:
               + (", GC ease turns on" if GC_EASE_TURNS else "")
               + (", IF subject director on" if IF_SUBJECT else "")
               + (", IF identity cue on" if IF_IDENTITY else "")
+              + (", measured turn on" if STATS.measured_turn else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
 
@@ -636,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
+                                 measured_turn=flags["measured_turn"],
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "")
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
@@ -658,6 +669,11 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
                                          turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
         print("[lingbot] player hint: on", flush=True)
+    if flags["measured_turn"]:  # its sentence sits just before the player hint's pose summary
+        run_agent.decide_action = MT.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                          turn_cal=TURN_CAL, on_event=STATS.measured_turn_event,
+                                          tell_tasks=os.environ.get("LINGBOT_MEASURED_TURN_TELL", "GC"))
+        print("[lingbot] measured turn: on", flush=True)
     if flags["if_repeat"]:  # conditional IF reminder, after the fixed IF camera reminder
         run_agent.decide_action = IR.wrap(run_agent.decide_action, STATS.if_repeat_hint)
         print("[lingbot] IF repeat check: on", flush=True)

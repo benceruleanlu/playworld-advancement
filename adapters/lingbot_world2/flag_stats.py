@@ -46,6 +46,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
 
   --lingbot-if-identity-cue           if_identity=on, if_identity_prompts (prompts encoded with the cue: one per
                                       session reset, every call when stateless; third-person IF only)
+  --lingbot-measured-turn             measured_turn=on|skip, measured_chunks, measured_unreliable, commanded_yaw,
+                                      measured_yaw, commanded_tilt, measured_tilt (totals up to the last decision)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
 
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
@@ -64,7 +66,8 @@ class FlagStats:
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
-                 if_identity: bool = False):
+                 if_identity: bool = False, measured_turn: bool = False):
+        self.measured_turn = bool(measured_turn)
         self.if_identity = bool(if_identity)
         self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
         self.weight_mod = bool(weight_mod)
@@ -104,6 +107,7 @@ class FlagStats:
         self.if_subject_prompts = 0
         self.weight_mod_steps = self.weight_mod_chunks = 0
         self.if_identity_prompts = 0
+        self.measured = {}
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -177,6 +181,11 @@ class FlagStats:
                  ("gc_director_chunks", "gc_director_updates")}} if self.gc_director else {})
 
     # -- output ----------------------------------------------------------------
+    def measured_turn_event(self, summary: dict):
+        """measured_turn.wrap on_event: the task's totals so far (the last call is the whole rollout but
+        its final chunk)."""
+        self.measured = dict(summary)
+
     def if_horizon_event(self, kind: str, cap: int):
         """if_horizon.wrap on_event: "armed" or "end", with the task's chunk budget."""
         self.if_horizon_cap = int(cap)
@@ -223,6 +232,12 @@ class FlagStats:
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
                      if_horizon_ends=self.if_horizon_ends)
+        if self.measured_turn:
+            m = self.measured
+            s.update(measured_turn="on" if m else "skip", measured_chunks=m.get("chunks", 0),
+                     measured_unreliable=m.get("unreliable", 0),
+                     commanded_yaw=round(m.get("commanded_yaw", 0)), measured_yaw=round(m.get("measured_yaw", 0)),
+                     commanded_tilt=round(m.get("commanded_tilt", 0)), measured_tilt=round(m.get("measured_tilt", 0)))
         return s
 
     @staticmethod
