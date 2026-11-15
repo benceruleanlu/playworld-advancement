@@ -1,0 +1,98 @@
+---
+// Blind side-by-side review: two people judge control and treatment clips by eye. All behaviour is in src/scripts/review.js.
+// No run names, flags or file names in this markup: the arms stay hidden until "Finish and reveal".
+import Base from "../layouts/Base.astro";
+import "../styles/review.css";
+const home = import.meta.env.BASE_URL.replace(/\/?$/, "/");
+---
+<Base title="Blind clip review" description="Blind side-by-side human preference check of control and treatment clips from the PlayWorld advancement experiments. Not a benchmark score.">
+  <nav class="top" aria-label="Site">
+    <div class="wrap">
+      <a class="brand rvhome" href={home}>PlayWorld advancement</a>
+      <span class="nl" aria-current="true">Blind review</span>
+    </div>
+  </nav>
+  <main class="wrap rv" id="top">
+    <section id="rv-start" aria-labelledby="h-rv-start">
+      <h2 id="h-rv-start" class="sec">Blind clip review</h2>
+      <p class="sub">A blind human preference check, not a PlayWorld score. Each trial shows one task generated twice, once with a change and once without, on sides picked at random. Pick the clip that does the task better. Which clip had the change is shown only after you finish.</p>
+      <p class="callout" id="rv-loading" style="margin-top:0">Loading the published clips.</p>
+      <form class="card rvform" id="rv-form" hidden>
+        <div class="filters">
+          <label>Your name or initials <input type="text" id="rv-name" autocomplete="off" maxlength="40" required></label>
+          <label class="wide">Comparison <select id="rv-group"></select></label>
+          <label>Family <select id="rv-fam"></select></label>
+        </div>
+        <ul class="rvlist" id="rv-gdesc"></ul>
+        <ul class="rvlist scnote" id="rv-dropped" hidden></ul>
+        <p class="scnote">Your name and votes stay in this browser only. The name also seeds which side each clip is on, so a reload keeps the same sides. Keys: 1 left, 2 right, 3 no difference; up and down pick the question; left and right arrows move between trials; space plays.</p>
+        <div class="rvrow"><button type="submit" class="cvbtn primary" id="rv-go" disabled>Start</button><span class="scnote" id="rv-state" role="status"></span></div>
+      </form>
+      <div id="rv-attr-start"></div>
+    </section>
+
+    <section id="rv-trial" aria-labelledby="h-rv-trial" hidden>
+      <div class="rvtop">
+        <h2 id="h-rv-trial" class="sr">Trial</h2>
+        <span id="rv-progress" class="rvprog" aria-live="polite"></span>
+        <span class="rvpbar" aria-hidden="true"><span id="rv-pbar"></span></span>
+        <button type="button" class="linkbtn" id="rv-exit">Back to start</button>
+      </div>
+      <div class="card rvtask">
+        <b id="rv-task"></b>
+        <p id="rv-ask"></p>
+        <p class="scnote" id="rv-mode"></p>
+        <p class="scnote">The site does not publish each task's own goal text, so the family's question stands in for it.</p>
+      </div>
+      <div class="cvbar" role="group" aria-label="Playback for both clips">
+        <button type="button" class="cvbtn" id="rv-play" aria-label="Play both clips">Play</button>
+        <button type="button" class="cvbtn" id="rv-restart">Restart</button>
+        <input type="range" id="rv-seek" min="0" max="1" step="0.001" value="0" aria-label="Position in both clips">
+        <span class="cvtime" id="rv-time">0:00.0 / 0:00.0</span>
+        <span class="cvspeed" id="rv-speed" role="group" aria-label="Playback speed">
+          <button type="button" class="cvbtn" data-rate="0.5" aria-pressed="false">0.5x</button>
+          <button type="button" class="cvbtn" data-rate="1" aria-pressed="true">1x</button>
+          <button type="button" class="cvbtn" data-rate="2" aria-pressed="false">2x</button>
+        </span>
+        <label class="cvloop"><input type="checkbox" id="rv-loop" checked> Loop</label>
+      </div>
+      <div class="cvgrid rvgrid" id="rv-grid"></div>
+      <div id="rv-qs" class="rvqs"></div>
+      <label class="rvnote">Note (optional) <textarea id="rv-note" rows="2" maxlength="500"></textarea></label>
+      <div class="rvrow rvnav">
+        <button type="button" class="cvbtn" id="rv-back">Back</button>
+        <button type="button" class="cvbtn" id="rv-skip">Skip</button>
+        <button type="button" class="cvbtn" id="rv-next">Next</button>
+        <span class="rvgap"></span>
+        <button type="button" class="cvbtn" id="rv-finish">Finish and reveal</button>
+      </div>
+      <p class="callout" id="rv-done" hidden>Every trial in this selection has an answer. <button type="button" class="linkbtn" id="rv-finish2">Finish and reveal</button></p>
+    </section>
+
+    <section id="rv-reveal" aria-labelledby="h-rv-reveal" hidden>
+      <h2 id="h-rv-reveal" class="sec">Results</h2>
+      <p class="sub">Revealed. Votes for this name are now locked in this browser.</p>
+      <div id="rv-results"></div>
+      <div class="card rvexport">
+        <h3>Export and agreement</h3>
+        <div class="rvrow">
+          <button type="button" class="cvbtn" id="rv-copy-json">Copy results (JSON)</button>
+          <button type="button" class="cvbtn" id="rv-copy-csv">Copy results (CSV)</button>
+          <button type="button" class="cvbtn" id="rv-dl-json">Download JSON</button>
+          <button type="button" class="cvbtn" id="rv-dl-csv">Download CSV</button>
+          <span class="copied" id="rv-copied" role="status" aria-live="polite"></span>
+        </div>
+        <label class="rvimport">Import a second reviewer's file (JSON or CSV) <input type="file" id="rv-import" accept=".json,.csv,application/json,text/csv"></label>
+        <div id="rv-agree"></div>
+      </div>
+      <div class="rvrow">
+        <button type="button" class="cvbtn" id="rv-home">Back to start</button>
+        <button type="button" class="cvbtn" id="rv-clear">Clear my votes and start over</button>
+      </div>
+      <div id="rv-attr-reveal"></div>
+    </section>
+  </main>
+  <script>
+    import "../scripts/review.js";
+  </script>
+</Base>
