@@ -2,12 +2,12 @@
  "exp": "fx14-model-dev-v2-a1",
  "release_tag": "run-fx14-model-dev-v2-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-fx14-model-dev-v2-a1",
- "generated": "2026-11-15T03:32:11Z",
+ "generated": "2026-11-15T03:45:37Z",
  "git_sha": "e54888e0958abc17ed1468645fb631bdd204b4e7",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -18,9 +18,7 @@
  "player_model": "",
  "notes": "fixed action scripts, model-side arms only, official judge 4 passes [arm 1/4 of fx14-model-dev-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 1/4 of fx14-model-dev-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "fx14-model-dev-v2-a1.md",
  "model": {
@@ -37,7 +35,7 @@
   {
    "task_id": "GC005",
    "family": "gc",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -48,128 +46,128 @@
   {
    "task_id": "GC016",
    "family": "gc",
-   "mean": null,
+   "mean": 3.9,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频较好地展现了男子走向宝塔并抬头的过程，背景和主体颜色、纹理相对稳定，但男子手中的相机在走动过程中消失。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC016.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC016.jpg"
   },
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 3.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "相机完成了360度旋转并经过了初始视角，但由于持续向右旋转，未能停在并保持在初始视角，而是继续旋转了第二圈并最终停在其他视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 2.25,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头在向右回转后没有停止在初始视角，而是继续向右平移，且画面内容完全改变，未能完整实现返回并面对展示窗的目标。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "镜头仅持续向左平移，未能执行向右平移以及回到中心的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC036.jpg"
   },
   {
    "task_id": "GC038",
    "family": "gc",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频虽然执行了先右后左的转向动作，但未能准确到达壁炉，且后半段场景完全崩坏，未能完成回到初始方向的完整轨迹。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC038.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC038.jpg"
   },
   {
    "task_id": "IF002",
    "family": "if",
-   "mean": null,
+   "mean": 3.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "The video shows a highly coherent and stable walk forward with consistent identity, solid foot contact, and a stable environment.",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF002.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF002.jpg"
   },
   {
    "task_id": "IF010",
    "family": "if",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频中机器狗在转向后突变为真狗，且工厂环境发生硬重置变为走廊，物理连贯性严重受损。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF010.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF010.jpg"
   },
   {
    "task_id": "IF017",
    "family": "if",
-   "mean": null,
+   "mean": 1.15,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "男子向前行走越过悬崖边缘后，违背物理规律在半空中继续悬空行走而未下落，且手中的武器发生了无端的替换与增生。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF017.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF017.jpg"
   },
   {
    "task_id": "IF031",
    "family": "if",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "男子向前行走，接触到树干后被合理阻挡并停下，未发生穿模，整体物理交互连贯自然。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF031.jpg"
   },
   {
    "task_id": "IF034",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "场景在接触前发生硬重置，导致交互未能发生。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF034.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF034.jpg"
   },
   {
    "task_id": "IF052",
    "family": "if",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "主体未执行提示词要求的行走动作，仅为镜头运动。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF052.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF052.jpg"
   },
   {
    "task_id": "OE001",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -180,7 +178,7 @@
   {
    "task_id": "OE005",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -191,7 +189,7 @@
   {
    "task_id": "OE018",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -202,7 +200,7 @@
   {
    "task_id": "OE035",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -213,7 +211,7 @@
   {
    "task_id": "OE064",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -224,7 +222,7 @@
   {
    "task_id": "OE074",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -235,7 +233,7 @@
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -246,55 +244,55 @@
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频完成了360度旋转和后退的相机运动，狗在重新出现时姿态发生了合理变化，但初始场景布局在旋转后发生了严重的复制和重置错误。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE039.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE039.jpg"
   },
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.25,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头转回后男子完全消失，随后在扶梯底部重置出现，且画面中凭空生成了巨大的镜头遮挡物，导致严重的连续性和物理逻辑失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE047.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE047.jpg"
   },
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "score_1.0"
    ],
-   "reason": "",
+   "reason": "未执行返回原视角的动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE048.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE048.jpg"
   },
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头未能按照指令要求转回初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE058.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE058.jpg"
   },
   {
    "task_id": "OE069",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频成功展示了镜头旋转180度并返回的过程，期间人物随自动扶梯合理下降，身份保持一致。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE069.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE069.jpg"
   }

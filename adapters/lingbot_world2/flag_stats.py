@@ -66,6 +66,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       (1 when the script ran out and the wrapper answered END, 0 when the
                                       harness cap cut it first); the total line adds scripted_chunks and
                                       scripted_ends
+  --lingbot-yaw-gain G                yaw_gain=G (or LEFT/RIGHT when they differ), yaw_gain_frames (pixel-frame
+                                      deltas sent to the model with scaled j/l yaw)
   --lingbot-kv-noise                  kv_noise=on|skip, kv_noise_t (requested T), kv_noise_chunks (session chunks
                                       whose KV write was re-noised; image-anchored chunks stay clean)
 
@@ -87,7 +89,8 @@ class FlagStats:
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
-                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0):
+                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = ""):
+        self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
@@ -122,7 +125,8 @@ class FlagStats:
                        "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
                        "scripted_chunks": 0, "scripted_ends": 0,
-                       "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0}
+                       "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
+                       "yaw_gain_frames": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -144,6 +148,7 @@ class FlagStats:
         self.sink_scale_armed, self.sink_scaled_chunks = False, 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
         self.kv_noise_chunks = 0
+        self.yaw_gain_frames = 0
         self.stg_chunks = self.stg_calls = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
@@ -291,6 +296,8 @@ class FlagStats:
             s.update(window=self.window)
         if self.turn_step:
             s.update(turn_step="inactive" if self.turn_step_dataset else f"{self.turn_step:g}")
+        if self.yaw_gain:
+            s.update(yaw_gain=self.yaw_gain, yaw_gain_frames=self.yaw_gain_frames)
         if self.if_identity:
             s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))
@@ -349,6 +356,7 @@ class FlagStats:
                    if self.weight_mod else "")
                 + (f" window={self.window}" if self.window else "")
                 + (f" turn_step={self.turn_step:g}" if self.turn_step else "")
+                + (f" yaw_gain={self.yaw_gain} yaw_gain_frames={t['yaw_gain_frames']}" if self.yaw_gain else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
                    if self.scripted else "")
@@ -388,6 +396,7 @@ class FlagStats:
         t["stg_chunks"] += self.stg_chunks
         t["stg_calls"] += self.stg_calls
         t["sink_scaled_chunks"] += self.sink_scaled_chunks
+        t["yaw_gain_frames"] += self.yaw_gain_frames
         print(self.line(s), flush=True)
         return s
 

@@ -1,5 +1,5 @@
 // Client-side results page: fetches results/experiments.csv from main at view time.
-"use strict";
+import * as RunInfo from "./runinfo.js";
 (function () {
   var REPO = "benceruleanlu/playworld-advancement";
   var RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/experiments.csv";
@@ -153,6 +153,9 @@
   /* ---------- state ---------- */
   var ALL = [];
   var source = "";
+  // plain-language run names (runinfo.js), rebuilt as the Scenes index and manifests arrive
+  var MANS = {}, RI = RunInfo.build([], [], {});
+  function refreshRI() { RI = RunInfo.build(ALL, scenesIdx && scenesIdx.runs, MANS); }
   var filt = { tests: false, capped: false, ended: false };
   var sort = { key: "overall", dir: -1 };
 
@@ -192,7 +195,7 @@
   /* ---------- runs table ---------- */
   // [key, label, class, numeric (sort desc first), short label for phones]
   var COLS = [
-    ["exp", "Run", "exp", false, "Run"],
+    ["exp", "What it tests", "exp", false, "What"],
     ["overall", "Overall", "num", true, "All"],
     ["gc", "GC", "num", true, "GC"], ["if", "IF", "num", true, "IF"],
     ["insight", "Insight", "num", true, "Ins"], ["outsight", "Out-of-sight", "num", true, "OoS"],
@@ -203,7 +206,9 @@
   }
   function rowEl(r) {
     var tr = el("tr", { class: r.ref ? "ref" : "" });
-    var td = el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp })]);
+    var info = r.ref ? null : RI.get(r.exp);
+    var td = el("td", { class: "exp" }, [el("div", { class: "nm", text: info ? info.short + " · " + info.size + " · " + info.driver : r.exp })]);
+    if (info) td.appendChild(el("div", { class: "rawid", text: r.exp }));
     if (!r.ref) td.appendChild(el("div", { class: "meta-line hide-sm", text: [r.runner, r.split, r.branch].filter(Boolean).join(" · ") }));
     td.appendChild(badgesFor(r));
     if (r.notes && !r.ref) td.appendChild(el("div", { class: "meta-line notes hide-sm", title: r.notes, text: r.notes }));
@@ -480,7 +485,7 @@
           el("span", { class: "res" + (res.none ? " none" : "") + (res.run ? " run" : ""), text: res.text })]);
         var body = el("div", { class: "more" }, [el("p", { text: m.body })]);
         var exps = (m.arms || []).map(function (a) { return [a[0], a[1]]; }).concat((m.also || []).map(function (e) { return ["", e]; }));
-        if (exps.length) body.appendChild(el("p", { class: "std", text: "Runs: " + exps.map(function (a) { return a[1] + (a[0] ? " (" + a[0] + ")" : "") + ": " + rowText(rowByExp(a[1])); }).join("; ") + "." }));
+        if (exps.length) body.appendChild(el("p", { class: "std", text: "Runs: " + exps.map(function (a) { var ri = RI.get(a[1]); return (ri && ri.armLabel ? ri.armLabel : a[0] || "run") + " (" + a[1] + "): " + rowText(rowByExp(a[1])); }).join("; ") + "." }));
         var links = el("p", { class: "links" });
         m.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
         body.appendChild(links);
@@ -568,10 +573,15 @@
     if (!q) return null;
     try { var u = new URL(q.replace(/\/?$/, "/"), location.href); return u.origin === location.origin ? u.href : null; } catch (e) { return null; }
   }
+  // one fetch per file, shared with compare.js
+  var JSON_CACHE = {};
   function getJson(name) {
-    var ov = mediaOverride();
-    if (ov) return get(ov + name, 6000).then(JSON.parse);
-    return get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
+    if (JSON_CACHE[name]) return JSON_CACHE[name];
+    var ov = mediaOverride(), p;
+    if (ov) p = get(ov + name, 6000).then(JSON.parse);
+    else p = get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
+    p.catch(function () { delete JSON_CACHE[name]; });
+    return (JSON_CACHE[name] = p);
   }
   function sceneCard(t, open) {
     var famName = FAMINFO[t.family] ? FAMINFO[t.family].name : (t.family || "-");
@@ -608,6 +618,25 @@
     var jc = judgeComment(t, false); if (jc) kids.push(jc);
     return el("article", { class: "scene" }, kids);
   }
+  // grouped run picker (runinfo.js): one optgroup per arm group, arms named by what they add
+  var scenesMore = false;
+  function fillRunSelect(sel, exps, current, showAll) {
+    clear(sel);
+    RI.options(exps, current, showAll).forEach(function (g) {
+      var parent = sel;
+      if (g.label) { parent = el("optgroup", { label: g.label }); sel.appendChild(parent); }
+      g.options.forEach(function (o) { parent.appendChild(el("option", { value: o.value, text: o.text })); });
+    });
+    sel.value = current;
+  }
+  function renderSceneDesc() {
+    var box = $("sc-desc"); if (!box) return; clear(box);
+    var info = RI.get(scenesExp); if (!info) { box.hidden = true; return; }
+    box.hidden = false;
+    box.appendChild(el("b", { text: info.head }));
+    box.appendChild(el("code", { class: "rawid", text: scenesExp }));
+    box.appendChild(el("span", { class: "screst", text: info.rest }));
+  }
   function renderScenes() {
     var grid = $("sc-grid"), empty = $("sc-empty"), filt2 = $("scenes-filters");
     if (!grid) return;
@@ -620,12 +649,8 @@
     }
     filt2.hidden = false;
     var rs = $("sc-run"), fs = $("sc-fam");
-    clear(rs); runs.forEach(function (r) {
-      var tags = [r.n_tasks + " tasks"];
-      if (!runScored(r)) tags.push("not scored");
-      if (runLabels(r).some(function (l) { return /^capped/.test(l); })) tags.push("capped");
-      var o = el("option", { value: r.exp, text: r.exp + " (" + tags.join(", ") + ")" }); if (r.exp === scenesExp) o.selected = true; rs.appendChild(o);
-    });
+    fillRunSelect(rs, runs.map(function (r) { return r.exp; }), scenesExp, scenesMore);
+    renderSceneDesc();
     var run = runs.filter(function (r) { return r.exp === scenesExp; })[0];
     if (run && run.release_url && /^https:/.test(run.release_url)) { $("sc-files").href = run.release_url; $("sc-files").hidden = false; } else $("sc-files").hidden = true;
     renderSceneModel();
@@ -687,11 +712,16 @@
       var official = runs.filter(function (r) { return runScored(r) && !runLabels(r).length; });
       scenesDefault = official.length ? official[0].exp : (runs.length ? runs[0].exp : "");
       if (!runs.some(function (r) { return r.exp === scenesExp; })) { scenesWanted = scenesExp; scenesExp = scenesDefault; scenesTask = ""; }
+      refreshRI();
+      // every manifest, for task families and recorded flags in the run names
+      Promise.all(runs.map(function (r) { return getJson(r.exp + ".json").then(function (m) { if (m && m.exp === r.exp) MANS[r.exp] = m; }, function () {}); }))
+        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); });
       return scenesExp ? loadManifest() : null;
-    }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); syncUrl(); });
+    }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); renderBoard(); syncUrl(); });
   }
   function wireScenes() {
     $("sc-run").addEventListener("change", function (e) {
+      if (e.target.value === RunInfo.MORE) { scenesMore = true; renderScenes(); $("sc-run").focus(); return; }
       scenesExp = e.target.value; scenesTask = ""; scenesWanted = "";
       var req = scenesReq + 1;
       loadManifest().then(function () { if (req === scenesReq) { renderScenes(); syncUrl(); } });
@@ -786,13 +816,14 @@
     });
   }
   initMode(); wire(); wireScenes(); addAnchors();
-  load().then(function (o) { ALL = o.rows; source = o.s; })
+  load().then(function (o) { ALL = o.rows; source = o.s; refreshRI(); })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
     .then(function () { readUrl(); renderFoot(); renderAll(); loadScenes(); shareData(); });
   // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
   function shareData() {
     window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
-      isCapped: isCapped, isScripted: isScripted, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
+      isCapped: isCapped, isScripted: isScripted, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt,
+      runInfo: function () { return RI; } };
     document.dispatchEvent(new CustomEvent("pwa:data"));
   }
 })();

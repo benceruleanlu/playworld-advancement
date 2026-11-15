@@ -2,12 +2,12 @@
  "exp": "fx14-model-dev-v2-a4",
  "release_tag": "run-fx14-model-dev-v2-a4",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-fx14-model-dev-v2-a4",
- "generated": "2026-11-15T03:33:16Z",
+ "generated": "2026-11-15T03:43:06Z",
  "git_sha": "e54888e0958abc17ed1468645fb631bdd204b4e7",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -23,9 +23,7 @@
  "player_model": "",
  "notes": "fixed action scripts, model-side arms only, official judge 4 passes [arm 4/4 of fx14-model-dev-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-reanchor --lingbot-if-slow-translation]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 4/4 of fx14-model-dev-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-reanchor --lingbot-if-slow-translation"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "fx14-model-dev-v2-a4.md",
  "model": {
@@ -42,7 +40,7 @@
   {
    "task_id": "GC005",
    "family": "gc",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -53,40 +51,40 @@
   {
    "task_id": "GC016",
    "family": "gc",
-   "mean": null,
+   "mean": 3.3,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频较好地展现了男子走向佛塔并仰视的过程，颜色和纹理保持稳定，但在视角上移时男子背部凭空出现了一根长自拍杆，存在局部结构突变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC016.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC016.jpg"
   },
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 2.7,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频在相机360度旋转过程中未能保持场景一致性，发生了硬切导致布局重置，初始的两人融合成一人，且最终画面中白色路标变为绿色，树干和长椅等关键物体消失。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 3.7,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头成功向左旋转并转回，初始橱窗内的所有关键物品在重现时保持了良好的身份、外观和位置一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -97,18 +95,18 @@
   {
    "task_id": "GC038",
    "family": "gc",
-   "mean": null,
+   "mean": 1.85,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频中发生了多次硬切，导致房间布局和物体被完全替换，且初始的白色壁炉在镜头移动时严重变形并变色为黑色火炉，完全未能保持世界的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC038.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/GC038.jpg"
   },
   {
    "task_id": "IF002",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -119,40 +117,40 @@
   {
    "task_id": "IF010",
    "family": "if",
-   "mean": null,
+   "mean": 2.3925,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频中主体成功完成了左转和向前行走的轨迹，但机器狗在移动中发生了严重的形变，变成了一个带有真实狗头的立柱并僵硬滑行，导致身份和运动学评分极低。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF010.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF010.jpg"
   },
   {
    "task_id": "IF017",
    "family": "if",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "男子未能持续向前行走并走下悬崖，而是在边缘停止并执行了与指令无关的挥剑动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF017.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF017.jpg"
   },
   {
    "task_id": "IF031",
    "family": "if",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "主体完全静止，未执行提示词要求的动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF031.jpg"
   },
   {
    "task_id": "IF034",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -163,18 +161,18 @@
   {
    "task_id": "IF052",
    "family": "if",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "发生了严重的穿模现象。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF052.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/IF052.jpg"
   },
   {
    "task_id": "OE001",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -185,7 +183,7 @@
   {
    "task_id": "OE005",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -196,7 +194,7 @@
   {
    "task_id": "OE018",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -207,7 +205,7 @@
   {
    "task_id": "OE035",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -218,7 +216,7 @@
   {
    "task_id": "OE064",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -229,7 +227,7 @@
   {
    "task_id": "OE074",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -240,7 +238,7 @@
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -251,40 +249,40 @@
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.75,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "未执行后退2步的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/OE039.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/OE039.jpg"
   },
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.875,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频成功执行了镜头的右转、转回和仰视动作，但男子在镜头移开时走下扶梯，转回时却违背物理规律瞬移回扶梯上，导致轨迹和状态演进严重断裂。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/OE047.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/OE047.jpg"
   },
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.375,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频成功展示了镜头向右转动并返回的过程，且视线外咖啡持续注入杯中的物理累积合理，但镜头返回后背景中的盆栽被完全替换并凭空出现了窗户，存在严重的场景一致性失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/OE048.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a4/OE048.jpg"
   },
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -295,7 +293,7 @@
   {
    "task_id": "OE069",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
