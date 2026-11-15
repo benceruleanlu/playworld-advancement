@@ -41,10 +41,10 @@ def test_each_flag_and_umbrella():
     assert FS.parse_flags(["--lingbot-fast-y"], {}) == FS.FastFlags(fast_y=True)
     assert FS.parse_flags(["--lingbot-t5-gpu"], {}) == FS.FastFlags(t5_gpu=True)
     assert FS.parse_flags([], {"LINGBOT_FAST_Y": "1"}) == FS.FastFlags(fast_y=True)
-    both = FS.FastFlags(t5_cache=True, fast_load=True, fast_y=True)
+    both = FS.FastFlags(t5_cache=True, fast_load=True, fast_y=True, fast_dit=True)
     assert FS.parse_flags(["--lingbot-fast"], {}) == both  # umbrella excludes t5-gpu (changes outputs)
     assert FS.parse_flags([], {"LINGBOT_FAST": "1"}) == both
-    assert both.describe() == "t5-cache,fast-load,fast-y"
+    assert both.describe() == "t5-cache,fast-load,fast-y,fast-dit"
 
 
 def test_strip_flags_keeps_other_args():
