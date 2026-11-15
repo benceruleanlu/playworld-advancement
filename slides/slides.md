@@ -485,7 +485,7 @@ Right: a six-task family mean moves about 0.5 on the same videos, drawn as the b
 
 Luna (openai:gpt-6-luna, proxy judge): byte-identical clips give 0.50 per task on average and 0.62 on a five-task mean. It lets 97% of gate checks pass, where Gemini failed a gate on 23% of tasks. Rank correlation with Gemini: 0.62 on 21 clips (0.41 on out-of-sight). Luna's identical-clip numbers come from walking-only GC tasks, where the servo arm and the control are the same file.
 
-We used Luna after Gemini scoring stopped working on Nov 15 (AGENTS.md records the credits running out at about 03:40 UTC, but Gemini-scored rows land in results/experiments.csv until 05:43 and the first failed scoring is at 06:14). Luna's scores are not reported numbers and are not comparable to the leaderboard.
+We used Luna after Gemini scoring stopped working on Nov 15 (the credits ran out about 03:55 UTC, were topped up, and ran out for good about 06:14; the last Gemini-scored row in results/experiments.csv is at 05:43). Luna's scores are not reported numbers and are not comparable to the leaderboard.
 
 The practical bar: about 0.5 for a six-task family mean under Gemini, about 0.6 under Luna. Any flag effect smaller than that cannot be seen in our dev comparisons. The next slide shows how much a clip changes when only the seed changes.
 -->
@@ -641,6 +641,8 @@ The site's Pairs section loads either pair.
     <div class="drow"><span class="dl">dev, seed 1</span><span class="db" style="width: 76.7%"></span><span class="dv" style="left: 76.7%">+0.92</span></div>
     <div class="drow"><span class="dl">dev2</span><span class="db" style="width: 81.7%"></span><span class="dv" style="left: 81.7%">+0.98</span></div>
   </div>
+  <div class="daxis"><span style="left:0%">0</span><span style="left:25%">0.3</span><span style="left:50%">0.6</span><span style="left:75%">0.9</span><span style="left:100%">1.2</span></div>
+  <div class="small muted dtitle">Change in out-of-sight family mean (Luna, treatment minus control)</div>
   <div class="small mt-4">Stack: turn calibration, caption prompt, insight director, IF slow translation, sink 10, window 22</div>
 </div>
 <div class="dg flex flex-col gap-2">
@@ -659,10 +661,14 @@ The site's Pairs section loads either pair.
 .dl { position: absolute; right: 100%; padding-right: 8px; top: 50%; transform: translateY(-50%); font-size: 14px; white-space: nowrap; }
 .drow .db { position: absolute; left: 0; top: 7px; height: 16px; background: #2f6fd6; }
 .dv { position: absolute; top: 50%; transform: translate(6px, -50%); font-size: 14px; font-variant-numeric: tabular-nums; }
+.daxis { position: relative; height: 22px; margin-left: 92px; margin-right: 52px; border-top: 1px solid currentColor; font-size: 13px; font-variant-numeric: tabular-nums; }
+.daxis span { position: absolute; top: 6px; transform: translateX(-50%); }
+.daxis span::before { content: ''; position: absolute; left: 50%; top: -6px; height: 5px; border-left: 1px solid currentColor; }
+.dtitle { margin-left: 92px; margin-top: 2px; }
 </style>
 
 <!--
-This is a lead from small samples, not a result. The three pairs are stk14-fx-dev-v1 at seeds 0 and 1 (4 passes) and stk14-fx-dev2-v1 (2 passes). Source: AGENTS.md, the stack bullet under "Proxy judge findings". The bars are drawn on a 0 to 1.2 scale; the dashed line is Luna's 0.6 bar from the judge slide (slide 9).
+This is a lead from small samples, not a result. The three pairs are stk14-fx-dev-v1 at seeds 0 and 1 (4 passes) and stk14-fx-dev2-v1 (2 passes). Source: AGENTS.md, the stack bullet under "Proxy judge findings". The bars are drawn on a 0 to 1.2 scale, shown by the axis; the dashed line is Luna's 0.6 bar from the judge slide (slide 9).
 
 Stack: turn calibration, caption prompt, insight director, IF slow translation, sink 10 (keep the first 10 latents, up from 6) and window 22 (up from 18). Against no flags, fixed actions, six out-of-sight tasks per pair, Luna: +1.02, +0.92, +0.98. Out-of-sight is the only family above Luna's 0.6 bar in all three pairs.
 
@@ -717,7 +723,8 @@ Dropped: pose memory retrieves as planned after #129, with no geometric gain, +0
 <div class="dg mt-8">
 <div class="tl">
   <div class="tlband" style="left: 51.9%; right: 0;"><span>Luna proxy scores only</span></div>
-  <div class="tlev" style="left: 51.9%"><b>06:14</b>Gemini scoring fails<br>(last Gemini row 05:43)</div>
+  <div class="tlev" style="left: 32.6%"><b>03:55</b>Gemini credits out<br>(topped up by 04:27)</div>
+  <div class="tlev" style="left: 51.9%"><b>06:14</b>out for good<br>(last Gemini row 05:43)</div>
   <div class="tlev" style="left: 75.1%"><b>09:01</b>GPU workspace disabled<br>during <code>clstk14-dev-v1</code></div>
   <div class="tlaxis"><span style="left:0%">00:00</span><span style="left:25%">03:00</span><span style="left:50%">06:00</span><span style="left:75%">09:00</span><span style="left:100%">12:00 UTC</span></div>
 </div>
@@ -750,7 +757,7 @@ No closed-loop comparison of stack plus servo exists.
 <!--
 Sources: AGENTS.md "Status against the timeline" (credits, the clstk14-dev-v1 bullet, the noise estimate) and "Run speed" for the 171-task budget at 8 shards.
 
-AGENTS.md records the Gemini AI Studio prepaid credits running out (402 RESOURCE_EXHAUSTED) at about 03:40 UTC Nov 15, but results/experiments.csv has Gemini-scored rows (dec14, sks14, pm14-fx-v1/v2, ins14-fx-v2, win14-fx-v1) up to 05:43, and scoring failed at 06:14. The band starts at 06:14. Later runs have Luna scores only.
+The Gemini AI Studio prepaid credits ran out twice, both times with 402 RESOURCE_EXHAUSTED "prepayment credits are depleted" in the score .err files. First: the first failed judge call is at 03:55 (mem14-fx-v1-a1, run 43673784900), and every score-only run from 04:00 to 04:08 failed (sks14-fx-v1-a1, run 43674792081: failed=24). After a top-up, the reruns from 04:27 scored, and results/experiments.csv has Gemini-scored rows (dec14, sks14, pm14-fx-v1/v2, ins14-fx-v2, win14-fx-v1) up to 05:43. Second: from 06:13 every score-only run failed (pm14-fx-v3-a1, run 43684466681: failed=24, first failed call 06:14). The band starts at 06:14. Later runs have Luna scores only.
 
 09:01 UTC Nov 15: the GPU provider workspace was disabled during clstk14-dev-v1, a 24-task dev run and the only closed-loop test of stack plus servo. Base 23 of 24 tasks, stack plus servo 8 of 24, the third arm (stack plus servo without IF slow translation) never started.
 
