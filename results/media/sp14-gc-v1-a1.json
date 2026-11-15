@@ -2,12 +2,12 @@
  "exp": "sp14-gc-v1-a1",
  "release_tag": "run-sp14-gc-v1-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a1",
- "generated": "2026-11-15T03:58:06Z",
+ "generated": "2026-11-15T04:36:37Z",
  "git_sha": "785e9ddba69cd26b608731b10b63e667d787147b",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "agent",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -23,9 +23,7 @@
  "player_model": "",
  "notes": "scripted player A/B of chunk-level GC flags; not a closed-loop score [arm 1/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna]",
  "labels": [
-  "not scored",
-  "scripted dataset moves (no AI player), A/B only",
-  "arm 1/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna"
+  "scripted dataset moves (no AI player), A/B only"
  ],
  "report": "sp14-gc-v1-a1.md",
  "model": {
@@ -42,66 +40,114 @@
   {
    "task_id": "GC005",
    "family": "gc",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.0
+   ],
+   "reason": "相机进行了部分环绕运动，但未能完成完整的360度环绕，且未能返回初始的相机位置和视角。",
+   "reason_en": "The camera performs a partial orbiting motion, but fails to complete a full 360-degree orbit and does not return to the initial camera position and perspective.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC005.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC005.jpg"
   },
   {
    "task_id": "GC016",
    "family": "gc",
-   "mean": null,
+   "mean": 3.4,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    4.0,
+    2.8
+   ],
+   "reason": "视频成功展示了男子走向宝塔并仰视的过程，各物体的一致性、纹理、颜色和相对位置均保持良好。",
+   "reason_en": "The video successfully shows the man walking toward the pagoda and looking up, with the consistency, texture, color, and relative positions of all objects well maintained.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC016.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC016.jpg"
   },
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 2.3,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.6
+   ],
+   "reason": "虽然执行了向右旋转的动作，但由于场景一致性丢失，未能完整呈现360度旋转并回到初始视角的轨迹。",
+   "reason_en": "Although a rightward rotation is executed, due to a loss of scene consistency, it fails to fully present a 360-degree rotation trajectory back to the initial perspective.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 3.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    4.0
+   ],
+   "reason": "视频完成了向左再向右的镜头平移，但在平移期间，固定橱窗内的紫水晶及其他物品严重变形为一个发光的紫色斑块，导致严重的身份、纹理和颜色一致性失败。",
+   "reason_en": "The video completes a camera pan to the left and then to the right, but during the panning, the amethyst and other items inside the fixed display window severely morph into a glowing purple blob, causing a severe failure in identity, texture, and color consistency.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 2.2,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.2,
+    2.2
+   ],
+   "reason": "视频在镜头回摇时未能保持场景一致性，发光的'HATS'小招牌消失，文字转移至旁边的粉色面板上，随后该面板又变色为黑色且文字变为'HATSS'。",
+   "reason_en": "The video fails to maintain scene consistency when the camera pans back; the small glowing 'HATS' sign disappears, the text shifts onto the adjacent pink panel, and subsequently the panel changes color to black with the text turning into 'HATSS'.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC036.jpg"
   },
   {
    "task_id": "GC038",
    "family": "gc",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "pass_scores": [
+    2.0,
+    2.0
+   ],
+   "reason": "视频在连续的镜头运动中出现了严重的场景重置和物体突变，初始的床、椅子和壁炉均未能保持一致性。",
+   "reason_en": "The video exhibits severe scene resets and abrupt object mutations during continuous camera movement, with the initial bed, chair, and fireplace all failing to maintain consistency.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC038.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a1/GC038.jpg"
   }

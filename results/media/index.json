@@ -1,6 +1,16 @@
 {
  "runs": [
   {
+   "exp": "sp14-gc-v1-a1",
+   "generated": "2026-11-15T04:36:37Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a1",
+   "scored": true,
+   "labels": [
+    "scripted dataset moves (no AI player), A/B only"
+   ]
+  },
+  {
    "exp": "mem14-fx-v1-a1",
    "generated": "2026-11-15T04:34:41Z",
    "n_tasks": 9,
@@ -98,18 +108,6 @@
    "scored": true,
    "labels": [
     "replayed dataset moves (open loop), A/B only"
-   ]
-  },
-  {
-   "exp": "sp14-gc-v1-a1",
-   "generated": "2026-11-15T03:58:06Z",
-   "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a1",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "scripted dataset moves (no AI player), A/B only",
-    "arm 1/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna"
    ]
   },
   {
