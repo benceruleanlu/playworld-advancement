@@ -1,6 +1,6 @@
 name: experiment
 # Shown in the Actions list and the API, so a run can be identified while it is still in progress.
-run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
+run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
 
 # Manual: Actions tab -> experiment -> Run workflow.
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
@@ -52,6 +52,9 @@ on:
       extra:
         description: Extra runner args (Modal backend), e.g. --lingbot-stateless
         default: ""
+      player_model:
+        description: Player (agent) model for closed-loop runs; passed to the runner as --agent-model
+        default: "gpt-6-luna"
 
 concurrency:
   group: experiment-${{ inputs.exp }}
@@ -92,7 +95,11 @@ jobs:
           cache: pip
       - name: Check player API before generation
         if: inputs.action_source != 'dataset' && inputs.stage != 'score-only'
-        run: timeout 20s python -m adapters.common.agent_api
+        env:
+          PLAYER_MODEL: ${{ inputs.player_model }}  # check the model this run will use, so a bad id fails here
+        run: |
+          [[ "$PLAYER_MODEL" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "player_model must match [A-Za-z0-9._:-]+" >&2; exit 2; }
+          timeout 30s python -m adapters.common.agent_api
       - name: Install FFmpeg
         if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
         run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
@@ -154,7 +161,13 @@ jobs:
           NUM_SHARDS: ${{ inputs.num_shards }}
           NOTES: ${{ inputs.notes }}
           EXTRA: ${{ inputs.extra }}
+          PLAYER_MODEL_IN: ${{ inputs.player_model }}
         run: |
+          # The player model goes to the runner as an argument, not through the shared Modal secret, so
+          # concurrent runs with different players cannot affect each other.
+          if [[ "$ACTION_SOURCE" != "dataset" && "$EXTRA" != *"--agent-model"* ]]; then
+            EXTRA="$EXTRA --agent-model $PLAYER_MODEL_IN"
+          fi
           modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
             --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
             --extra="$EXTRA"
