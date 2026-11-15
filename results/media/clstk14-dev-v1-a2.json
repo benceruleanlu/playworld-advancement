@@ -2,7 +2,7 @@
  "exp": "clstk14-dev-v1-a2",
  "release_tag": "run-clstk14-dev-v1-a2",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-clstk14-dev-v1-a2",
- "generated": "2026-11-15T09:02:58Z",
+ "generated": "2026-11-15T09:18:25Z",
  "git_sha": "b3d9201fd0a8e19f0136a26a302cd6920c84802d",
  "branch": "main",
  "runner": "lingbot_world2",
@@ -29,10 +29,9 @@
  "player_model": "gpt-6-luna",
  "notes": "closed loop: no flags vs stack plus servo vs same without IF slow translation, 24 dev tasks [arm 2/3 of clstk14-dev-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo]",
  "labels": [
-  "not scored",
-  "arm 2/3 of clstk14-dev-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-insight-director --lingbot-if-slow-translation --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo"
+  "not scored by the official judge; screened by openai:gpt-6-luna (screening scores are not shown here)"
  ],
- "report": "clstk14-dev-v1-a2.md",
+ "report": "clstk14-dev-v1-a2.openai-gpt-6-luna.md",
  "model": {
   "name": "LingBot-World v2",
   "org": "Robbyant Team",
