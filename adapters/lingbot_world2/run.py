@@ -993,7 +993,8 @@ def main(argv: list[str] | None = None) -> int:
     # Player hint is innermost: the pose summary always ends the goal text.
     if PLAYER_HINT:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
-                                         turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
+                                         turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"],
+                                         turntable=TURNTABLE if TURNTABLE.enabled else None)
         print("[lingbot] player hint: on", flush=True)
     if flags["measured_turn"]:  # its sentence sits just before the player hint's pose summary
         run_agent.decide_action = MT.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
@@ -1011,7 +1012,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[lingbot] GC completion hint: on", flush=True)
     if RETURN_STOP:  # outside the hints: a stopped step never reaches the player (or the hints' counters)
         run_agent.decide_action = RS.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
-                                          turn_cal=TURN_CAL, on_event=STATS.return_stop_event)
+                                          turn_cal=TURN_CAL, on_event=STATS.return_stop_event,
+                                          turntable=TURNTABLE if TURNTABLE.enabled else None)
         print("[lingbot] return stop: on", flush=True)
     if IF_HORIZON:  # outermost, IF only: its END is not counted by any hint; the player is told the budget
         run_agent.decide_action = IH.wrap(run_agent.decide_action, run_agent.parse_segments,

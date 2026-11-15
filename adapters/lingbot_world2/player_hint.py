@@ -19,6 +19,7 @@ import numpy as np
 
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import session as S
+from adapters.lingbot_world2 import turntable as TT
 
 YAW_KEYS = {"j": -1.0, "l": 1.0}  # poses.key_delta: j looks left, l looks right
 
@@ -48,19 +49,44 @@ def _angles(pose: np.ndarray) -> tuple[float, float]:
 
 
 def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20,
-           translation_gain: float = 1.0) -> dict:
+           translation_gain: float = 1.0, turntable=None) -> dict:
     """Commanded camera after `actions` (player words, e.g. 'LEFT'); to_key maps them to engine keys."""
-    pose, turned = np.eye(4), {"left": 0.0, "right": 0.0}
-    for i, a in enumerate(actions):
-        key = to_key(a)
-        d = _delta(key, step_keys(i, chunk_frames, session), turn_cal, unit, translation_gain)
-        if key in YAW_KEYS:
-            turned["left" if YAW_KEYS[key] < 0 else "right"] += abs(_angles(d)[0])
-        pose = pose @ d
+    turned = {"left": 0.0, "right": 0.0}
+    if turntable is not None and turntable.enabled:
+        st = TT.TurntableState()
+        old = P.YAW, P.PITCH
+        try:
+            for i, a in enumerate(actions):
+                key = to_key(a)
+                n = step_keys(i, chunk_frames, session)
+                if turn_cal:
+                    P.calibrate(False, n, unit)
+                yaw0 = st.yaw
+                for _ in range(n):
+                    st.step(key, P.YAW, P.PITCH, translation_gain, walk=turntable.walk)
+                dyaw = math.degrees(st.yaw - yaw0)
+                if dyaw < 0:
+                    turned["left"] += -dyaw
+                elif dyaw > 0:
+                    turned["right"] += dyaw
+        finally:
+            P.YAW, P.PITCH = old
+        pose = st.c2w()
+    else:
+        pose = np.eye(4)
+        for i, a in enumerate(actions):
+            key = to_key(a)
+            d = _delta(key, step_keys(i, chunk_frames, session), turn_cal, unit, translation_gain)
+            if key in YAW_KEYS:
+                turned["left" if YAW_KEYS[key] < 0 else "right"] += abs(_angles(d)[0])
+            pose = pose @ d
     heading, tilt = _angles(pose)
     step = float(step_keys(1, chunk_frames, session))  # frames of translation in one later action
-    return {"heading": heading, "tilt": tilt, "forward": pose[2, 3] / step, "right": pose[0, 3] / step,
-            "turned_left": turned["left"], "turned_right": turned["right"]}
+    out = {"heading": heading, "tilt": tilt, "forward": pose[2, 3] / step, "right": pose[0, 3] / step,
+           "turned_left": turned["left"], "turned_right": turned["right"]}
+    if turntable is not None and turntable.enabled:
+        out["up"] = -pose[1, 3] / step
+    return out
 
 
 def step_size(chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20) -> tuple[float, float]:
@@ -76,9 +102,9 @@ def _side(v: float, neg: str, pos: str, unit: str) -> str:
 
 
 def hint(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20,
-         translation_gain: float = 1.0) -> str:
+         translation_gain: float = 1.0, turntable=None) -> str:
     yaw, pitch = step_size(chunk_frames, session, turn_cal, unit)
-    s = replay(actions, to_key, chunk_frames, session, turn_cal, unit, translation_gain)
+    s = replay(actions, to_key, chunk_frames, session, turn_cal, unit, translation_gain, turntable=turntable)
     distance = "one step" if translation_gain == 1 else f"{translation_gain:g} of a normal step"
     return (
         f"Controls: one LEFT or RIGHT turns the camera about {yaw:.0f} degrees, one UP or DOWN tilts it about "
@@ -91,7 +117,7 @@ def hint(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, unit
     )
 
 
-def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_hint=None, if_slow=False):
+def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_hint=None, if_slow=False, turntable=None):
     """Wrap upstream decide_action so the goal it shows the player ends with hint().
     on_hint() is called once per hint sent (flag_stats counter)."""
 
@@ -99,7 +125,8 @@ def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_hint=None, if_
         if not kw.get("stationary_only"):
             text = hint(recent_actions or [], to_key, int(getattr(args, "chunk_frames", 33) or 33), session,
                         turn_cal, int(getattr(args, "action_frame_unit", 20) or 20),
-                        0.5 if if_slow and str(task.get("task_id", "")).startswith("IF") else 1.0)
+                        0.5 if if_slow and str(task.get("task_id", "")).startswith("IF") else 1.0,
+                        turntable=turntable)
             print(f"    [lingbot] player hint: {text.split('Commanded camera now, ', 1)[1]}", flush=True)
             task = {**task, "prompt": f"{task.get('prompt', '')}\n{text}"}
             if on_hint is not None:

@@ -547,3 +547,103 @@ def test_turntable_composes_with_yaw_servo(monkeypatch, capsys, tmp_path):
     assert "yaw_servo=on yaw_servo_chunks=13 yaw_servo_untrusted=0 turntable=ground turntable_frames=200" in out
 
 
+def test_player_hint_and_return_stop_follow_turntable():
+    from adapters.lingbot_world2 import player_hint as H
+    from adapters.lingbot_world2 import return_stop as RS
+
+    key_map = {"W": "w", "S": "s", "A": "a", "D": "d", "LEFT": "j", "RIGHT": "l", "UP": "i", "DOWN": "k", "WAIT": "none"}
+    to_key = key_map.get
+    cfg = TT.TurntableConfig(enabled=True, walk="ground")
+    cfg_free = TT.TurntableConfig(enabled=True, walk="free")
+
+    # 1. UP -> RIGHT -> DOWN -> LEFT: local replay retains residual heading/tilt, turntable closes to exact 0
+    loop_45 = ["UP", "RIGHT", "DOWN", "LEFT"]
+    s_off = H.replay(loop_45, to_key, 33, session=True, turn_cal=True)
+    s_off_explicit = H.replay(loop_45, to_key, 33, session=True, turn_cal=True, turntable=TT.TurntableConfig(enabled=False))
+    assert s_off == s_off_explicit and "up" not in s_off
+    assert abs(s_off["heading"]) > 5.0 and abs(s_off["tilt"]) > 10.0
+
+    s_on = H.replay(loop_45, to_key, 33, session=True, turn_cal=True, turntable=cfg)
+    assert s_on["heading"] == pytest.approx(0.0, abs=1e-12)
+    assert s_on["tilt"] == pytest.approx(0.0, abs=1e-12)
+    assert (s_on["turned_left"], s_on["turned_right"]) == pytest.approx((45.0, 45.0))
+    assert "heading 0 degrees, tilt 0 degrees" in H.hint(loop_45, to_key, 33, True, True, turntable=cfg)
+
+    # Pitch clamp at +/-85 deg is respected in player_hint.replay too
+    clamped = H.replay(["UP", "UP", "UP"], to_key, 33, session=True, turn_cal=True, turntable=cfg)
+    assert clamped["tilt"] == pytest.approx(85.0, abs=1e-9)
+
+    # 2. UP -> RIGHT*2 -> DOWN -> LEFT*2 (40 up, 90 right, 40 down, 90 left):
+    # Without turntable, residual tilt is 40 deg (> pitch_step/2 = 20 deg) so return_stop misses the return;
+    # with turntable, return_stop fires cleanly at action 6!
+    goal = "Turn right 90 degrees, look up 40 degrees, then return to the starting view."
+    loop_90 = ["UP", "RIGHT", "RIGHT", "DOWN", "LEFT", "LEFT"]
+    p = RS.plan(goal)
+    assert RS.returned_at(loop_90, to_key, p, 33, True, True, turntable=None) is None
+    assert RS.returned_at(loop_90, to_key, p, 33, True, True, turntable=cfg) == 6
+
+    # 3. Walk modes in return_stop: under free walk, climbing up along an 80-deg tilt ("UP","UP","W","W","DOWN","DOWN")
+    # leaves the camera ~1.97 steps above the start (forward ~0.35), so 3D distance keeps it away until "S","S" returns
+    climb_goal = "Walk forward to inspect above, then move back to the starting view."
+    p_climb = RS.plan(climb_goal)
+    climbed = ["UP", "UP", "W", "W", "DOWN", "DOWN"]
+    assert RS.returned_at(climbed, to_key, p_climb, 33, True, True, turntable=cfg_free) is None
+    returned_ray = ["UP", "UP", "W", "W", "S", "S", "DOWN", "DOWN"]
+    assert RS.returned_at(returned_ray, to_key, p_climb, 33, True, True, turntable=cfg_free) == 8
+
+
+def test_runner_wires_turntable_into_player_hint_and_return_stop(monkeypatch, capsys):
+    for key in tuple(R.os.environ):
+        if key.startswith("LINGBOT_"):
+            monkeypatch.delenv(key)
+    monkeypatch.setattr(R.agent_api, "patch", lambda ra, *a: "test")
+    monkeypatch.setattr(R.agent_api, "finish", lambda ra: None)
+    key_map = {"W": "w", "S": "s", "A": "a", "D": "d", "LEFT": "j", "RIGHT": "l", "UP": "i", "DOWN": "k", "WAIT": "none"}
+    seen_prompts, seen_decisions = [], []
+
+    def fake_import(fresh=True):
+        def base_decide(task, frame, recent_actions, chunk_idx, num_chunks, args, **kw):
+            seen_prompts.append(task["prompt"])
+            return "WAIT"
+
+        ra = SimpleNamespace(
+            run_task=lambda *a, **kw: None,
+            decide_action=base_decide,
+            to_sana_key=key_map.get,
+            SanaWMEngine=None,
+        )
+
+        def run_main():
+            args = SimpleNamespace(chunk_frames=33, action_frame_unit=20)
+            # Check player_hint after UP -> RIGHT -> DOWN -> LEFT on an un-armed goal (so return_stop passes through)
+            t_hint = {"task_id": "GC033", "prompt": "Inspect the room."}
+            ra.decide_action(t_hint, None, ["UP", "RIGHT", "DOWN", "LEFT"], 4, 30, args)
+            # Check return_stop after UP -> RIGHT*2 -> DOWN -> LEFT*2 on an armed pan/tilt return goal
+            t_stop = {"task_id": "GC033", "prompt": "Turn right 90 degrees, look up 40 degrees, then return to the starting view."}
+            seen_decisions.append(
+                ra.decide_action(t_stop, None, ["UP", "RIGHT", "RIGHT", "DOWN", "LEFT", "LEFT"], 6, 30, args)
+            )
+            return 0
+
+        ra.main = run_main
+        return ra
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    base_flags = ["run.py", "--lingbot-turn-cal", "--lingbot-player-hint", "--lingbot-return-stop"]
+    assert R.main(base_flags) == 0
+    assert R.main([*base_flags, "--lingbot-turntable-poses"]) == 0
+    assert R.main(base_flags) == 0
+
+    # Arm 0 & Arm 2 (turntable off): residual local rotation in hint, return_stop does NOT stop (falls through to base_decide)
+    assert len(seen_prompts) == 5  # 2 calls in arm 0, 1 call in arm 1 (t_stop stopped before player_hint!), 2 calls in arm 2
+    assert seen_prompts[0] == seen_prompts[3] and seen_prompts[1] == seen_prompts[4]
+    assert "heading 0 degrees, tilt 0 degrees" not in seen_prompts[0]
+    assert seen_decisions == ["WAIT", "WAIT", "WAIT"]
+
+    # Arm 1 (turntable on): exact 0 heading & 0 tilt in player_hint, and return_stop intercepts t_stop without asking player!
+    assert "heading 0 degrees, tilt 0 degrees" in seen_prompts[2]
+    out = capsys.readouterr().out
+    assert "[lingbot] return stop: GC033 back at the start after action 6 (LEFT), step 7 -> WAIT (player not asked)" in out
+
+
+
