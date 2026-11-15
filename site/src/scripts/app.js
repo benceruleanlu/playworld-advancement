@@ -592,7 +592,7 @@
     li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., \u201CPlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives\u201D, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources\u2019 terms.")]);
     li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, \u201CInfinite Worlds with Versatile Interactions\u201D, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/benceruleanlu/playworld-advancement/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
     li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
-    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-4.1-mini.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the first practice-task baseline used gpt-4.1-mini.")]);
     li([T("Site built with "), A("https://astro.build", "Astro"), T(".")]);
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
     f.appendChild(ul);
@@ -606,35 +606,60 @@
     insight: { name: "Insight evolution", n: 30, q: "Does something changing on screen (melting, filling, growing) keep changing?" },
     outsight: { name: "Out-of-sight evolution", n: 43, q: "When the camera looks away and back, has the hidden part of the world changed sensibly?" }
   };
-  // status: shipped | testing | planned. evidence: experiment names in results/experiments.csv.
+  // status: shipped | testing | planned | dropped. evidence: experiment names in results/experiments.csv.
+  // Plan of record: issue #9. Reasons for dropped cards: research/red-team-and-plan.md.
+  var RESEARCH = "https://github.com/" + REPO + "/blob/main/research/";
   var METHODS = [
-    { title: "Base model: LingBot-World v2", status: "shipped",
-      what: "Uses the open LingBot-World v2 model (1.3B and 14B sizes). Each key the player presses becomes a camera movement.", fams: ["gc", "if", "insight", "outsight"],
-      body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples. Our first baseline on the 24 practice tasks (14B, session memory, AI player, two scorings) is 1.64 ±0.13, below the paper's 1.82. The paper scored LingBot through its web demo on all 171 tasks, so the two numbers are not like for like.",
-      links: [["#14", PR + "14"]], evidence: ["lb14-session-agent-dev-v1", "lb13-stateless-gc005-v1"] },
-    { title: "Persistent session memory", status: "testing",
+    { title: "Base model: LingBot-World v2 14B", status: "shipped",
+      what: "Uses the open LingBot-World v2 model, 14B size. Each key the player presses becomes a camera movement.", fams: ["gc", "if", "insight", "outsight"],
+      body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples. The starting model for the final comparison is this runner with every optional change switched off. Our first baseline on the 24 practice tasks (14B, session memory, gpt-4.1-mini player, two scorings) is 1.64 ±0.13. It is a diagnostic only: the paper scored LingBot through its web demo on all 171 tasks, and the runs we compare now use a different player. The 1.3B size, SANA-WM and Matrix-Game 3.0 are not used for decisions.",
+      links: [["#14", PR + "14"]], evidence: ["lb14-session-agent-dev-v1"] },
+    { title: "Persistent session memory", status: "shipped",
       what: "Keeps the model's short-term memory between the player's moves, instead of starting fresh every two seconds.", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, a one-task smoke test) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline. The 24-task baseline (lb14-session-agent-dev-v1, 1.64) also runs with session memory. No run with session memory off exists on the same tasks and model, so its effect is unmeasured.",
+      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. Every 14B run uses it, including the starting model. No run with session memory off exists on the same tasks and model, so its effect is unmeasured, and no such run is planned before submission.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
       // like-for-like only: same 1.3B runner as the stateless baseline
       match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
-    { title: "A. Insight progress scheduler", status: "planned",
-      what: "Tells the model what the scene shows instead of what the player wants, so changes like melting keep going.", fams: ["insight"],
-      body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls. In review (#32): condition LingBot on the scene caption instead of the agent goal, which is \"wait and observe\" on 29 of 30 Insight tasks. Measured so far: the baseline scores 1.58 on the 6 practice Insight tasks (paper: 1.95). All six rollouts are 30 WAIT steps with no player involved, and the judge marked three of them static in at least one scoring.", links: [["#32", PR + "32"]], evidence: [] },
-    { title: "B. Control and gate fixes", status: "testing",
+    { title: "AI player: gpt-6-luna", status: "testing",
+      what: "Every run we compare now uses gpt-6-luna as the AI player, instead of gpt-4.1-mini.", fams: ["gc", "if", "outsight"],
+      body: "The failure count on the 24-task baseline found that the player, not the world model, decided most geometry and out-of-sight outcomes. gpt-4.1-mini reversed left and right 9 to 17 times on each out-of-sight task and up to 25 times on a geometry task, and in 4 of 6 out-of-sight rollouts the camera never returned to the start view, so the judge graded no content. It never ended a rollout more than one step early. The first check with gpt-6-luna runs on the 6 out-of-sight and 6 geometry practice tasks, read from the action logs (reversals, return to start, early END). Because the player changed, the 1.64 baseline is not the starting-model number.",
+      links: [["#61", PR + "61"]], evidence: ["lb14-luna-oos-s42", "lb14-luna-gc-s42"] },
+    { title: "Method candidate: caption prompt, re-anchor, player hint", status: "testing",
+      what: "Three optional changes, each off unless switched on, merged together so every test runs the same code.", fams: ["gc", "if", "insight", "outsight"],
+      body: "Caption prompt (#32): gives the model the dataset's scene description instead of the player's goal, which is \"wait and observe\" on 29 of 30 insight tasks. The benchmark's own Genie 3 player sends that description too; we disclose its use. Re-anchor (#46): shows the model the input image again when the commanded camera returns to the start pose, on geometry tasks only. Player hint (#59): tells the AI player how far one action turns the camera and where the commanded camera is relative to the start. Each change logs a per-task counter, so a test shows whether it fired. A change is kept only if per-task scores move by a full point on both of two seeds and no task that passed its gate in the baseline fails it. Merged with every change switched off (#63); none is scored yet.",
+      links: [["#63", PR + "63"], ["#32", PR + "32"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: ["lb14-cap-ins-s42"],
+      match: function (r) { return r.branch === "method/candidate-v1" || /^cand\d/.test(r.exp) || /caption|re-?anchor|player.?hint/i.test(r.notes); } },
+    { title: "Turn calibration", status: "testing",
       what: "Optional turn fix: one turn key now turns the angle the task expects (22.5° sideways, 20° up or down) instead of 34° and 11°.", fams: ["gc", "if", "outsight"],
-      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. Built: opt-in LingBot turn calibration, so one dataset token turns 22.5 degrees of yaw or 20 of pitch as the task prompts assume, instead of the default 34 and 11 degrees. In review (#46): opt-in re-anchoring for GC tasks, which shows the model the input image again when the commanded camera track returns to the start pose; not yet run on a GPU. In review (#59): an opt-in hint that tells the AI player how far one action turns the camera and where the commanded camera is relative to the start; unit tests only. What the 24-task baseline showed (turn calibration off): the player reversed left and right 9 to 25 times per rollout on the worst tasks, and in 4 of 6 out-of-sight rollouts the camera never returned to the start, so the judge graded no content. At the default rate one turn action is about 55 degrees, so a 90-degree turn is not a whole number of actions. Planned: pose-checked correction.",
-      links: [["#23", PR + "23"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: [],
+      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. At the default rate one closed-loop turn action is about 55 degrees, so a 90-degree turn is not a whole number of actions; with calibration it is 45. Merged with the setting off and unscored. It is tested only together with the player hint and re-anchor, which need it, not as a separate decision.",
+      links: [["#23", PR + "23"]], evidence: [],
       match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
-    { title: "C. Out-of-sight state tracker", status: "planned",
-      what: "Measures what the model still remembers after the camera looks away, with a look-away-and-back test.", fams: ["outsight"],
-      body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor. In review (#37): a model of what LingBot's KV cache still holds (a 6-latent sink plus the last 8 latents, about 2 s) and a GPU probe that turns away and back to test whether recall fails exactly when the view is evicted. The analysis in issue #48 finds that 31 of the 43 out-of-sight dataset trajectories, as commanded, end at the starting view (33 with turn calibration), which stays in the pinned latents, and that the rubric caps an unchanged return at 1.0. For those tasks the question is whether the scene progresses while unseen. That count is about commanded trajectories and says nothing about where the generated camera ends up with a live player. The first planned step has run: a failure census of the 24-task baseline (issue #49). With the AI player, in 4 of 6 out-of-sight rollouts the generated camera never returned to the start view, and on the two that did return, two scorings of the same video disagreed by up to 3 points. By the rule set before the census, work on hidden-state content waits until the player and turn control are fixed.", links: [["#37", PR + "37"]], evidence: [] },
-    { title: "D. Evaluation harness", status: "shipped",
+    { title: "Evaluation harness", status: "shipped",
       what: "Tools that run each experiment on rented GPUs, score it, log it, and publish this site.", fams: [],
-      body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
-      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
+      body: "pwa CLI (gen, score, report, compare, cells, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page. pwa cells shows the per-task scores of two runs side by side and counts the tasks that moved by a full point, the readout for keeping or dropping a change.",
+      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"], ["#64", PR + "64"]], evidence: [] },
+    { title: "Screening judge", status: "shipped",
+      what: "A second judge (gemini-4-hydrogen) for quick checks on practice tasks. Its scores never appear on this page.", fams: [],
+      body: "Scores from the screening judge go to their own folder and are never written to the results log, so they cannot reach the leaderboard. It is used only if, on the 24 baseline videos, it agrees with the official judge (Gemini 3.1 Pro at the benchmark's settings), and only to choose which test deserves an official run. Every number we report comes from the official judge.",
+      links: [["#64", PR + "64"]], evidence: [] },
+    { title: "Out-of-sight memory work", status: "dropped",
+      what: "Changes to what the model keeps in memory while the camera looks away. Not pursued before submission.", fams: ["outsight"],
+      body: "Studied: a model of what LingBot's cache still holds (a pinned start plus the last 2 s), a look-away-and-back GPU probe (#37), and proposals to change the pinned memory, rewrite it, or pick the best of several returns. A review ruled most of them unlikely to help or not buildable in time. The baseline then showed that in 4 of 6 out-of-sight rollouts the camera never came back to the start view, so memory changes could not be graded until the player and turn control work. Written up as a finding and future work.",
+      links: [["#37", PR + "37"]], evidence: [], doc: RESEARCH + "out-of-sight-evolution.md" },
+    { title: "Out-of-sight state tracker", status: "dropped",
+      what: "Save what the camera turned away from, update it with a language model, and show it again on return. Not built.", fams: ["outsight"],
+      body: "The plan was to save a crop and description of the target on exit, advance its state with an LLM while unseen, and condition generation on an edited image on return. It was cut for the same reason as the memory work: with the baseline player most out-of-sight rollouts never returned to the start view, so there was nothing to restore, and the build (an image editor plus writing into the model's memory) did not fit the time left.",
+      links: [], evidence: [], doc: RESEARCH + "red-team-and-plan.md" },
+    { title: "Insight progress scheduler", status: "dropped",
+      what: "A language model plans the stages of a process and re-prompts each chunk. Not built.", fams: ["insight"],
+      body: "Cut for time. The caption prompt in the method candidate is the insight change being tested instead. On the baseline, insight scored 1.58 on the 6 practice tasks (paper: 1.95): all six rollouts are 30 wait steps with no player involved, and four were marked static in at least one scoring.",
+      links: [], evidence: [], doc: RESEARCH + "baseline-census.md" },
+    { title: "Fine-tuning", status: "dropped",
+      what: "The track allows fine-tuning; we chose not to train before submission.", fams: [],
+      body: "LingBot-World v2 ships inference code only, and the weights we run are a distilled few-step model whose training loop is not released. A plain low-rank fine-tune would likely break its few-step sampler, and each debug cycle would take about an hour. Kept as future work.",
+      links: [["#58", "https://github.com/" + REPO + "/issues/58"]], evidence: [], doc: RESEARCH + "red-team-and-plan.md" }
   ];
-  var STATUS_LABEL = { shipped: "in use", testing: "built, not yet tested", planned: "in review" };
+  var STATUS_LABEL = { shipped: "in use", testing: "built, not yet tested", planned: "in review", dropped: "dropped" };
 
   /* ---------- protocol checks ---------- */
   var CHECKS = [
@@ -804,7 +829,7 @@
   // one row per change: name, status, measured result; description and PR links open on click
   function renderMethods() {
     var box = $("methods"); clear(box);
-    var order = { shipped: 0, testing: 1, planned: 2 };
+    var order = { shipped: 0, testing: 1, planned: 2, dropped: 3 };
     METHODS.slice().sort(function (a, b) { return order[a.status] - order[b.status]; }).forEach(function (mth) {
       var ev = mth.evidence.map(rowByExp).filter(function (r) { return r && !isLive(r); });
       if (mth.match) realRows().forEach(function (r) { if (!isLive(r) && mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
@@ -813,6 +838,7 @@
       var result;
       if (ev.length) result = el("span", { class: "res" }, [el("b", { text: fmt(ev[0].overall) }), document.createTextNode(" on " + ev[0].n_tasks + " task" + (ev[0].n_tasks === 1 ? "" : "s"))]);
       else if (mth.status === "planned") result = el("span", { class: "res none", text: "in review" });
+      else if (mth.status === "dropped") result = el("span", { class: "res none", text: "not run" });
       else if (!mth.fams.length) result = el("span", { class: "res none", text: "tooling" });
       else result = el("span", { class: "res none", text: mth.baseline ? "no fair comparison yet" : "not tested yet" });
       var summary = el("summary", null, [
@@ -825,7 +851,8 @@
       if (ev.length) body.appendChild(el("p", { class: "std", text: "Runs: " + ev.map(function (r) { return r.exp + " (" + fmt(r.overall) + ", " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop") + ")"; }).join("; ") }));
       else if (mth.baseline) { var br = rowByExp(mth.baseline); body.appendChild(el("p", { class: "std", text: "Baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + "." })); }
       var links = el("p", { class: "links" });
-      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: (/\/issues\//.test(l[1]) ? "Issue " : "PR ") + l[0] })); });
+      if (mth.doc) links.appendChild(el("a", { href: mth.doc, target: "_blank", rel: "noopener", text: "Research note" }));
       if (links.childNodes.length) body.appendChild(links);
       box.appendChild(el("li", null, [el("details", null, [summary, body])]));
     });
