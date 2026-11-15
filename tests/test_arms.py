@@ -324,6 +324,68 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
     assert a2["module"].decide_action is a2["decide"] and a3["module"].decide_action is a3["decide"]
 
 
+def test_lingbot_arms_do_not_share_t5_embeddings_across_cpu_threads(tmp_path, monkeypatch):
+    """Arms differing in --lingbot-cpu-threads on one pipe (CPU T5): each arm finds upstream's in-memory
+    prompt embeddings empty unless the previous arm ran at the same thread count."""
+    from adapters.lingbot_world2 import run as R
+
+    root, weights = tmp_path / "lingbot", tmp_path / "weights"
+    (root / "wan").mkdir(parents=True)
+    (weights / "lingbot-world-v2-14b-causal-fast").mkdir(parents=True)
+    for k in ("LINGBOT_VARIANT", "LINGBOT_TURN_CAL", "LINGBOT_SESSION", "LINGBOT_PLAYER_HINT", "LINGBOT_PROMPT_MODE",
+              "LINGBOT_REANCHOR", "LINGBOT_RETURN_STOP", "LINGBOT_GC_COMPLETION_HINT", "PLAYER_API_PROVIDER",
+              "LINGBOT_FAST", "LINGBOT_FAST_T5", "LINGBOT_FAST_LOAD", "LINGBOT_FAST_Y", "LINGBOT_FAST_DIT",
+              "LINGBOT_CPU_THREADS", "LINGBOT_DIT_CHECKSUM", "LINGBOT_T5_CPU"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("LINGBOT_ROOT", str(root))
+    monkeypatch.setenv("LINGBOT_WEIGHTS", str(weights))
+
+    class Pipe:
+        def __init__(self, **kw):
+            self._t5_cache = {}
+
+    wan = types.ModuleType("wan")
+    wan.WanI2VCausal = Pipe
+    configs = types.ModuleType("wan.configs")
+    configs.WAN_CONFIGS = {"i2v-A14B": SimpleNamespace(sample_shift=5.0)}
+    i2v = types.ModuleType("wan.image2video")
+    for n in ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model"):
+        setattr(i2v, n, lambda *a, **k: None)
+    wan.image2video = i2v
+    monkeypatch.setitem(sys.modules, "wan", wan)
+    monkeypatch.setitem(sys.modules, "wan.configs", configs)
+    monkeypatch.setitem(sys.modules, "wan.image2video", i2v)
+    monkeypatch.setattr(R, "_PIPES", {})
+    monkeypatch.setattr(R, "_print_cpu", lambda: None)
+    # torch's thread count, faked: the process starts at 1 (what Modal's default CPU request gives)
+    threads = {"n": 1}
+    monkeypatch.setattr(R.FS, "_DEFAULT_THREADS", [])
+    real_apply = R.FS.apply_cpu_threads
+    monkeypatch.setattr(R.FS, "apply_cpu_threads", lambda spec: real_apply(
+        spec, lambda n: threads.update(n=n), lambda: threads["n"], usable=lambda: 24))
+
+    seen = []
+
+    def fake_import(fresh=False):
+        m = types.ModuleType("run_agent")
+
+        def main():
+            engine = m.SanaWMEngine(SimpleNamespace(seed=42, fps=16, max_total_frames=961, action_frame_unit=20))
+            seen.append(dict(engine.pipe._t5_cache))  # what this arm's first encode would find in memory
+            engine.pipe._t5_cache["goal"] = f"ctx@{threads['n']}"  # what its encode leaves behind
+
+        m.main, m.run_task = main, lambda *a, **k: None
+        m.decide_action, m.to_sana_key = (lambda *a, **k: "W"), (lambda a: "w")
+        return m
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    for arm in ([], ["--lingbot-cpu-threads=8"], ["--lingbot-cpu-threads=8"], ["--lingbot-cpu-threads"], []):
+        assert R.main(["run.py", "--tasks", "GC005", *arm]) == 0
+    # default, 8 (dropped), 8 again (kept), auto=24 (dropped), restored default 1 (dropped)
+    assert seen == [{}, {}, {"goal": "ctx@8"}, {}, {}]
+    assert threads["n"] == 1
+
+
 def test_lingbot_return_stop_is_per_arm(tmp_path, monkeypatch, capsys):
     """Two arms in one process, the first with --lingbot-return-stop (plus hint and turn-cal), the second
     without: the stop answers only in arm 1, arm 2 asks its own player, and no counter or wrapper carries over."""
