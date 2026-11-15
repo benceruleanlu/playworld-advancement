@@ -52,9 +52,9 @@ class SettleBudget:
         if not self.armed: return list(keys)
         out: list[str] = []
         for k in keys:
-            if not (active := k.strip().lower() not in ("", "none")) or self.active_frames < self.budget:
-                self.active_frames += active; out.append(k)
-            else: self.settled_frames += 1; out.append("none")
+            if self.active_frames < self.budget:
+                self.active_frames += k.strip().lower() not in ("", "none"); out.append(k)
+            else: self.settled_frames += 1; out.append("none")  # post-budget WAIT frames count toward the hold too
         return out
     def step(self, keys: list[str], cont: bool, task: dict | None, name: str, unit: int, on_settled) -> list[str]:
         if not cont: self.reset(task, name, unit)
