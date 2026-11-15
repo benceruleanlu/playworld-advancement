@@ -123,7 +123,7 @@ jobs:
             pip install -q -e .
           fi
       - name: Set up FFmpeg
-        # ubuntu-24.04 does not ship ffmpeg. Scoring (upstream frame sampling: fps/scale/pad, JPEG) and pwa media
+        # The ubuntu-latest image does not ship ffmpeg. Scoring (upstream frame sampling: fps/scale/pad, JPEG) and pwa media
         # (libx264, thumbnail, +faststart) use the pinned static build from imageio-ffmpeg, as ci.yml does, instead of apt.
         if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
         run: |
