@@ -2,33 +2,23 @@
 // Static shell. All numbers are rendered client-side by src/scripts/app.js from the live CSV.
 import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
-import Hero from "../components/Hero.astro";
-import Ruler from "../components/Ruler.astro";
-import WhereWeWin from "../components/WhereWeWin.astro";
-import Leaderboard from "../components/Leaderboard.astro";
-import Progress from "../components/Progress.astro";
-import Scenes from "../components/Scenes.astro";
-import Compare from "../components/Compare.astro";
-import Methods from "../components/Methods.astro";
-import Rigor from "../components/Rigor.astro";
-import Team from "../components/Team.astro";
+import Header from "../components/Header.astro";
+import Watch from "../components/Watch.astro";
+import Scores from "../components/Scores.astro";
+import Testing from "../components/Testing.astro";
+import Runs from "../components/Runs.astro";
 ---
 <Base>
   <a class="skip" href="#top">Skip to results</a>
   <Nav />
   <main class="wrap" id="top" aria-busy="true" tabindex="-1">
     <div class="view lead">
-      <Hero />
-      <Ruler />
+      <Header />
     </div>
-    <WhereWeWin />
-    <Leaderboard />
-    <Progress />
-    <Scenes />
-    <Compare />
-    <Methods />
-    <Rigor />
-    <Team />
+    <Watch />
+    <Scores />
+    <Testing />
+    <Runs />
   </main>
   <footer class="wrap" id="foot"></footer>
   <script>
