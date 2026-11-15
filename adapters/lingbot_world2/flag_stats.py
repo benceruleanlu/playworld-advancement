@@ -54,7 +54,7 @@ class FlagStats:
                  return_stop: bool = False, gc_completion: bool = False,
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
-                 gc_director: bool = False):
+                 gc_director: bool = False, gc_ease_turns: bool = False):
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -62,6 +62,7 @@ class FlagStats:
         self.if_repeat = bool(if_repeat)
         self.if_slow = bool(if_slow)
         self.gc_director = bool(gc_director)
+        self.gc_ease_turns = bool(gc_ease_turns)
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
@@ -71,7 +72,7 @@ class FlagStats:
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
-                       "gc_director_chunks": 0, "gc_director_updates": 0}
+                       "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -82,6 +83,7 @@ class FlagStats:
         self.if_repeat_checks = 0
         self.if_translation_frames = 0
         self.gc_director_chunks = self.gc_director_updates = 0
+        self.gc_eased_turns = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -176,6 +178,8 @@ class FlagStats:
         if self.if_slow:
             s.update(if_slow="on", if_translation_frames=self.if_translation_frames)
         s.update(self.director_summary(vars(self)))
+        if self.gc_ease_turns:
+            s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
@@ -200,7 +204,8 @@ class FlagStats:
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
                 + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
                    if self.if_horizon else "")
-                + "".join(f" {k}={v}" for k, v in self.director_summary(t).items()))
+                + "".join(f" {k}={v}" for k, v in self.director_summary(t).items())
+                + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -213,6 +218,7 @@ class FlagStats:
         t["tasks"] += 1
         t["gc_director_chunks"] += self.gc_director_chunks
         t["gc_director_updates"] += self.gc_director_updates
+        t["gc_eased_turns"] += self.gc_eased_turns
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
