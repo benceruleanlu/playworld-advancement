@@ -27,6 +27,30 @@
     (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
     return e;
   }
+  // The judge's reason: the English display copy (translated after scoring) with a toggle for the judge's original,
+  // which is authoritative; the original alone, marked untranslated, when no copy exists.
+  function judgeComment(t, open) {
+    if (!t.reason) return null;
+    var attrs = open ? { open: "" } : null;
+    if (t.reason_en) {
+      var orig = el("p", { class: "jorig", text: t.reason });
+      orig.hidden = true;
+      var btn = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
+      btn.addEventListener("click", function () {
+        orig.hidden = !orig.hidden;
+        btn.textContent = orig.hidden ? "show original" : "hide original";
+        btn.setAttribute("aria-expanded", orig.hidden ? "false" : "true");
+      });
+      return el("details", attrs, [el("summary", { text: "Judge's comment (translated from the judge's original)" }),
+        el("p", { text: t.reason_en }), btn, orig]);
+    }
+    return el("details", attrs, [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason }),
+      el("p", { class: "jnote", text: "judge's own words, untranslated" })]);
+  }
+  function passesText(t) {
+    var ps = t.pass_scores || [];
+    return ps.length ? "per pass " + ps.map(function (v) { return typeof v === "number" ? String(Math.round(v * 100) / 100) : "-"; }).join("/") : null;
+  }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
   function noop() {}
   function fmtT(s) {
@@ -257,7 +281,7 @@
     var sj = screeningJudge(m), score, judge;
     if (runScored(m) && typeof t.mean === "number") {
       score = api.fmt(t.mean);
-      judge = "official judge (Gemini 3.1 Pro)" + (row && row.passes ? ", mean of " + row.passes + " passes" : "");
+      judge = "official judge (Gemini 3.1 Pro)" + (row && row.passes ? ", mean of " + row.passes + " passes" : "") + (passesText(t) ? " (" + passesText(t) + ")" : "");
     } else if (runScored(m)) { score = "no score"; judge = "official judge, no usable score for this task"; }
     else if (row && row.overall !== null) { score = "no score"; judge = "scored by the official judge (run mean " + api.fmt(row.overall) + "), but this clip's manifest has no per-task score"; }
     else if (sj) { score = "no score"; judge = "screening judge " + sj + " only; screening scores are not shown"; }
@@ -294,7 +318,7 @@
       el("div", { class: "cvscore" }, [el("span", { class: "sc", text: score }), el("span", { class: "judge", text: judge })]),
       b, dl
     ];
-    if (t.reason) kids.push(el("details", { open: "" }, [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })]));
+    var jc = judgeComment(t, true); if (jc) kids.push(jc);
     if (model && model.name) {
       var cred = el("p", { class: "cvcred" }, ["Generated with "]);
       if (model.url && /^https:/.test(model.url)) cred.appendChild(el("a", { href: model.url, target: "_blank", rel: "noopener", text: model.name }));

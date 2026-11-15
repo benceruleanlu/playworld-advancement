@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import io
 import math
 import os
@@ -70,13 +71,48 @@ def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = N
     for t in sel:
         rows = [next(r for r in p["tasks"] if r["task_id"] == t["task_id"]) for p in per_pass.values()]
         m, s = mean_std([r["value"] for r in rows])
+        vals = [r["value"] for r in rows]
+        reasons = [pass_reason(exp, t["task_id"], k, judge) for k in passes]
+        i = representative(vals, reasons, m)
         tasks[t["task_id"]] = {"family": t["family"], "mean": m, "std": s,
-                               "statuses": [r["status"] for r in rows], "values": [r["value"] for r in rows]}
+                               "statuses": [r["status"] for r in rows], "values": vals,
+                               # per-pass task values (the ones the mean is taken over) and the reason of the pass
+                               # closest to the mean, so the comment shown matches the score shown
+                               "pass_scores": vals, "reason": reasons[i] if i is not None else "",
+                               "reason_pass": passes[i] if i is not None else None}
     return {"exp": exp, "generated": now(), "passes": passes, "strict": strict, "n_tasks": len(sel),
             "n_missing": len(sel) - len(present), "families": fams, "overall": om, "overall_std": os_,
             "overall_per_pass": overall_vals, "per_pass": {str(k): {kk: v for kk, v in p.items() if kk != "tasks"}
                                                           for k, p in per_pass.items()},
             "tasks": tasks, "judge": judge_json(judge)}
+
+
+def pass_reason(exp: str, tid: str, k: int, judge: Judge | None = None) -> str:
+    """The verifier's reason for task tid in pass k: a gate or embedded IF/OE failure reason first, then the
+    score summary, then a verifier error. '' when the pass has none."""
+    d = eval_dir(exp, judge=judge) / f"pass{k}"
+    s = (read_json(d / f"{tid}_score.json") or {}).get("score") or {}
+    g = (read_json(d / f"{tid}_gate.json") or {}).get("score") or {}
+    if not isinstance(s, dict):
+        s = {}
+    for src in (g, s.get("if_instruction_following_check") or {}, s.get("oe_instruction_following_check") or {}):
+        if isinstance(src, dict) and src.get("failure_reason_zh"):
+            return str(src["failure_reason_zh"])
+    if s.get("summary_zh"):
+        return str(s["summary_zh"])
+    if s.get("error"):
+        return f"verifier error: {s['error']}"
+    return ""
+
+
+def representative(values: list, reasons: list[str], mean: float | None) -> int | None:
+    """Index of the pass whose reason represents the task: among passes with a reason, the one whose value is
+    closest to the pass-mean (ties: earliest). Passes without a value only count when none has one."""
+    have = [i for i, r in enumerate(reasons) if r]
+    scored = [i for i in have if values[i] is not None]
+    if scored and mean is not None:
+        return min(scored, key=lambda i: (abs(values[i] - mean), i))
+    return have[0] if have else None
 
 
 def judge_json(judge: Judge | None) -> dict | None:
@@ -180,13 +216,32 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
     return out.getvalue()
 
 
+def passes_cell(scores) -> str:
+    """Per-pass task values, compact: 4/4/3.5/4 ('-' for a dropped pass)."""
+    return "/".join("-" if v is None else f"{v:g}" if float(v).is_integer() else f"{v:.2f}".rstrip("0")
+                    for v in scores or []) or "-"
+
+
+def reason_md(r: dict) -> str:
+    """English display copy first with the judge's original under it (the original is authoritative), else the
+    original alone."""
+    orig, en = r.get("reason") or "", r.get("reason_en") or ""
+    if not en:
+        return _md_cell(orig)
+    esc = lambda x: _md_cell(html.escape(x, quote=False))  # noqa: E731  (inside HTML tags)
+    return f"{esc(en)}<details><summary>judge's original</summary>{esc(orig)}</details>"
+
+
 def render_failures_md(rows: list[dict]) -> str:
     if not rows:
         return "No failures.\n"
-    out = ["| task | family | mean | status | reason |", "|---|---|---:|---|---|"]
+    out = ["| task | family | mean | passes | status | reason |", "|---|---|---:|---|---|---|"]
     for r in rows:
-        out.append(f"| {r['task_id']} | {r['family']} | {_md2(r['mean'])} | {_md_cell(', '.join(r['status']))} "
-                   f"| {_md_cell(r['reason'])} |")
+        out.append(f"| {r['task_id']} | {r['family']} | {_md2(r['mean'])} | {passes_cell(r.get('pass_scores'))} "
+                   f"| {_md_cell(', '.join(r['status']))} | {reason_md(r)} |")
+    if any(r.get("reason_en") for r in rows):
+        out += ["", "> Reasons are machine-translated into English for display after scoring; the judge's original "
+                "text (under each) is authoritative."]
     return "\n".join(out) + "\n"
 
 
@@ -343,7 +398,9 @@ def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: boo
     if not rep["passes"]:
         hint = f" --judge-model {judge.spec}" if judge else ""
         log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}{hint}`)")
-    elif judge:
+        return rep
+    add_english(exp, list(rep["tasks"].values()), judge)  # display copy of each reason; the scores are untouched
+    if judge:
         # screening judge: never the official report.json, never the results csv
         if write and not strict:
             write_json(exp_dir(exp) / f"report.{judge.slug}.json", rep)
@@ -401,8 +458,27 @@ def render_compare(c: dict) -> str:
     return out.getvalue()
 
 
-def failures(exp: str, sel: list[dict], all_tasks: bool = False, judge: Judge | None = None) -> list[dict]:
-    """Tasks that are missing, gate-failed or scored 1.0, with the verifier's reason; every task with all_tasks."""
+def translations_path(exp: str, judge: Judge | None = None):
+    """Cache of English display copies of this run's reasons (pwa/translate.py), next to the verifier output."""
+    return eval_dir(exp, judge=judge) / "translations.json"
+
+
+def add_english(exp: str, rows: list[dict], judge: Judge | None = None) -> None:
+    """Set reason_en on each row (display only, after scoring; '' when untranslated or already English). Never
+    raises and never changes a score or the original reason."""
+    from . import translate
+    try:
+        translate.fill(rows, translations_path(exp, judge))
+    except Exception as e:  # noqa: BLE001
+        log(f"[pwa] translate: skipped ({type(e).__name__})")
+        for r in rows:
+            r.setdefault("reason_en", "")
+
+
+def failures(exp: str, sel: list[dict], all_tasks: bool = False, judge: Judge | None = None,
+             english: bool = True) -> list[dict]:
+    """Tasks that are missing, gate-failed or scored 1.0, with the verifier's reason (from the pass closest to the
+    task's mean) and its English display copy; every task with all_tasks."""
     rep = build(exp, sel, judge=judge)
     out = []
     for t in sel:
@@ -416,21 +492,11 @@ def failures(exp: str, sel: list[dict], all_tasks: bool = False, judge: Judge | 
             bad = ["missing"]
         if not bad and not low and not all_tasks:
             continue
-        reasons = []
-        for k in rep["passes"]:
-            d = eval_dir(exp, judge=judge) / f"pass{k}"
-            s = (read_json(d / f"{tid}_score.json") or {}).get("score") or {}
-            g = (read_json(d / f"{tid}_gate.json") or {}).get("score") or {}
-            for src in (g, s.get("if_instruction_following_check") or {}, s.get("oe_instruction_following_check") or {}):
-                if isinstance(src, dict) and src.get("failure_reason_zh"):
-                    reasons.append(src["failure_reason_zh"])
-            if s.get("summary_zh"):
-                reasons.append(s["summary_zh"])
-            if s.get("error"):
-                reasons.append(f"verifier error: {s['error']}")
         status = sorted(set(bad)) or (["score_1.0"] if low else ["ok"])
         out.append({"task_id": tid, "family": t["family"], "mean": tr["mean"], "status": status,
-                    "reason": reasons[0] if reasons else ""})
+                    "pass_scores": tr["pass_scores"], "reason": tr["reason"], "reason_pass": tr["reason_pass"]})
+    if english and out:
+        add_english(exp, out, judge)
     return out
 
 
