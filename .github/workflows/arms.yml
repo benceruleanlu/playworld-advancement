@@ -117,11 +117,27 @@ jobs:
         run: |
           [[ "$PLAYER_MODEL" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "player_model must match [A-Za-z0-9._:-]+" >&2; exit 2; }
           timeout 30s python -m adapters.common.agent_api
-      - name: Install FFmpeg, Modal CLI and pwa
+      - name: Install Python dependencies
+        run: pip install -q modal huggingface_hub -e .
+      - name: Set up FFmpeg
+        # pwa media (libx264, thumbnail, +faststart) uses the pinned static build from imageio-ffmpeg, as experiment.yml does.
         run: |
-          sudo apt-get update -q && sudo apt-get install -yq ffmpeg
-          pip install -q modal huggingface_hub
-          pip install -q -e .
+          pip install -q --only-binary=:all: imageio-ffmpeg==0.6.0
+          mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
+          ln -sf "$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -version
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -hide_banner -encoders | grep ' libx264 ' >/dev/null || { echo "ffmpeg lacks libx264" >&2; exit 1; }
+          echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
+      - name: Refuse arm names already in the pwa-runs Volume
+        # Before any csv row is touched. modal_app.py repeats this guard at launch (the authoritative check).
+        run: |
+          python -I - <<'EOF'
+          import os, modal
+          existing = {e.path.strip("/") for e in modal.Volume.from_name("pwa-runs", create_if_missing=True).listdir("/")}
+          taken = [n for n in os.environ["ARM_EXPS"].split() if n in existing]
+          if taken:
+              raise SystemExit(f"already in the pwa-runs Volume: {' '.join(taken)}; pick a new exp")
+          EOF
       - uses: actions/cache@v4
         with:
           path: data
@@ -131,6 +147,7 @@ jobs:
           [[ -d data/gc/images ]] || python -I -c "from huggingface_hub import snapshot_download; snapshot_download('jocelynd/playworld-bench', repo_type='dataset', local_dir='data')"
 
       - name: Mark arms running on main
+        id: mark
         continue-on-error: true
         env:
           LABEL: ${{ inputs.tasks && 'custom' || inputs.split }}
@@ -156,8 +173,10 @@ jobs:
 
       - name: Generate all arms (Modal)
         id: gen
-        # Fails if any arm has a failed task or runner error. Fetch, publish and dispatch still run whenever this
-        # step ran, so one bad arm or task never hides the arms that did generate.
+        # Fails if any arm has a failed task or runner error. Fetch, publish and dispatch still run after a failure,
+        # so one bad arm or task never hides the arms that did generate, but only if generation started: modal_app.py
+        # writes claimed.txt (the arm names it generates into) only after its overwrite guard passed, and this step
+        # then sets output started=true. A rejected launch (reused name, bad args) stops everything downstream.
         env:
           SPLIT: ${{ inputs.split }}
           TASKS: ${{ inputs.tasks }}
@@ -165,24 +184,44 @@ jobs:
           ACTION_SOURCE: ${{ inputs.action_source }}
           NUM_SHARDS: ${{ inputs.num_shards }}
           NOTES: ${{ inputs.notes }}
+          PWA_CLAIM_FILE: ${{ runner.temp }}/claimed.txt
+          PWA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
+          rm -f "$PWA_CLAIM_FILE"
+          rc=0
           modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
             --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
-            --extra="$ARMS_EXTRA" --arms="$ARMS"
+            --extra="$ARMS_EXTRA" --arms="$ARMS" || rc=$?
+          if [[ -s "$PWA_CLAIM_FILE" ]]; then echo "started=true" >> "$GITHUB_OUTPUT"
+          else echo "::error::modal_app.py refused the launch before generating anything; nothing is fetched or published"; fi
+          exit "$rc"
 
       - name: Fetch arms from Modal
-        if: ${{ !cancelled() && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
+        # Only arms this run claimed, and of those only ones whose meta.json carries this run's PWA_RUN_ID, go into
+        # owned.txt, which publish and dispatch read. Anything else is deleted from runs/ again.
+        if: ${{ !cancelled() && steps.gen.outputs.started == 'true' && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
+        env:
+          PWA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           mkdir -p runs
-          for name in $ARM_EXPS; do
-            modal volume get pwa-runs "/$name" runs/ --force || echo "::warning::$name: not fetched from the pwa-runs Volume"
-          done
+          : > "$RUNNER_TEMP/owned.txt"
+          while read -r name idx spec <&3; do
+            if ! grep -qxF "$name" "$RUNNER_TEMP/claimed.txt"; then echo "::warning::$name: not claimed by this run"; continue; fi
+            if ! modal volume get pwa-runs "/$name" runs/ --force; then echo "::warning::$name: not fetched from the pwa-runs Volume"; continue; fi
+            if python -m pwa.arms --owned "$PWA_RUN_ID" "$name"; then
+              echo "$name $idx $spec" >> "$RUNNER_TEMP/owned.txt"
+            else
+              echo "::warning::$name: its meta.json is not from this run ($PWA_RUN_ID); not published or scored"
+              rm -rf "runs/$name"
+            fi
+          done 3< "$RUNNER_TEMP/arms.txt"
+          cat "$RUNNER_TEMP/owned.txt"
 
       - name: Publish arm videos (GitHub Releases run-EXP-aN)
         # Unscored clips, right after generation, so every arm can be watched before (or without) scoring.
         # The score-only experiment run later uploads to the same release with --clobber and, with the official
         # judge, replaces the notes. Each arm is guarded, so one failing arm never hides the others.
-        if: ${{ !cancelled() && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
+        if: ${{ !cancelled() && steps.gen.outputs.started == 'true' && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -218,14 +257,15 @@ jobs:
           failed=()
           while read -r name idx spec <&3; do
             publish_arm "$name" "$idx" "$spec" || { echo "::warning::$name: publishing its videos failed"; failed+=("$name"); }
-          done 3< "$RUNNER_TEMP/arms.txt"
+          done 3< "$RUNNER_TEMP/owned.txt"
           if (( ${#failed[@]} )); then { echo; echo "Not published: ${failed[*]}"; } >> "$GITHUB_STEP_SUMMARY"; exit 1; fi
 
       - name: Dispatch one score-only experiment run per arm
-        # Every arm with at least one fetched mp4, also when Generate failed for another arm or task. An arm with
+        # Every arm in owned.txt (generated by this run) with at least one mp4, also when Generate failed for another
+        # arm or task. An arm with
         # missing tasks is scored on what it has (its report lists the missing ones). Dispatched arms go in
         # dispatched.txt: from here on their experiment run owns their csv row.
-        if: ${{ !cancelled() && inputs.stage == 'full' && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
+        if: ${{ !cancelled() && inputs.stage == 'full' && steps.gen.outputs.started == 'true' && (steps.gen.outcome == 'success' || steps.gen.outcome == 'failure') }}
         env:
           GH_TOKEN: ${{ github.token }}
           SPLIT: ${{ inputs.split }}
@@ -250,14 +290,15 @@ jobs:
             echo "$name" >> "$RUNNER_TEMP/dispatched.txt"
             echo "dispatched score-only run for $name (arm $idx)"
             sleep 2
-          done 3< "$RUNNER_TEMP/arms.txt"
+          done 3< "$RUNNER_TEMP/owned.txt"
           echo "Scoring: one \`experiment\` run per dispatched arm ($(xargs < "$RUNNER_TEMP/dispatched.txt")) in the Actions list." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Mark final status on main
         # Per arm. A dispatched arm is skipped: its score-only experiment run sets its row. Any other arm is
         # cancelled if the job was cancelled, generated if every task has an mp4 (`pwa failures` lists no missing
-        # task), else failed. Only rows still running change.
-        if: always()
+        # task), else failed. Only rows still running change. Skipped if the running markers never ran (e.g. the
+        # Volume name check refused a reused name), so an older run's rows are never touched.
+        if: ${{ always() && (steps.mark.outcome == 'success' || steps.mark.outcome == 'failure') }}
         continue-on-error: true
         env:
           CANCELLED: ${{ job.status == 'cancelled' && '1' || '' }}

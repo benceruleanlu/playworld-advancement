@@ -1,5 +1,6 @@
 """.github/workflows/arms.yml: a failed arm or task must not hide the arms that generated. Step conditions are
 checked structurally; the publish loop runs for real with stub `pwa` and `gh` on PATH. No GitHub, no Modal."""
+import json
 import os
 import re
 import shutil
@@ -17,7 +18,9 @@ def _steps() -> dict:
     steps are plain `key: value` lines plus one `run: |` block)."""
     text = (ROOT / ".github" / "workflows" / "arms.yml").read_text()
     out = {}
-    for chunk in re.split(r"^      - (?=name: )", text, flags=re.M)[1:]:
+    for chunk in re.split(r"^      - ", text, flags=re.M)[1:]:
+        if not chunk.startswith("name: "):
+            continue
         lines = chunk.splitlines()
         step = {"name": lines[0][len("name: "):].strip()}
         i = 1
@@ -59,7 +62,66 @@ def test_steps_after_generate_run_when_it_failed():
     for name in ("Fetch arms", "Publish arm videos", "Dispatch one score-only"):
         cond = _step(name)["if"]
         assert "!cancelled()" in cond and "steps.gen.outcome == 'failure'" in cond, name
-    assert _step("Mark final status")["if"] == "always()"
+        # ... but never when modal_app.py refused the launch (reused name): nothing of this run exists then
+        assert "steps.gen.outputs.started == 'true'" in cond, name
+    assert _step("Mark arms running")["id"] == "mark"
+    cond = _step("Mark final status")["if"]
+    assert "always()" in cond and "steps.mark.outcome == 'failure'" in cond
+    # publish and dispatch read only the arms the fetch step proved are this run's
+    for name in ("Publish arm videos", "Dispatch one score-only"):
+        assert '3< "$RUNNER_TEMP/owned.txt"' in _step(name)["run"] and "arms.txt" not in _step(name)["run"], name
+
+
+def test_volume_name_check_runs_before_any_csv_row():
+    names = list(STEPS)
+    assert names.index("Refuse arm names already in the pwa-runs Volume") < names.index("Mark arms running on main")
+    assert "if" not in _step("Refuse arm names")
+
+
+def _stub(bin_, name, body):
+    bin_.mkdir(exist_ok=True)
+    (bin_ / name).write_text("#!/usr/bin/env bash\n" + body)
+    (bin_ / name).chmod(0o755)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.parametrize("claims, rc, started", [(False, 1, False), (True, 1, True), (True, 0, True)])
+def test_generate_reports_started_only_after_the_guard(tmp_path, claims, rc, started):
+    # modal stub: modal_app.py writes the claim file only once its overwrite guard passed
+    claim = tmp_path / "claimed.txt"
+    _stub(tmp_path / "bin", "modal", (f'printf "g-a1\\n" > "$PWA_CLAIM_FILE"\n' if claims else "") + f"exit {rc}\n")
+    claim.write_text("stale\n")  # from an earlier attempt: must not count
+    out = tmp_path / "out"
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}", "PWA_CLAIM_FILE": str(claim),
+           "GITHUB_OUTPUT": str(out)}
+    r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", _step("Generate all arms")["run"]], env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == rc
+    assert ("started=true" in (out.read_text() if out.exists() else "")) == started
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_fetch_keeps_only_arms_this_run_generated(tmp_path):
+    vol = tmp_path / "vol"
+    for name, rid in (("g-a1", "7-1"), ("g-a2", "6-1"), ("g-a3", "7-1")):
+        (vol / name / "videos" / "GC005").mkdir(parents=True)
+        (vol / name / "meta.json").write_text(json.dumps({"exp": name, "run_id": rid}))
+    # modal volume get pwa-runs /NAME runs/ --force
+    _stub(tmp_path / "bin", "modal", f'cp -r "{vol}$4" "$5"\n')
+    rt = tmp_path / "rt"
+    rt.mkdir()
+    (rt / "arms.txt").write_text("g-a1 1/4 base\ng-a2 2/4 --x\ng-a3 3/4 --y\ng-a4 4/4 --z\n")
+    (rt / "claimed.txt").write_text("g-a1\ng-a2\ng-a4\n")  # g-a3 not claimed; g-a4 claimed but never written
+    work = tmp_path / "work"
+    work.mkdir()
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}", "RUNNER_TEMP": str(rt),
+           "PWA_RUN_ID": "7-1", "PWA_RUNS": str(work / "runs"), "PYTHONPATH": str(ROOT)}
+    r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", _step("Fetch arms")["run"]], env=env, cwd=work,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (rt / "owned.txt").read_text() == "g-a1 1/4 base\n", r.stdout + r.stderr
+    assert sorted(p.name for p in (work / "runs").iterdir()) == ["g-a1"]
+    assert "g-a2: its meta.json is not from this run" in r.stdout and "g-a3: not claimed" in r.stdout
 
 
 def test_generate_and_listing_use_the_same_shared_args():
@@ -88,7 +150,7 @@ exit 0
         f.chmod(0o755)
     rt = tmp_path / "rt"
     rt.mkdir()
-    (rt / "arms.txt").write_text("g-a1 1/3 base\ng-a2 2/3 --x\ng-a3 3/3 --y\n")
+    (rt / "owned.txt").write_text("g-a1 1/3 base\ng-a2 2/3 --x\ng-a3 3/3 --y\n")
     summary = tmp_path / "summary.md"
     env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "RUNNER_TEMP": str(rt), "GITHUB_STEP_SUMMARY": str(summary),
            "GITHUB_REPOSITORY": "o/r", "GITHUB_SHA": "abc", "EXP": "g", "STAGE": "gen-only", "JUDGE": ""}

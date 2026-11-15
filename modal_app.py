@@ -105,6 +105,16 @@ def arm_exps(exp: str, arms: str) -> list[str]:
     return [f"{exp}-a{i}" for i in range(1, len(arms.split("|")) + 1)] if arms.strip() else []
 
 
+def claim_names(exp: str, arms: str, existing: set, resume: bool) -> list:
+    """Experiment directories this invocation writes. The overwrite guard: refuses if one is already in the
+    Volume (shards always pass --resume to pwa, so nothing else stops a reused name)."""
+    names = arm_exps(exp, arms) or [exp]
+    taken = [n for n in names if n in existing]
+    if taken and not resume:
+        raise SystemExit(f"{' '.join(taken)} already in the pwa-runs Volume; pick a new name or pass --resume")
+    return names
+
+
 def _git(*args: str, cwd: Path = ROOT) -> str:
     r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -122,10 +132,7 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
     if runner.startswith("lingbot") != RUNNER_ENV.startswith("lingbot"):
         raise SystemExit(f"runner {runner!r} needs a matching image: rerun with PWA_RUNNER={runner} in the environment")
     existing = {e.path.strip("/") for e in runs_vol.listdir("/")}
-    for name in arm_exps(exp, arms) or [exp]:
-        if name in existing and not resume:
-            # Shards always pass --resume to pwa, so this is the overwrite guard.
-            raise SystemExit(f"{name} already exists in the pwa-runs Volume; pick a new name or pass --resume")
+    names = claim_names(exp, arms, existing, resume)
     argv = [exp, "--runner", runner, "--action-source", action_source]
     if arms:
         argv.append(f"--arms={arms}")  # one token: arm strings start with dashes
@@ -143,6 +150,12 @@ def main(exp: str, split: str = "dev", runner: str = "sana", action_source: str 
         "PWA_GIT_DIRTY": "1" if _git("status", "--porcelain", "--", ".", ":!runs", ":!results") else "0",
         "PWA_SUBMODULE_SHA": _git("rev-parse", "HEAD", cwd=ROOT / "third_party" / "PlayWorld"),
     }
+    if os.environ.get("PWA_RUN_ID"):
+        prov["PWA_RUN_ID"] = os.environ["PWA_RUN_ID"]  # recorded as run_id in each meta.json
+    claim = os.environ.get("PWA_CLAIM_FILE")
+    if claim:
+        # Written only after the overwrite guard passed: the directories this invocation generates into.
+        Path(claim).write_text("".join(f"{n}\n" for n in names))
     fn = gen_arms_shard if arms else gen_shard
     codes = list(fn.starmap([(argv, i, num_shards, prov) for i in range(num_shards)]))
     print(f"shard exit codes: {codes}")

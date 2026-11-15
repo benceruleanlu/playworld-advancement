@@ -79,6 +79,40 @@ def test_modal_arm_names_match_pwa():
     assert f("g", "") == []
 
 
+def test_modal_claim_names_refuses_a_reused_name():
+    ns: dict = {}
+    tree = ast.parse((ROOT / "modal_app.py").read_text())
+    fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("arm_exps", "claim_names")]
+    exec(compile(ast.Module(body=fns, type_ignores=[]), "modal_app.py", "exec"), ns)  # noqa: S102
+    claim = ns["claim_names"]
+    assert claim("g", " | --x", {"other"}, False) == ["g-a1", "g-a2"]
+    assert claim("g", "", set(), False) == ["g"]
+    with pytest.raises(SystemExit, match="g-a2 already in the pwa-runs Volume"):
+        claim("g", " | --x", {"g-a2"}, False)
+    assert claim("g", " | --x", {"g-a2"}, True) == ["g-a1", "g-a2"]
+
+
+def test_owned_needs_every_meta_from_this_run(tmp_path, monkeypatch):
+    from pwa import core
+    monkeypatch.setattr(core, "RUNS", tmp_path)
+    for name, ids in {"mine": ["r1"], "old": ["r0"], "mixed": ["r1", "r0"], "none": [None]}.items():
+        for k, rid in enumerate(ids):
+            d = tmp_path / name
+            d.mkdir(exist_ok=True)
+            (d / f"meta.shard{k}of{len(ids)}.json").write_text(json.dumps({"exp": name, **({"run_id": rid} if rid else {})}))
+    assert arms.owned("mine", "r1")
+    assert not arms.owned("old", "r1") and not arms.owned("mixed", "r1") and not arms.owned("none", "r1")
+    assert not arms.owned("missing", "r1") and not arms.owned("mine", "")
+
+
+def test_provenance_records_run_id_only_when_set(monkeypatch):
+    from pwa import core
+    monkeypatch.delenv("PWA_RUN_ID", raising=False)
+    assert "run_id" not in core.provenance()
+    monkeypatch.setenv("PWA_RUN_ID", "123-1")
+    assert core.provenance()["run_id"] == "123-1"
+
+
 # -- in-process launch ------------------------------------------------------------
 
 def test_inproc_launch_restores_state_and_captures_output(tmp_path, monkeypatch):
