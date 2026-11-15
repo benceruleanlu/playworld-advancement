@@ -16,6 +16,18 @@ argv) or LINGBOT_SESSION=0: every call is a fresh upstream rollout from image_pa
 Turn calibration (off by default): `--lingbot-turn-cal` or LINGBOT_TURN_CAL=1 sets the
 arrow-key rates so one dataset token turns 22.5 deg (yaw) / 20 deg (pitch); see poses.calibrate.
 
+Caption prompt (off by default): `--lingbot-caption-prompt` or LINGBOT_PROMPT_MODE=auto conditions
+the model on the task's scene caption instead of the agent goal ("wait and observe" for Insight);
+see adapters/common/prompts.py. The agent player still gets the goal.
+
+Re-anchoring (off by default, session mode only): `--lingbot-reanchor` or LINGBOT_REANCHOR=1.
+When the commanded camera track of a GC task returns to the start pose, the input image is
+given to the model again at that latent; see session.ReturnDetector.
+
+Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 tells the
+closed-loop player how far one action turns the camera and where the commanded camera
+is relative to the start; see player_hint.py. The world model's inputs do not change.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
@@ -24,8 +36,17 @@ Env:
   LINGBOT_YAW_RAD / LINGBOT_PITCH_RAD   per-frame camera rotation for arrow keys (poses.py)
   LINGBOT_TURN_CAL  1 = same as --lingbot-turn-cal (overrides the two rates above)
   LINGBOT_UNIT_YAW_DEG / LINGBOT_UNIT_PITCH_DEG / LINGBOT_CHUNK_UNITS   turn-cal angles (22.5 / 20 / 2)
+  LINGBOT_PROMPT_MODE  goal (default) | caption | auto (= --lingbot-caption-prompt)
+  LINGBOT_REANCHOR  1 = same as --lingbot-reanchor
+  LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
+  LINGBOT_REANCHOR_DEG / LINGBOT_REANCHOR_TRANS   return tolerance: degrees / key units (6 / 2)
+  LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
+
+Flag counters (flag_stats.py): after each task one greppable line, e.g.
+  [lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30
+and a `[lingbot] flags total ...` line at the end; also "lingbot_flags" in <task>_result.json.
 """
 import os
 import sys
@@ -33,8 +54,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from adapters.common import agent_api  # noqa: E402
+from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import flag_stats  # noqa: E402
+from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
@@ -42,7 +65,14 @@ run_agent = import_run_agent()
 
 STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
 TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL", "0") == "1"
-sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal")]
+PROMPT_MODE = "auto" if "--lingbot-caption-prompt" in sys.argv else os.environ.get("LINGBOT_PROMPT_MODE", "goal")
+if PROMPT_MODE not in prompts.MODES:
+    raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {PROMPT_MODE!r}")
+REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR", "0") == "1"
+PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
+sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
+                                              "--lingbot-reanchor", "--lingbot-player-hint")]
+STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -85,7 +115,11 @@ class LingBotWorld2Engine:
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
-              + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else ""), flush=True)
+              + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
+              + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
+              + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
+              + (", player hint on" if PLAYER_HINT else ""),
+              flush=True)
 
     def _calibrate(self, name, n_keys):
         """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
@@ -94,6 +128,12 @@ class LingBotWorld2Engine:
                         int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
+        if PROMPT_MODE != "goal":
+            goal, prompt = prompt, prompts.model_prompt(prompt, name, PROMPT_MODE)
+            STATS.caption(prompt != goal)
+            if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
+                print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
+                      f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
         if self.session is None:
             return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
         return self._generate_session(image_path, prompt, action, output_dir, name, num_frames)
@@ -115,10 +155,16 @@ class LingBotWorld2Engine:
         torch.cuda.reset_peak_memory_stats()
         if not cont:
             horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
+            reanchor = REANCHOR and S.reanchor_task(name)
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
-                               int(self.args.seed), horizon_frames=horizon)
+                               int(self.args.seed), horizon_frames=horizon,
+                               reanchor=reanchor)
+            if reanchor:
+                STATS.armed()
         start = self.session.chunk_id
+        anchored = self.session.reanchor_events
         frames = self.session.step(keys)
+        STATS.reanchored(self.session.reanchor_events - anchored)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
@@ -168,5 +214,13 @@ class LingBotWorld2Engine:
 
 
 run_agent.SanaWMEngine = LingBotWorld2Engine
+prompts.install(run_agent)
+STATS.install(run_agent)
 print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
-raise SystemExit(run_agent.main())
+if PLAYER_HINT:
+    run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
+                                     session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
+    print("[lingbot] player hint: on", flush=True)
+_rc = run_agent.main()
+print(STATS.total_line(), flush=True)
+raise SystemExit(_rc)

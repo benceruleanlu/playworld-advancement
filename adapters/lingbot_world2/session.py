@@ -17,7 +17,10 @@ no files. Differences from upstream, all deliberate:
     upstream divides by the max norm of the whole sequence, which a closed
     loop does not know in advance;
   * the image conditioning `y` is encoded once for a fixed horizon (it is the
-    input image followed by zeros, so it does not depend on the actions).
+    input image followed by zeros, so it does not depend on the actions);
+  * opt-in re-anchoring (reset(reanchor=True), off by default): when the commanded
+    camera track returns to the start pose, that latent of `y` is set to the input
+    image again (ReturnDetector, _anchor_y).
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -127,6 +130,7 @@ class PoseTrack:
     def __init__(self):
         self.last = np.eye(4)        # absolute pose of the latest pixel frame
         self.prev_latent = None      # absolute pose of the latest latent frame
+        self.latents = None          # absolute poses of the last advance()'s latents (one per rel)
 
     def advance(self, keys: list[str]) -> np.ndarray:
         first = self.prev_latent is None
@@ -139,8 +143,54 @@ class PoseTrack:
             if i % 4 == 0:
                 lat.append(cur)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
-        self.last, self.prev_latent = cur, lat[-1]
+        self.last, self.prev_latent, self.latents = cur, lat[-1], np.stack(lat)
         return normalise_translation(rel)
+
+
+def pose_offset(c2w: np.ndarray) -> tuple[float, float]:
+    """(rotation in degrees, translation norm in key units) of an absolute pose from the start pose."""
+    cos = (np.trace(c2w[:3, :3]) - 1.0) / 2.0
+    return math.degrees(math.acos(min(1.0, max(-1.0, cos)))), float(np.linalg.norm(c2w[:3, 3]))
+
+
+class ReturnDetector:
+    """Finds the latents where the commanded camera track comes back to the start pose
+    (--lingbot-reanchor). A return counts only after the track has left: at least
+    leave_deg of rotation or leave_trans key units of translation away. Each visit
+    (a run of latents within tol_deg and tol_trans of the start) yields one index, the
+    latent closest to the start, so a camera resting at the start is anchored once."""
+
+    def __init__(self, tol_deg: float | None = None, tol_trans: float | None = None,
+                 leave_deg: float = 20.0, leave_trans: float = 8.0):
+        self.tol_deg = float(os.environ.get("LINGBOT_REANCHOR_DEG", "6")) if tol_deg is None else tol_deg
+        self.tol_trans = float(os.environ.get("LINGBOT_REANCHOR_TRANS", "2")) if tol_trans is None else tol_trans
+        self.leave_deg, self.leave_trans = leave_deg, leave_trans
+        self.away = False
+
+    def update(self, latent_c2ws: np.ndarray) -> list[int]:
+        """Indices into latent_c2ws (one step's absolute latent poses) to re-anchor."""
+        out, run = [], []
+        for i, c2w in enumerate(latent_c2ws):
+            deg, trans = pose_offset(c2w)
+            if self.away and deg <= self.tol_deg and trans <= self.tol_trans:
+                run.append((deg + trans, i))
+                continue
+            if run:
+                out.append(min(run)[1])
+                run, self.away = [], False
+            if deg >= self.leave_deg or trans >= self.leave_trans:
+                self.away = True
+        if run:
+            out.append(min(run)[1])
+            self.away = False
+        return out
+
+
+def reanchor_task(name: str) -> bool:
+    """True when --lingbot-reanchor applies to this call name. Default: GC tasks only.
+    The Out-of-sight rubric scores a returned view that equals the first frame as a
+    reset (level 1), so those tasks are excluded unless LINGBOT_REANCHOR_TASKS says so."""
+    return re.match(os.environ.get("LINGBOT_REANCHOR_TASKS", "GC"), name or "") is not None
 
 
 def horizon_latents(horizon_frames: int) -> int:
@@ -167,6 +217,7 @@ class LingBotSession:
         self.stream_decode = stream_decode
         self.chunk_id = 0
         self.started = False
+        self.reanchor_events = 0  # _anchor_y calls over the session's life (flag_stats reads deltas)
         self._free()
 
     def _free(self):
@@ -174,9 +225,12 @@ class LingBotSession:
         self._feat_map = None
         self._all_lat = []
         self._last_frame = None
+        self._anchor = None
+        self.detector = None
 
     # -- reset -------------------------------------------------------------
-    def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None):
+    def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
+              reanchor: bool = False):
         import torch  # noqa: PLC0415
         import torchvision.transforms.functional as TF  # noqa: PLC0415
         from wan.utils.cam_utils import get_Ks_transformed  # noqa: PLC0415
@@ -226,6 +280,7 @@ class LingBotSession:
         self.gen = torch.Generator(device=dev)
         self.gen.manual_seed(int(seed))
         self.track = PoseTrack()
+        self.detector = ReturnDetector() if reanchor else None
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -267,6 +322,23 @@ class LingBotSession:
         print(f"[lingbot] session: encoded y for {n_lat} latents ({F} frames) in {time.time() - t0:.1f}s",
               flush=True)
 
+    def _anchor_y(self, g: int):
+        """Re-anchor: mark latent g of `y` as given and set it to the input image.
+
+        Upstream gives the model the input image only at latent 0 (mask 1, VAE latent of
+        the image). Here latent g gets the same signal: mask 1 on its four pixel frames and
+        the latent of a still clip of the image (the second latent of [image x 5], which
+        is what a 4-frame latent of an unchanging view looks like to the causal VAE)."""
+        import torch  # noqa: PLC0415
+        if self._anchor is None:
+            with torch.no_grad():
+                still = self._img.repeat(1, 5, 1, 1).to(self.pipe.device)
+                self._anchor = self.pipe.vae.encode([still])[0][:, -1]
+        self.y[:4, g] = 1
+        self.y[4:, g] = self._anchor.to(self.y.dtype)
+        self.reanchor_events += 1
+        print(f"[lingbot] session: re-anchored latent {g} (frame {4 * g}) to the input image", flush=True)
+
     def _plucker(self, rel: np.ndarray):
         """[1, 384, f, lat_h, lat_w] camera embedding for f relative poses (float32 math
         outside autocast, cast to param dtype, as upstream)."""
@@ -298,6 +370,9 @@ class LingBotSession:
             raise RuntimeError(f"rollout would reach {end_lat} latents; the RoPE table has {ROPE_LATENTS}")
         if end_lat > self.y.shape[1]:
             self._encode_y(min(ROPE_LATENTS, end_lat + 8 * CHUNK))
+        if self.detector is not None:
+            for i in self.detector.update(self.track.latents):
+                self._anchor_y(self.chunk_id * CHUNK + i)
 
         new = []
         with torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
