@@ -119,6 +119,16 @@ Typical loop: run one family of dev tasks per arm (`experiment` workflow, `tasks
 - Weights live in the `pwa-weights` Volume under `/weights/lingbot` (`modal run prefetch_lingbot.py --variant 14b|1.3b`; the workflow does this). Outside the workflow set `PWA_RUNNER=<runner>` when calling `modal run modal_app.py` so the LingBot image is selected.
 - License: CC BY-NC-SA 4.0 (non-commercial, share-alike). Code is cloned into the image at a pinned commit, not vendored.
 
+### Live kernel (measuring the model without the player or the judge)
+
+`editor_app.py` is a Modal app (`pwa-editor`) that keeps LingBot loaded on a GPU and runs Python cells sent from another machine, with state kept between cells. It loads the pipe with the runner's own `load_pipe`, mounts no secrets and runs in whichever Modal workspace the caller is logged in to, never through Actions. It exists for questions a scored run answers slowly or not at all: what the model renders for a given pose script, at a few seconds to a minute per trial.
+
+- Setup: `modal token new`, `modal run prefetch_lingbot.py --variant 14b` (or `1.3b`), `PWA_EDITOR_VARIANT=14b modal deploy editor_app.py` (again after changing `adapters/`, `pwa/` or the app). Then `python -m pwa.kernel status | exec FILE | exec -c CODE | reset [--json]`. Images a cell sends back land in `outputs/editor/`, and every cell and its output is appended to `outputs/editor/log.jsonl`.
+- A cell sees `ws` (`adapters/lingbot_world2/workspace.py`), `pipe`, `model`, `torch`, `np`, `P`, `S`, `CP` (`camera_probe.py`), `MT`, `YSV`. `ws.task(ID)` gives a dev task and refuses held-out ones. `ws.turn_trial(task, [("j", 90), ("l", 90)])` replays a pose script (left 90, right 90; `"none"` waits) through the session with no player and returns the frames and a readout: rendered yaw per leg, the end view against frame 0 (`closure`: heading offset, `ncc`, `match`). `ws.servo_trial(...)` is the same script through `yaw_servo.step`. `ws.capture(modules)` records activations, `ws.show(frames)` sends a contact sheet back.
+- Costs: the GPU is billed while a container is up; it scales to zero after `PWA_EDITOR_IDLE` seconds without a call (default 900) and loses the Python namespace. `PWA_EDITOR_MAX_CONTAINERS` above 1 runs batches in parallel, but then cells do not share a namespace: make each batch cell self-contained and write to its own file.
+- Measured (H100, 2026-11-14): 14B with the GPU-side load answers its first call about 3 minutes after a cold start and peaks at 63.9 GiB; a 173-frame trial (11 latent chunks) takes 63 to 68 s. 1.3B: first answer after 95 s, 29 frames in 3.7 s, 26.8 GiB. Two trials with the same task, script and seed are identical in every pixel, and a rollout generated chunk by chunk is identical to the one-step rollout.
+- Trials are measurements, not scores: nothing here goes to `results/experiments.csv`, and a claim about a score still needs the official judge under the adoption rule.
+
 ### Upstream quirks (verified)
 
 - IF third-person gate crashes upstream ("third person" vs "third-person"); `pwa` uses the embedded IF check instead.
