@@ -474,7 +474,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
       cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread",
-      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. After the fix (#129), pm14-fx-v3 is the first run that can fire; it is generated and not scored. No result.",
+      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. After the fix (#129), pm14-fx-v3 is the first run that can fire; it is generated and has no official score. No result.",
       also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4"], links: [["#123", PR + "123"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
@@ -496,6 +496,11 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       body: "Merged behind opt-in flags and not run yet. The attention window is under test above.", links: [["#104", PR + "104"]] },
     { group: "cand", title: "Camera rates: turn step, yaw gain",
       body: "Turn step sets how many degrees one closed-loop turn covers, so an out-and-back fits inside the model's attention window. Yaw gain scales the yaw sent to the model. Merged behind opt-in flags and not run yet.", links: [["#105", PR + "105"], ["#119", PR + "119"]] },
+    { group: "cand", title: "Yaw servo",
+      body: "Measures how far each chunk turned in the rendered frames and corrects the next chunk's camera command, so a turn out and back ends at the start heading. GC tasks by default. Its runs (sv14-fx-v1, svgc14-fx-v1, stksv14-fx-gc-v1, stksv14-cl-gc-v1) are generated and have no official score.", links: [["#125", PR + "125"], ["#131", PR + "131"]] },
+    { group: "cand", title: "Merged Sunday, not run: split sink, turntable poses, warp re-anchor, query temperature, text steering, IF settle, IF fixed camera",
+      body: "Seven more opt-in flags. Split sink damps the opening frames only where the scene moved. Turntable poses keep the horizon level on mixed pan and tilt paths. Warp re-anchor guides a returning camera with the opening image warped to the current view. Query temperature sharpens attention as the cache grows. Text steering pushes the prompt embedding toward a dynamic scene. IF settle stops the camera keys after a budget, and IF fixed camera holds the camera still on third-person IF tasks.",
+      links: [["#132", PR + "132"], ["#133", PR + "133"], ["#139", PR + "139"], ["#116", PR + "116"], ["#115", PR + "115"], ["#121", PR + "121"], ["#147", PR + "147"]] },
     { group: "cand", title: "Sampling: noise mean coupling, noisy KV writes, early-step self-guidance",
       body: "Three changes to how each chunk is sampled or written to the model's memory. Merged behind opt-in flags and not run yet.", links: [["#103", PR + "103"], ["#112", PR + "112"]] }
   ];
@@ -574,7 +579,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
     { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result", kind: "repeat", title: "Pose memory never fired, and the score still moved",
-      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129); its run, pm14-fx-v3, is the first that can fire and is not scored yet.",
+      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129); its run, pm14-fx-v3, is the first that can fire and has no official score.",
       say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
@@ -593,9 +598,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       say: "The family score did not move the same way twice. One task, OE039, rose every time but once.",
       ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
-    { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "running", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
+    { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "awaiting judge", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
       body: "Turn calibration, caption prompt, insight director, slow IF translation and the larger attention window together, against no flags, on every dev task at two seeds (stk14-fx-dev-v1) and on the 24 dev2 tasks (stk14-fx-dev2-v1).",
-      say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is running now.",
+      say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is generated and has no official score yet.",
       ctl: "stk14-fx-dev-v1-a1", arms: [["stack", "stk14-fx-dev-v1-a2", "the stack, seed 0"]],
       watch: { task: "OE039", b: "stk14-fx-dev-v1-a1", c: "stk14-fx-dev-v1-a2" } },
     { id: "open", short: true, kind: "note", title: "Still open",
@@ -604,8 +609,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         "Every A/B here uses fixed moves, and all but one ran on a single seed. Adoption needs the AI player and two seeds.",
         "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
         "Leads: a larger attention window on OE039 only (no family effect on two seeds), the insight director (one up, one down), re-anchoring on GC (weak).",
-        "Pose memory has no result yet: its first run that can fire (pm14-fx-v3) is not scored.",
-        "Running: the stack against no flags on 24 dev tasks (stk14-fx-dev-v1) and on 24 dev2 tasks (stk14-fx-dev2-v1)."],
+        "The official judge has been unavailable since about 03:40 UTC on Sunday (its API credits ran out). Runs generated since then have clips and no official score.",
+        "Generated, waiting on the official judge: the stack against no flags on 24 dev tasks at two seeds (stk14-fx-dev-v1) and on 24 dev2 tasks (stk14-fx-dev2-v1), the yaw servo runs, and pose memory after its fix (pm14-fx-v3).",
+        "With the AI player on 24 dev tasks (clstk14-dev-v1), the stack with the yaw servo produced 8 of 24 clips and no flags produced 23. The cause is not known yet, and none of it has an official score."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
@@ -969,7 +975,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         var td = el("td", { class: "num" }); if (!t) dashCell(td); else td.appendChild(el("span", { class: t[k[0]] ? k[1] : "", text: String(t[k[0]]) }));
         tr.appendChild(td);
       });
-      var cls = /dropped/.test(s.verdict) ? "bad" : /running/.test(s.verdict) ? "warn" : "";
+      var cls = /dropped/.test(s.verdict) ? "bad" : /running|awaiting/.test(s.verdict) ? "warn" : "";
       tr.appendChild(el("td", null, [el("span", { class: "badge " + cls, text: s.verdict })]));
       tb.appendChild(tr);
     });
