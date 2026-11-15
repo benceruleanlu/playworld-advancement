@@ -598,9 +598,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       say: "The family score did not move the same way twice. One task, OE039, rose every time but once.",
       ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
-    { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "running", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
+    { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "awaiting judge", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
       body: "Turn calibration, caption prompt, insight director, slow IF translation and the larger attention window together, against no flags, on every dev task at two seeds (stk14-fx-dev-v1) and on the 24 dev2 tasks (stk14-fx-dev2-v1).",
-      say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is running now.",
+      say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is generated and has no official score yet.",
       ctl: "stk14-fx-dev-v1-a1", arms: [["stack", "stk14-fx-dev-v1-a2", "the stack, seed 0"]],
       watch: { task: "OE039", b: "stk14-fx-dev-v1-a1", c: "stk14-fx-dev-v1-a2" } },
     { id: "open", short: true, kind: "note", title: "Still open",
@@ -975,7 +975,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         var td = el("td", { class: "num" }); if (!t) dashCell(td); else td.appendChild(el("span", { class: t[k[0]] ? k[1] : "", text: String(t[k[0]]) }));
         tr.appendChild(td);
       });
-      var cls = /dropped/.test(s.verdict) ? "bad" : /running/.test(s.verdict) ? "warn" : "";
+      var cls = /dropped/.test(s.verdict) ? "bad" : /running|awaiting/.test(s.verdict) ? "warn" : "";
       tr.appendChild(el("td", null, [el("span", { class: "badge " + cls, text: s.verdict })]));
       tb.appendChild(tr);
     });
