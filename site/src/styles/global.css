@@ -558,3 +558,8 @@ table.runs-ev .nw { white-space: nowrap; overflow-wrap: normal; }
 .prhandlink { margin: 12px 0 0; }
 .scoresec .baseline:first-child[hidden] + .baseline { margin-top: 0; }
 @media (max-width: 599px) { .prgrid { grid-template-columns: minmax(0, 1fr); } .prposter img { width: 100%; } }
+@media (max-width: 599px) {
+  .prchips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .prchip { flex: none; max-width: 85%; }
+  #pr-prev, #pr-next { display: none; }
+}
