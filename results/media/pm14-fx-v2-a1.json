@@ -2,12 +2,12 @@
  "exp": "pm14-fx-v2-a1",
  "release_tag": "run-pm14-fx-v2-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v2-a1",
- "generated": "2026-11-15T04:55:19Z",
+ "generated": "2026-11-15T05:01:54Z",
  "git_sha": "c72c4c9b97f3b5b63123d1dceaa8a5294477b0b1",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -23,9 +23,7 @@
  "player_model": "",
  "notes": "pose memory variants: opening compressed to 1 latent, re-timed memory, pose track corrected by yaw gain 0.85, plus the window control for pm14-fx-v1 arm 3; control is pm14-fx-v1-a1 (generation is deterministic) [arm 1/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-anchor 1]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 1/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-anchor 1"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "pm14-fx-v2-a1.md",
  "model": {
@@ -42,13 +40,18 @@
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 2.2,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    2.6,
+    1.8,
+    2.2,
+    2.2
+   ],
+   "reason": "相机完成了360度旋转，但回到初始视角时未能保持场景的一致性，大树干消失，人物被替换，长椅位置改变，发生了严重的布局重置。",
+   "reason_en": "The camera completed a 360-degree rotation, but failed to maintain scene consistency upon returning to the initial viewpoint; the large tree trunk disappeared, the characters were replaced, and the bench position changed, resulting in a severe layout reset.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -58,13 +61,18 @@
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 3.55,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.2,
+    2.4,
+    3.6,
+    5.0
+   ],
+   "reason": "相机成功完成了向左和向右的平移并返回初始视图，但重新出现时标志牌文本变形，且一个吊灯的位置发生了瞬间移动。",
+   "reason_en": "The camera successfully panned left and right and returned to the initial view, but upon reappearing, the text on the sign became distorted and a chandelier's position teleported.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -74,13 +82,18 @@
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 2.9000000000000004,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.2,
+    2.2,
+    2.4,
+    3.8
+   ],
+   "reason": "视频成功执行了要求的镜头平移，并保持了'HATS'文本和整体空间布局的稳定，但在重新观察初始右侧区域时，未能保持HATS招牌和粉色天花板的原始颜色。",
+   "reason_en": "The video successfully executed the requested camera pan and kept the 'HATS' text and overall spatial layout stable, but failed to preserve the original colors of the HATS sign and the pink ceiling when revisiting the initial right-hand area.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -90,13 +103,18 @@
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    2.0,
+    2.0,
+    1.0,
+    2.0
+   ],
+   "reason": "返回视角内容错误。",
+   "reason_en": "The content in the returning viewpoint is incorrect.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -106,13 +124,18 @@
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    2.0,
+    3.0,
+    1.0
+   ],
+   "reason": "视频未能正确处理镜头旋转与主体位置的关系，导致男子在镜头移动时瞬间转移到走廊又转移回扶梯，运动轨迹和物理连续性严重断裂。",
+   "reason_en": "The video failed to properly handle the relationship between the camera rotation and the subject's position, causing the man to teleport to the hallway and back to the escalator during the camera movement, severely breaking the motion trajectory and physical continuity.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -122,13 +145,18 @@
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.875,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.0,
+    1.0,
+    4.0,
+    3.5
+   ],
+   "reason": "镜头未执行向左转回的动作。",
+   "reason_en": "The camera did not perform the action of turning back to the left.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
