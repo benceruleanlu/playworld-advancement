@@ -156,15 +156,15 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
 
 
 def compare_url(site_url: str, task_id: str, exps: list[str]) -> str:
-    """Deep link into the site's Compare view: task_id from up to three runs (a = baseline, then b, c)."""
-    q = {"compare": task_id, **dict(zip("abc", exps[:3]))}
+    """Deep link into the site's Compare view: task_id, Control b= and Treatment c= (the first two runs)."""
+    q = {"compare": task_id, **dict(zip("bc", exps[:2]))}
     return f"{site_url.rstrip('/')}/?{urlencode(q)}#compare-clips"
 
 
 def arms_md(site_url: str, mans: list[dict]) -> str:
     """Markdown for the arms step summary: per task a play link for every arm with a clip and, when 2+ arms have
-    one, compare links with the first such arm (arm 1 unless it has no clip) as the baseline a= and the others as
-    b= / c=, two per link (the Compare view has three slots). `mans` are the arms' manifests in arm order."""
+    one, one compare link per other arm with the first such arm (arm 1 unless it has no clip) as Control b= and
+    that arm as Treatment c= (the Compare view shows two clips). `mans` are the arms' manifests in arm order."""
     tasks: dict[str, list[str]] = {}
     for m in mans:
         for t in m["tasks"]:
@@ -173,11 +173,11 @@ def arms_md(site_url: str, mans: list[dict]) -> str:
                 row.append(m["exp"])
     out = ["### Arm scenes on the results site", "",
            "Live once the arm manifests are on main. **play** opens one arm's rollout in the site's Scenes view; "
-           "**compare** plays the arms side by side, the first arm as the baseline.", "",
+           "**compare** plays one arm next to the first arm, as Control and Treatment.", "",
            "| task | play | compare |", "|---|---|---|"]
     for tid, exps in tasks.items():
         play = " · ".join(f"[{e}]({watch_url(site_url, e, tid)})" for e in exps) or "no video"
-        groups = [[exps[0], *exps[1:][i:i + 2]] for i in range(0, len(exps) - 1, 2)]
+        groups = [[exps[0], e] for e in exps[1:]]
         cmp_ = " · ".join(f"[{' vs '.join(g)}]({compare_url(site_url, tid, g)})" for g in groups) or "-"
         out.append(f"| {tid} | {play} | {cmp_} |")
     return "\n".join(out) + "\n"

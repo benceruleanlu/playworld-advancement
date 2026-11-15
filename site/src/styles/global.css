@@ -250,7 +250,19 @@ p.full[hidden] { display: none; }
 #runs .filters { margin-bottom: 8px; }
 @media (max-width: 900px) { .meta-line.notes.hide-sm { display: none; } }
 
-#cv-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
+#cv-pick { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; }
+#cv-pick label[hidden], .cvctl[hidden], .cvdiff[hidden], .scdesc[hidden] { display: none; }
+#cv-pick:has(#cv-o1-wrap:not([hidden])) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rawid { display: block; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink2); overflow-wrap: anywhere; user-select: all; }
+.cvhead .rawid, .cvctl .rawid, .scdesc .rawid { display: inline; margin-left: 6px; }
+.cvctl { font-size: 13px; margin: 0 0 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.cvctl .rawid { margin-left: 0; }
+.linkbtn { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
+.cvdiff { margin: 8px 0 10px; font-size: 15px; font-weight: 650; }
+.cvboth { display: block; font-size: 13px; font-weight: 400; color: var(--ink2); margin-top: 2px; }
+.cvdesc { margin: 0; font-size: 12px; color: var(--ink2); overflow-wrap: anywhere; }
+.scdesc { margin: 0 0 8px; font-size: 14px; overflow-wrap: anywhere; }
+.screst { display: block; font-size: 12px; color: var(--ink2); }
 #cv-pick label { min-width: 0; }
 #cv-pick select { width: 100%; min-width: 0; }
-@media (max-width: 800px) { #cv-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 800px) { #cv-pick, #cv-pick:has(#cv-o1-wrap:not([hidden])) { grid-template-columns: minmax(0, 1fr); } }
