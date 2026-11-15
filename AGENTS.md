@@ -7,7 +7,7 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 - `third_party/PlayWorld/` upstream benchmark, pinned submodule. No license: import or subprocess it, never copy its code into this repo.
 - `adapters/<name>/run.py` world-model runners. They reuse the upstream closed-loop harness and swap in our engine.
 - `pwa/` iteration CLI (`pwa --help`).
-- `splits/` dev (24) / heldout (147) / all (171) task lists. Regenerate with `splits/make_splits.py`; do not hand-edit.
+- `splits/` dev (24) / dev2 (24) / dev48 (dev + dev2, 48) / heldout (123) / all (171) task lists. Regenerate with `splits/make_splits.py`; do not hand-edit. dev2 is a second seeded random draw of 6 per family from what was heldout (seed in the script), added before any heldout task was scored.
 - `runs/<exp>/` rollouts, verifier output, logs (git-ignored).
 - `results/experiments.csv` shared experiment log (committed).
 - `research/` working notes behind the plan: baseline census, red-team rulings and plan, autoresearch loop study, out-of-sight analysis (`research/README.md` indexes them). Plan of record: issue #9.
@@ -15,7 +15,7 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 ## Rules
 
 - New experiment name for every run. Upstream `--skip-done` silently reuses old videos; `pwa gen` refuses existing dirs unless `--resume`.
-- Iterate on `dev`. Do not score `heldout` before code freeze.
+- Iterate on `dev`, `dev2` or `dev48`. dev2 exists because the official judge moves a six-task family mean by about 0.5 on identical videos, so one dev split cannot separate most A/B deltas from noise. `heldout` is now 123 tasks and is still not scored before code freeze.
 - Final numbers must be closed loop (`--action-source agent` or `refined`) and scored with Gemini 3.1 Pro at the upstream sampling settings. `--action-source dataset` is for fast A/B only.
 - Do not change verifier FPS, resolution, or JPEG settings.
 - For a reported claim, a delta smaller than 2x the pass-to-pass std is noise.
@@ -38,7 +38,7 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doctor`.
 
 - `pwa doctor [--for gen|score|all] [--runner R] [--json]` check env, data, keys, model roots, torch/cuda.
-- `pwa tasks [--split dev|heldout|all|PATH] [--family ..] [--json]` list tasks.
+- `pwa tasks [--split dev|dev2|dev48|heldout|all|PATH] [--family ..] [--json]` list tasks.
 - `pwa gen EXP --split dev --runner sana|NAME|PATH --action-source dataset|agent|refined [--shard i --num-shards n] [--resume] [--notes ..] [--max-chunks N] [-- runner args]` rollouts to `runs/EXP/videos/`, plus `meta.json`, `gen.log`.
 - Capped smoke tier: `pwa gen ... --action-source agent|refined --max-chunks N` passes upstream's own `--num-chunks N` to the runner (run_agent bounds a closed-loop rollout at `min(--num-chunks, frame budget)`, default 30; wait-only insight tasks honour it too). Refused with `--action-source dataset` (one long rollout, no chunks) and together with `-- --num-chunks`. `meta.json` records `max_chunks` and a `label`; a resume must repeat the same cap. A run is capped if `max_chunks` is set or its runner args carry `--num-chunks` below 30 (`core.chunk_cap`). Capped runs are labelled everywhere: `pwa report` text and `--md` banner, report JSON `max_chunks`, the csv `max_chunks` column and a `[capped smoke: N chunks]` notes prefix, the Scenes manifest, and the site ("capped smoke, N chunks" badge; never the headline, ruler, family bars, best-so-far line or a final score). `pwa compare` warns when two runs have different caps.
 - `pwa gen-arms EXP --arms ' | --lingbot-turn-cal' [same selection and gen flags] [-- args for every arm]` several arms (runner arg strings separated by `|`; an empty one or `base` is the baseline, at most 8) on one task list, back to back in one process. Arm i is an ordinary experiment `EXP-a<i>` (its own `meta.json` with `arm_group`/`arm`/`num_arms`/`arm_args`, `gen.log`, videos; notes get `[arm i/N of EXP: args]`, where args are every arg the arm ran with, the shared `--` args first; `base` only when there are none). `--arms VALUE` and `--arms=VALUE` both work, also for a value starting with `--`. The runner's `main(argv)` is called in process instead of one child per family, so it needs a runner with a `__main__` guard and `main(argv)` (`lingbot_world2`, `lingbot_world2_1p3b`, `tests/fake_runner.py`); the upstream SANA runner is refused. Output a runner's own child processes write to fd 1/2 (ffmpeg) reaches the container log but not `gen.log`. Exits 1 if any arm has a failed task or runner error; the other arms' videos are still written. `python -m pwa.arms EXP ARMS [SHARED]` prints one `NAME I/N LABEL` line per arm.
