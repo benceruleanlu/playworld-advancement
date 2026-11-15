@@ -703,9 +703,10 @@ import { FAMINFO } from "./families.js";
       var qs = q.toString(); history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed */ }
   }
+  // the Pairs section (pairsview.js) opens the derived pair for this task and two runs, or hand-pick mode
   function watch(sel) {
-    setMode("compare", false); dropParams(["scenes", "scene"]);
-    document.dispatchEvent(new CustomEvent("pwa:compare", { detail: { task: sel.task, b: sel.b, c: sel.c, play: true } }));
+    dropParams(["scenes", "scene"]);
+    document.dispatchEvent(new CustomEvent("pwa:openpair", { detail: { task: sel.task, b: sel.b, c: sel.c, play: true } }));
     scrollToEl($("compare-clips"));
   }
   function openScene(exp, task) {
@@ -714,6 +715,21 @@ import { FAMINFO } from "./families.js";
     var req = scenesReq + 1;
     loadManifest().then(function () { if (req === scenesReq) { renderScenes(); syncUrl(); } });
     scrollToEl($("scenes"));
+  }
+  // a deep-linked target stays at the top while the sections above it (pairs, findings) render late,
+  // until the visitor scrolls, taps or types, or 10 s pass
+  function pinView(node) {
+    if (!node || !node.scrollIntoView) return;
+    node.scrollIntoView();
+    if (!window.ResizeObserver) return;
+    var stop = function () {
+      ro.disconnect(); clearTimeout(tm);
+      ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (ev) { window.removeEventListener(ev, stop, true); });
+    };
+    var ro = new ResizeObserver(function () { node.scrollIntoView(); });
+    var tm = setTimeout(stop, 10000);
+    ro.observe(document.body);
+    ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (ev) { window.addEventListener(ev, stop, true); });
   }
   function scrollToEl(node) {
     if (!node || !node.scrollIntoView) return;
@@ -1344,10 +1360,8 @@ import { FAMINFO } from "./families.js";
     var steps = [fin ? { el: function () { return $("top"); }, title: "The question", line: "Can we lift an open world model past Genie 3 (" + fmt(TARGET) + ") without retraining it?" }
       : { el: function () { return $("top"); }, title: "What we did", line: "We changed how LingBot-World v2 runs, without retraining, and scored it on PlayWorld" +
           (nf ? ". Our best " + FULL_TASKS + "-task run is not final." : " dev tasks. " + noFullWhy() + ".") }];
-    if (tourFull) steps.push({ el: function () { return $("scores"); }, title: fin ? "Where we start" : "The published scores",
-      line: !shown ? "No run big enough to estimate a score yet." : fin ? "Final score, AI played: " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks (" + fin.exp + "). Genie 3: " + fmt(TARGET) + "."
-        : nf ? "These are the paper's " + FULL_TASKS + "-task scores. Our best " + FULL_TASKS + "-task run, " + fmt(nf.overall) + " (" + nf.exp + "), is placed among them but is not final: " + notFinalWhy(nf) + "."
-        : "These are the paper's " + FULL_TASKS + "-task scores. Our best official score, " + fmt(shown.overall) + " on " + shown.n_tasks + " dev tasks (" + shown.exp + "), is not placed among them." });
+    // steps follow the page: hero, pairs, findings, scores, method, explore
+    if ($("pairs")) steps.push({ el: function () { return $("pairs"); }, run: function () { closeInline(); var n = $("pr-nav"); scrollToEl(n && !n.hidden ? n : $("pairs")); }, title: "Watch the pairs", line: "Control and treatment clips of one task, side by side on one clock. Prev and Next step through a comparison." });
     if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it. Gains seen only on small samples are marked as leads." });
     storyShown.forEach(function (x) {
       var s = x.s;
@@ -1357,6 +1371,10 @@ import { FAMINFO } from "./families.js";
       if (s.watch && x.ev && (tourFull || s.id !== "window")) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, watchSel(s)); }, title: "Watch " + s.watch.task, line: (s.kind === "repeat" ? "" : "Control left, treatment right. ") + say });
       else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: say });
     });
+    if (tourFull) steps.push({ el: function () { return $("scores"); }, title: fin ? "Where we start" : "The published scores",
+      line: !shown ? "No run big enough to estimate a score yet." : fin ? "Final score, AI played: " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks (" + fin.exp + "). Genie 3: " + fmt(TARGET) + "."
+        : nf ? "These are the paper's " + FULL_TASKS + "-task scores. Our best " + FULL_TASKS + "-task run, " + fmt(nf.overall) + " (" + nf.exp + "), is placed among them but is not final: " + notFinalWhy(nf) + "."
+        : "These are the paper's " + FULL_TASKS + "-task scores. Our best official score, " + fmt(shown.overall) + " on " + shown.n_tasks + " dev tasks (" + shown.exp + "), is not placed among them." });
     steps.push({ el: function () { return $("loop"); }, title: "Method", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
     if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("tests", false); scrollToEl($("watch")); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
     if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("runs", false); scrollToEl($("watch")); }, title: "Every run", line: "Each row links its commit and job." });
@@ -1472,9 +1490,9 @@ import { FAMINFO } from "./families.js";
     f.appendChild(ul);
   }
 
-  /* ---------- explore tabs: compare player, one run's scenes, all tests, all runs ---------- */
-  var MODES = [["compare", "tab-compare", "compare-clips"], ["scenes", "tab-scenes", "scenes"], ["tests", "tab-tests", "testing"], ["runs", "tab-runs", "runs"]];
-  var mode = "compare";
+  /* ---------- explore tabs: one run's scenes, all tests, all runs (the clip pairs have their own section) ---------- */
+  var MODES = [["scenes", "tab-scenes", "scenes"], ["tests", "tab-tests", "testing"], ["runs", "tab-runs", "runs"]];
+  var mode = "scenes";
   function modeOfHash(h) { var hit = MODES.filter(function (x) { return "#" + x[2] === h; })[0]; return hit ? hit[0] : ""; }
   function setMode(m, user) {
     mode = m;
@@ -1485,23 +1503,20 @@ import { FAMINFO } from "./families.js";
       $(x[2]).hidden = !on;
       if (!on) Array.prototype.forEach.call($(x[2]).querySelectorAll("video"), function (v) { if (!v.paused) v.pause(); });
     });
-    // the clip footnote belongs to the two clip tabs
-    var note = $("watch-note"); if (note) note.hidden = m !== "compare" && m !== "scenes";
-    if (m !== "compare" && $("cv-play").textContent === "Pause") $("cv-play").click();
     if (!user) return;
     // the other clip tab's deep-link params would win on reload, so drop them
     try {
       var q = new URLSearchParams(location.search);
-      (m === "compare" ? ["scenes", "scene"] : m === "scenes" ? ["compare", "a", "b", "c"] : ["scenes", "scene", "compare", "a", "b", "c"]).forEach(function (k) { q.delete(k); });
+      (m === "scenes" ? [] : ["scenes", "scene"]).forEach(function (k) { q.delete(k); });
       var qs = q.toString(), panel = MODES.filter(function (x) { return x[0] === m; })[0][2];
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + "#" + panel);
     } catch (e) { /* sandboxed */ }
     // each clip tab writes its own selection back to the URL
-    if (m === "scenes") syncUrl(); else if (m === "compare") document.dispatchEvent(new CustomEvent("pwa:mode", { detail: m }));
+    if (m === "scenes") syncUrl();
   }
   function initMode() {
     var q = new URLSearchParams(location.search);
-    setMode(q.has("compare") ? "compare" : q.has("scenes") ? "scenes" : modeOfHash(location.hash) || "compare", false);
+    setMode(q.has("scenes") ? "scenes" : modeOfHash(location.hash) || "scenes", false);
     MODES.forEach(function (x, i) {
       $(x[1]).addEventListener("click", function () { setMode(x[0], true); });
       $(x[1]).addEventListener("keydown", function (e) {
@@ -1635,7 +1650,7 @@ import { FAMINFO } from "./families.js";
       var back = el("button", { class: "scmore", type: "button", text: "Show all " + tasks.length + " scenes of this run" });
       back.addEventListener("click", function () { scenesTask = ""; renderScenes(); syncUrl(); });
       grid.appendChild(el("div", { style: "grid-column:1/-1" }, [back]));
-      if (!scenesScrolled) { scenesScrolled = true; var sec = $("scenes"); if (sec && sec.scrollIntoView) sec.scrollIntoView(); }
+      if (!scenesScrolled) { scenesScrolled = true; pinView($("scenes")); }
       return;
     }
     var list = tasks.filter(function (t) { return !scenesFam || t.family === scenesFam; });

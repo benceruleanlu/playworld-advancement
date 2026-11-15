@@ -3,6 +3,7 @@
 import { $, el, clear } from "./ui.js";
 import { FAMINFO } from "./families.js";
 import * as C from "./review-core.js";
+import { fmtT } from "./clips.js";
 (function () {
   var REPO = "benceruleanlu/playworld-advancement";
   var MEDIA_RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/media/";
@@ -163,7 +164,6 @@ import * as C from "./review-core.js";
   var S = { t: 0, playing: false, rate: 1, loop: true, raf: 0, last: 0, token: 0, waiting: false };
   var live = [];
   function dur() { var d = 0; live.forEach(function (s) { if (isFinite(s.v.duration)) d = Math.max(d, s.v.duration); }); return d; }
-  function fmtT(s) { if (!isFinite(s)) return "-:--.-"; s = Math.max(0, s); var m = Math.floor(s / 60), r = s - m * 60; return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1); }
   // A clip is ready when it can play on from the shared time, has ended, or failed. Until both are, the clock holds and
   // both clips pause, so a slow download never leaves one clip playing beside a frozen one.
   function ready(s) {
