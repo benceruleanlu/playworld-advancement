@@ -51,6 +51,7 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-cond-schedule             cond_sched=on|skip, cond_sched_chunks, cond_sched_calls (session chunks and
                                       DiT forward calls whose early-step cam/text scales differed from 1.0)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
+  --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it)
 
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
@@ -68,10 +69,12 @@ class FlagStats:
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
-                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off"):
+                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off",
+                 turn_step: float = 0.0):
         self.cond_sched = cond_sched
         self.measured_turn = bool(measured_turn)
         self.if_identity = bool(if_identity)
+        self.turn_step = float(turn_step or 0)  # --lingbot-turn-step: yaw degrees per closed-loop chunk
         self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
         self.weight_mod = bool(weight_mod)
         self.weight_mod_late = ""  # set by the engine: WeightModulator.late_schedule()
@@ -234,6 +237,8 @@ class FlagStats:
                 s.update(weight_mod_late=self.weight_mod_late)
         if self.window:
             s.update(window=self.window)
+        if self.turn_step:
+            s.update(turn_step=f"{self.turn_step:g}")
         if self.if_identity:
             s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))
@@ -277,6 +282,7 @@ class FlagStats:
                 + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
                    if self.weight_mod else "")
                 + (f" window={self.window}" if self.window else "")
+                + (f" turn_step={self.turn_step:g}" if self.turn_step else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else ""))
 
     def finish_task(self, task_id) -> dict:
