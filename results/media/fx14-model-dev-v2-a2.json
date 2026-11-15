@@ -2,12 +2,12 @@
  "exp": "fx14-model-dev-v2-a2",
  "release_tag": "run-fx14-model-dev-v2-a2",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-fx14-model-dev-v2-a2",
- "generated": "2026-11-15T03:32:36Z",
+ "generated": "2026-11-15T03:45:25Z",
  "git_sha": "e54888e0958abc17ed1468645fb631bdd204b4e7",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -19,9 +19,7 @@
  "player_model": "",
  "notes": "fixed action scripts, model-side arms only, official judge 4 passes [arm 2/4 of fx14-model-dev-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 2/4 of fx14-model-dev-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-turn-cal"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "fx14-model-dev-v2-a2.md",
  "model": {
@@ -38,7 +36,7 @@
   {
    "task_id": "GC005",
    "family": "gc",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -49,62 +47,62 @@
   {
    "task_id": "GC016",
    "family": "gc",
-   "mean": null,
+   "mean": 3.6500000000000004,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频连贯展示男子走向宝塔并仰视，各要素一致性良好。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC016.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC016.jpg"
   },
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 3.35,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头未能完成360度旋转，且没有回到初始的视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 2.05,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "The video completes the requested camera movements but completely hallucinates a large blue device and resets the contents of the shop window upon return, losing all required key objects.",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 2.05,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "摄像机仅向左平移，未能执行向右平移并返回中心的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC036.jpg"
   },
   {
    "task_id": "GC038",
    "family": "gc",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频在镜头平移过程中发生了两次严重的硬重置，初始的木屋场景被石屋和蓝墙房间彻底替换，完全未能保持世界的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC038.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/GC038.jpg"
   },
   {
    "task_id": "IF002",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -115,62 +113,62 @@
   {
    "task_id": "IF010",
    "family": "if",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "轨迹基本符合，但场景和主体严重崩坏。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF010.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF010.jpg"
   },
   {
    "task_id": "IF017",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "男子未能完成走下悬崖并下落的完整物理过程。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF017.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF017.jpg"
   },
   {
    "task_id": "IF031",
    "family": "if",
-   "mean": null,
+   "mean": 2.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "男子成功向前行走并在接触大树时被合理阻挡停下，物理交互和身份保持良好。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF031.jpg"
   },
   {
    "task_id": "IF034",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频在机械臂接触碗之前发生了硬重置，未能完成抓取动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF034.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF034.jpg"
   },
   {
    "task_id": "IF052",
    "family": "if",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "主体完全没有执行要求的行走动作，仅是画面随镜头移动。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF052.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/IF052.jpg"
   },
   {
    "task_id": "OE001",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -181,7 +179,7 @@
   {
    "task_id": "OE005",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -192,7 +190,7 @@
   {
    "task_id": "OE018",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -203,7 +201,7 @@
   {
    "task_id": "OE035",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -214,7 +212,7 @@
   {
    "task_id": "OE064",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -225,7 +223,7 @@
   {
    "task_id": "OE074",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -236,7 +234,7 @@
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -247,55 +245,55 @@
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "相机成功执行了360度旋转和后退，但狗在重新出现时呈现完全冻结的复制粘贴状态，缺乏任何合理的动作演变。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE039.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE039.jpg"
   },
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.0625,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头按提示完成了转动，但男子在镜头转回时位置重置到了扶梯底部，未能保持向上的运动进展。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE047.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE047.jpg"
   },
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.875,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头执行了要求的左右转动，但返回后背景发生了严重的重置（瓷砖墙变为窗户），且杯中咖啡液位在隐藏期间没有任何累积上升，过程状态被不自然地冻结。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE048.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE048.jpg"
   },
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "未执行向左转回初始视角的动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE058.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE058.jpg"
   },
   {
    "task_id": "OE069",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频成功执行了镜头的左右环顾动作，但整个场景（包括本应运行的自动扶梯）处于完全冻结状态，没有任何时间演进，导致演进质量得分为最低。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE069.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a2/OE069.jpg"
   }

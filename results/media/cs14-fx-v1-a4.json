@@ -2,12 +2,12 @@
  "exp": "cs14-fx-v1-a4",
  "release_tag": "run-cs14-fx-v1-a4",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-cs14-fx-v1-a4",
- "generated": "2026-11-15T03:35:57Z",
+ "generated": "2026-11-15T03:39:36Z",
  "git_sha": "929d0714d2cf10db706079fbaa5b84eb292e7705",
  "branch": "proposal/cond-schedule",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -22,9 +22,7 @@
  "player_model": "",
  "notes": "PR 101 cond-schedule, fixed actions, official judge 4 passes [arm 4/4 of cs14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule --lingbot-cond-early=4]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 4/4 of cs14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule --lingbot-cond-early=4"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "cs14-fx-v1-a4.md",
  "model": {
@@ -41,40 +39,40 @@
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 2.5500000000000003,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头成功执行了左转并转回的动作，但重新面对原橱窗时，内部的所有关键物品均被替换，布局彻底改变，一致性极差。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/GC033.jpg"
   },
   {
    "task_id": "IF010",
    "family": "if",
-   "mean": null,
+   "mean": 2.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "主体形态发生严重突变，未能保持机器狗的身份。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF010.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF010.jpg"
   },
   {
    "task_id": "IF034",
    "family": "if",
-   "mean": null,
+   "mean": 1.65,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "虽然执行了抓取和提起的动作轨迹，但交互主体（机械臂和碗）发生了严重的身份突变，且环境消失。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF034.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a4/IF034.jpg"
   },
   {
    "task_id": "OE001",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -85,7 +83,7 @@
   {
    "task_id": "OE005",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -96,7 +94,7 @@
   {
    "task_id": "OE018",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
@@ -107,7 +105,7 @@
   {
    "task_id": "OE035",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
     "missing"
    ],
