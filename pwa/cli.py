@@ -84,6 +84,16 @@ def parser() -> argparse.ArgumentParser:
     _gen_args(p)
     p.add_argument("--json", action="store_true", help="print summary JSON on stdout")
 
+    p = mk("gen-arms", "generate several arms (runner arg strings) into EXP-a1, EXP-a2, ... in one process, "
+                       "so an in-process runner loads its model once")
+    p.add_argument("exp", help="arm group name; arm i writes runs/EXP-a<i>/")
+    p.add_argument("--arms", required=True,
+                   help="'|'-separated runner arg strings; an empty one is a baseline arm, e.g. ' | --lingbot-turn-cal'. "
+                        "Args after `--` go to every arm, before the arm's own")
+    _sel_args(p, "dev")
+    _gen_args(p)
+    p.add_argument("--json", action="store_true", help="print per-arm summary JSON on stdout")
+
     p = mk("score", "run the Rubric Verifier (score + gate) on runs/EXP videos")
     p.add_argument("exp")
     _sel_args(p)
@@ -180,16 +190,32 @@ def _split_label(a, exp: str) -> str:
     return meta.get("split_label") or meta.get("split") or "custom"
 
 
+def _join_arms(argv: list[str]) -> list[str]:
+    """`--arms VALUE` -> `--arms=VALUE` (before any `--`). argparse rejects a separate value that starts with a
+    dash and has no space, e.g. `--arms '--lingbot-turn-cal|--lingbot-stateless'`."""
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--":
+            return out + argv[i:]
+        if argv[i] == "--arms" and i + 1 < len(argv) and argv[i + 1] != "--":
+            out.append(f"--arms={argv[i + 1]}")
+            i += 2
+            continue
+        out.append(argv[i])
+        i += 1
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
+    argv = _join_arms(list(sys.argv[1:] if argv is None else argv))
     extra = []
     if "--" in argv:
         i = argv.index("--")
         argv, extra = argv[:i], argv[i + 1:]
     a = parser().parse_args(argv)
     a.extra = extra
-    if extra and a.cmd not in ("gen", "run"):
-        log("pwa: extra args after `--` are only for gen/run")
+    if extra and a.cmd not in ("gen", "gen-arms", "run"):
+        log("pwa: extra args after `--` are only for gen/gen-arms/run")
         return 2
     core.load_env()
     try:
@@ -234,6 +260,13 @@ def dispatch(a) -> int:  # noqa: C901
         d = score.preview(a.exp, info)
         emit({"dir": str(d)}, a.json, str(d))
         return 0
+
+    if a.cmd == "gen-arms":
+        from . import arms
+        s = arms.gen_arms(a, core.select(a.split, a.family, a.tasks))
+        if a.json:
+            emit(s, True)
+        return 1 if s["failed"] else 0
 
     if a.cmd in ("gen", "run"):
         sel = core.select(a.split, a.family, a.tasks)

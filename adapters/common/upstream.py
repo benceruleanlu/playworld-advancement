@@ -8,7 +8,11 @@ REPO = Path(__file__).resolve().parents[2]
 SANA_WM_DIR = REPO / "third_party" / "PlayWorld" / "Agent_player" / "SANA-WM"
 
 
-def import_run_agent():
+def import_run_agent(fresh: bool = False):
+    """fresh=True drops a previously imported run_agent first, so module globals and any functions an
+    adapter patched onto it (run_task, decide_action, request_agent_action) start from upstream again."""
+    if fresh:
+        sys.modules.pop("run_agent", None)
     for p in (str(SANA_WM_DIR), str(REPO)):
         if p not in sys.path:
             sys.path.insert(0, p)

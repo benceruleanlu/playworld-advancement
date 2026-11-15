@@ -45,7 +45,18 @@ def runner_cmd(runner: Path, family: str, ids: list[str], out: Path, a) -> list[
     return cmd + list(a.extra or [])
 
 
-def gen(a, sel: list[dict]) -> dict:
+def subprocess_launch(cmd: list[str], env: dict, on_line) -> int:
+    """Default: the runner is a child process (one per family); its stdout and stderr go to on_line."""
+    p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, bufsize=1)
+    for line in p.stdout:
+        on_line(line)
+    return p.wait()
+
+
+def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = None) -> dict:
+    """launch(cmd, env, on_line) -> returncode runs one family; pwa gen-arms passes an in-process one
+    (pwa/arms.py). meta_extra is merged into a new meta.json."""
     d = exp_dir(a.exp)
     tag = f".shard{a.shard}of{a.num_shards}" if a.num_shards > 1 else ""
     meta_path, log_path = d / f"meta{tag}.json", d / f"gen{tag}.log"
@@ -84,7 +95,7 @@ def gen(a, sel: list[dict]) -> dict:
                 "split_label": split_label(a.split, a.family, a.tasks), "families": a.family,
                 "tasks": [[t["family"], t["task_id"]] for t in sel], "shard": a.shard,
                 "num_shards": a.num_shards, "runner_args": a.extra or [], "notes": a.notes or "",
-                "argv": sys.argv[1:]}
+                "argv": sys.argv[1:], **(meta_extra or {})}
         if cap:
             meta["max_chunks"] = cap
             meta["label"] = cap_label(cap)
@@ -110,9 +121,9 @@ def gen(a, sel: list[dict]) -> dict:
             sys.stderr.write(header)
             lf.write(header)
             lf.flush()
-            p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 text=True, bufsize=1)
-            for line in p.stdout:
+
+            def on_line(line):
+                nonlocal agent_errors, agent_fallbacks
                 if "[agent] error attempt" in line:
                     agent_errors += 1
                 elif "[agent] fallback=" in line:
@@ -121,10 +132,11 @@ def gen(a, sel: list[dict]) -> dict:
                     line = line.replace("[SANA_WM]", label)
                 sys.stderr.write(line)
                 lf.write(line)
-            p.wait()
-            if p.returncode != 0:
-                rc_bad.append({"family": fam, "returncode": p.returncode})
-                lf.write(f"[pwa] runner exited {p.returncode}\n")
+
+            rc = launch(cmd, env, on_line)
+            if rc != 0:
+                rc_bad.append({"family": fam, "returncode": rc})
+                lf.write(f"[pwa] runner exited {rc}\n")
 
     produced, failed = [], []
     for tid in expected:
