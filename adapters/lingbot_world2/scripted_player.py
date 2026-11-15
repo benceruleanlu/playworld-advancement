@@ -13,6 +13,7 @@ Chunking rule (`script()`): upstream `parse_segments` reads the action (so `u*`/
 each axis converts dataset tokens to chunks with its own unit:
   * yaw and pitch (LEFT/RIGHT/UP/DOWN): `rot_units` = poses.CHUNK_UNITS (2, LINGBOT_CHUNK_UNITS) tokens
     per chunk, the rotation one chunk makes under --lingbot-turn-cal (`→*4` = 2 chunks = 90 degrees);
+    with --lingbot-turn-step DEG yaw uses DEG / 22.5 tokens per chunk (`→*4` = 1 chunk at 90 degrees);
   * translation and WAIT (W/S/A/D/WAIT): `move_units` = (chunk_frames - 1) / action_frame_unit = 32 / 20
     = 1.6 tokens per chunk, because a token is held for 20 frames in dataset mode and translation per
     frame is fixed (session.TRANS_SCALE), whatever turn-cal does.
@@ -51,8 +52,11 @@ AXIS = {"RIGHT": ("yaw", 1), "LEFT": ("yaw", -1), "UP": ("pitch", 1), "DOWN": ("
 ROT_AXES = ("yaw", "pitch")
 
 
-def units() -> float:
-    """Dataset rotation tokens per scripted chunk (poses.CHUNK_UNITS)."""
+def units(axis: str = "yaw") -> float:
+    """Dataset rotation tokens per scripted chunk: poses.CHUNK_UNITS, except yaw under --lingbot-turn-step,
+    where one chunk turns CHUNK_YAW_DEG, i.e. CHUNK_YAW_DEG / UNIT_YAW_DEG tokens (4 at 90 degrees)."""
+    if axis == "yaw" and P.CHUNK_YAW_DEG and P.UNIT_YAW_DEG:
+        return float(P.CHUNK_YAW_DEG) / float(P.UNIT_YAW_DEG)
     return float(P.CHUNK_UNITS)
 
 
@@ -94,13 +98,13 @@ def script(task: dict, parse_segments, valid, rot_units: float | None = None,
            move: float = 32 / 20) -> list[str]:
     """The task's dataset action as one action word per chunk (no tail). parse_segments and valid are
     upstream run_agent.parse_segments and VALID_ACTIONS."""
-    rot = units() if rot_units is None else float(rot_units)
+    rot = {ax: units(ax) if rot_units is None else float(rot_units) for ax in ROT_AXES}
     out, target, done = [], {}, {}
     for action, count in parse_segments(task):
         a = action if action in valid else "W"
         a = "WAIT" if a in ("STOP", "END") else a
         ax, sign = AXIS[a]
-        target[ax] = target.get(ax, 0.0) + sign * int(count) / (rot if ax in ROT_AXES else float(move))
+        target[ax] = target.get(ax, 0.0) + sign * int(count) / (rot[ax] if ax in ROT_AXES else float(move))
         k = max(1, sign * (math.floor(target[ax] + 0.5) - done.get(ax, 0)))
         done[ax] = done.get(ax, 0) + sign * k
         out += [a] * k
