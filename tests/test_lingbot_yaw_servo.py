@@ -292,3 +292,15 @@ def test_servo_locks_on_a_scene_with_a_moving_subject():
     assert servo.plan(["l"] * 16, RATE) == (1.0, 1.0)
     servo.reset()
     assert not servo.locked                                           # the next rollout starts fresh
+
+
+def test_untrusted_first_chunk_is_rebooked_once_the_scene_is_measured():
+    # GC031: the first chunk was not trusted, so nothing had been measured when it was booked
+    keys = _script(("j", 80), ("l", 80))
+    s = FakeSession(1.9, 1.45)
+    servo = YS.YawServo()
+    calls = iter(range(100))
+    YS.step(s, servo, keys, RATE, _measure(s), rigid=lambda frames: 0.4 if next(calls) == 0 else 1.0)
+    assert servo.untrusted == 1 and not servo.locked
+    assert abs(servo.heading - s.heading) < 2.5          # the servo's own heading follows the real one
+    assert abs(s.heading) < 4.0                          # and the rollout closes (12 degrees off before this rule)

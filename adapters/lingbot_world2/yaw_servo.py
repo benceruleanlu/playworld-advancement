@@ -18,7 +18,9 @@ Only pure LEFT / RIGHT runs are measured and corrected. Chunks that also move (w
 generated at the current gain and their yaw is taken as intended, because image shift is not a rotation there.
 A run whose correlation peak is under measured_turn.MIN_PEAK, or whose image motion is not one rigid shift
 (rigid_share under RIGID_MIN: a subject is moving), is not trusted. Nothing is learned from it and its turn is
-booked at what the current estimates predict, so one bad chunk on a static scene does not bias the heading.
+booked at what the estimates predict, and booked again whenever an estimate changes, so one bad chunk on a static
+scene does not bias the heading, even when it is the first chunk and nothing has been measured yet (GC031 on the
+14B: its first chunk failed the rigid test and, booked once at the prior of 1, left the rollout 12 degrees off).
 After LOCK_AFTER untrusted turn runs in one rollout the scene is taken to have a moving subject: the servo locks,
 forgets its estimates and leaves every later chunk at gain 1 (the flags line then says yaw_servo=locked).
 
@@ -126,6 +128,7 @@ class YawServo:
         self.heading = 0.0                  # heading the video showed so far
         self.chunks = self.corrected = self.untrusted = 0
         self.locked = False                 # too many untrusted turn runs: gain 1 for the rest of the rollout
+        self._unmeasured = {"j": [], "l": []}  # [signed pose degrees, estimate it was booked at] of runs not measured
         self.last_gain = (1.0, 1.0)
 
     def error(self) -> float:
@@ -168,10 +171,13 @@ class YawServo:
             predicted = asked * gain[0 if y == "j" else 1] * self.est[y] if y else 0.0
             if not measurable(key):
                 self.heading += predicted        # moving or tilting: image shift is not a rotation here
+                if y:
+                    self._unmeasured[y].append([asked * gain[0 if y == "j" else 1], self.est[y]])
                 continue
             if not trusted:                      # weak peak or a moving subject: learn nothing from it
                 self.heading += predicted
                 if y:
+                    self._unmeasured[y].append([asked * gain[0 if y == "j" else 1], self.est[y]])
                     self.untrusted += 1
                     if self.untrusted >= LOCK_AFTER and not self.locked:
                         self.locked, self.est = True, {"j": 1.0, "l": 1.0}
@@ -184,6 +190,9 @@ class YawServo:
                 ratio = abs(yaw) / commanded if commanded > 0 else 0.0
                 if 0.2 <= ratio <= 5.0:          # ignore a wild chunk rather than chase it
                     self.est[y] = (1 - self.beta) * self.est[y] + self.beta * ratio
+                    for run in self._unmeasured[y]:   # book the unmeasured runs of this direction at the new estimate
+                        self.heading += run[0] * (self.est[y] - run[1])
+                        run[1] = self.est[y]
 
     def describe(self) -> str:
         if self.locked:
