@@ -451,3 +451,16 @@ body.touring #story.tour-here .st:not(.tour-on) { opacity: .35; transition: opac
 @media (prefers-reduced-motion: reduce) { body.touring main > section, body.touring .st { transition: none; } }
 .gc .jtoggle { align-self: flex-start; padding: 0; }
 .gc .jorig { margin: 0; font-size: 12.5px; color: var(--ink2); overflow-wrap: anywhere; }
+/* clips played inside a finding's card */
+.st-play { grid-column: 1 / -1; border-top: 1px solid var(--grid); padding-top: 12px; }
+.sp-bar { margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; font-size: 13px; }
+.sp-bar .linkbtn { font-size: 13px; }
+.sp-bar .linkbtn:last-child { margin-left: auto; }
+.sp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.st-play.one .sp-grid { grid-template-columns: minmax(0, 720px); }
+.sp-slot { margin: 0; min-width: 0; }
+.sp-slot video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; }
+.sp-slot figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-top: 6px; font-size: 13px; }
+.sp-slot figcaption .sc { margin-left: auto; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sp-slot figcaption .rawid { flex-basis: 100%; }
+@media (max-width: 560px) { .sp-grid { grid-template-columns: minmax(0, 1fr); } }

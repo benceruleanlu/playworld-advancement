@@ -609,6 +609,44 @@ import * as RunInfo from "./runinfo.js";
     var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     node.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
   }
+  // clips play inside the finding's own card: one clip, or control and treatment started together and restarted together
+  function taskOf(exp, task) { var m = MANS[exp]; return m ? (m.tasks || []).filter(function (t) { return t.task_id === task; })[0] || null : null; }
+  function closeInline() {
+    Array.prototype.forEach.call(document.querySelectorAll(".st-play"), function (n) {
+      Array.prototype.forEach.call(n.querySelectorAll("video"), function (v) { v.pause(); });
+      n.parentNode.removeChild(n);
+    });
+  }
+  function playIn(id, sel) {
+    var li = $("story-" + id); if (!li) return;
+    var pairs = [[sel.b, sel.c ? "Control" : ""], [sel.c, "Treatment"]].filter(function (p) { return p[0]; })
+      .map(function (p) { return { exp: p[0], role: p[1], t: taskOf(p[0], sel.task) }; }).filter(function (p) { return p.t && p.t.video; });
+    if (!pairs.length) { if (sel.c) watch(sel); else openScene(sel.b, sel.task); return; }
+    closeInline();
+    var vids = [];
+    var slots = pairs.map(function (p) {
+      var v = el("video", { playsinline: "", controls: "", preload: "auto", src: p.t.video, poster: p.t.poster || null, "aria-label": (p.role || "Rollout") + ": " + sel.task + ", " + p.exp });
+      v.muted = true; vids.push(v);
+      var ri = RI.get(p.exp), sc = cellVal(p.t);
+      return el("figure", { class: "sp-slot" }, [v, el("figcaption", null, [p.role ? el("span", { class: "cvlab", text: p.role }) : null,
+        el("b", { text: ri && ri.armLabel && p.role ? ri.armLabel : sel.task }), sc !== null ? el("span", { class: "sc", title: passesText(p.t), text: fmt(sc) + " / 5" }) : null,
+        el("code", { class: "rawid", text: p.exp })])]);
+    });
+    // start together once every clip can play; when all have ended, start again
+    var ready = 0, started = false;
+    function startAll() { if (started) return; started = true; vids.forEach(function (v) { try { v.currentTime = 0; } catch (e) { /* not seekable yet */ } var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); }); }
+    vids.forEach(function (v) {
+      v.addEventListener("canplay", function once() { v.removeEventListener("canplay", once); if (++ready >= vids.length) startAll(); });
+      v.addEventListener("ended", function () { if (vids.every(function (x) { return x.ended; })) { started = false; startAll(); } });
+    });
+    setTimeout(startAll, 4000);
+    var close = el("button", { type: "button", class: "linkbtn", text: "Close" }); close.addEventListener("click", closeInline);
+    var bar = el("p", { class: "sp-bar" }, [el("b", { text: sel.task }), close]);
+    if (sel.c) { var full = el("button", { type: "button", class: "linkbtn", text: "Frame by frame in the compare player" }); full.addEventListener("click", function () { closeInline(); watch(sel); }); bar.insertBefore(full, close); }
+    var box = el("div", { class: "st-play" + (pairs.length === 1 ? " one" : "") }, [bar, el("div", { class: "sp-grid" }, slots)]);
+    li.appendChild(box);
+    scrollToEl(li);
+  }
   function numCell(t, cls) {
     var v = cellVal(t), td = el("td", { class: "num" + (cls ? " " + cls : "") });
     if (v === null) { td.appendChild(el("span", { class: "dash", title: t ? "No judged clip for this task in this run" : null, text: t ? "no clip" : "-" })); return td; }
@@ -639,7 +677,7 @@ import * as RunInfo from "./runinfo.js";
             title: "Watch " + k + ": control against " + (a[2] || a[0]) });
           while (td.firstChild) b.appendChild(td.firstChild);
           if (d !== null && Math.abs(d) >= MOVE) b.appendChild(el("span", { class: "mv", "aria-hidden": "true", text: d > 0 ? "▲" : "▼" }));
-          b.addEventListener("click", function () { watch({ task: k, b: s.ctl, c: a[1] }); });
+          b.addEventListener("click", function () { playIn(s.id, { task: k, b: s.ctl, c: a[1] }); });
           td.appendChild(b);
         }
         tr.appendChild(td);
@@ -654,7 +692,7 @@ import * as RunInfo from "./runinfo.js";
         el("span", { class: t.down ? "bad" : "", text: t.down + " down" }), document.createTextNode(" of " + t.n + " task" + (t.n === 1 ? "" : "s"))]));
     });
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: "Judge's mean per task. ▲ ▼ a full point against control. Click a number to watch." };
+      cap: "Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here." };
   }
   // the same settings run several times: tasks at least two runs judged, and the spread between them
   function repeatEvidence(s) {
@@ -707,11 +745,11 @@ import * as RunInfo from "./runinfo.js";
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
         var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task });
-        wb.addEventListener("click", function () { watch(s.watch); }); acts.appendChild(wb);
+        wb.addEventListener("click", function () { playIn(s.id, s.watch); }); acts.appendChild(wb);
       }
       if (s.scene && MANS[s.scene[0]]) {
         var sb = el("button", { type: "button", class: "cvbtn primary", text: s.sceneLabel || "Watch " + s.scene[1] });
-        sb.addEventListener("click", function () { openScene(s.scene[0], s.scene[1]); }); acts.appendChild(sb);
+        sb.addEventListener("click", function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }); acts.appendChild(sb);
       }
       (s.links || []).forEach(function (l) { acts.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: l[0] })); });
       if (acts.firstChild) text.appendChild(acts);
@@ -734,7 +772,7 @@ import * as RunInfo from "./runinfo.js";
         var t0 = MANS[s.scene[0]] && (MANS[s.scene[0]].tasks || []).filter(function (t) { return t.task_id === s.scene[1]; })[0];
         if (t0 && t0.poster) {
           var pb = el("button", { type: "button", class: "st-poster", "aria-label": s.sceneLabel || "Watch " + s.scene[1] }, [el("img", { src: t0.poster, alt: "", loading: "lazy" })]);
-          pb.addEventListener("click", function () { openScene(s.scene[0], s.scene[1]); });
+          pb.addEventListener("click", function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); });
           side.appendChild(pb);
         }
       }
@@ -944,8 +982,8 @@ import * as RunInfo from "./runinfo.js";
     storyShown.forEach(function (x) {
       var s = x.s;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
-      if (s.watch && x.ev) steps.push({ el: function () { return $("watch"); }, run: function () { watch(s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right, one clock." });
-      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return $("watch"); }, run: function () { openScene(s.scene[0], s.scene[1]); }, title: "Watch " + s.scene[1], line: s.say || "" });
+      if (s.watch && x.ev) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right. " + (s.say || "") });
+      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: s.say || "" });
     });
     steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One dispatch takes a flag to scored, published clips." });
     steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
@@ -982,7 +1020,7 @@ import * as RunInfo from "./runinfo.js";
     tourAt = Math.max(0, i);
     var s = tourSteps[tourAt];
     tourShow();
-    if (s.run) s.run(); else { if ($("cv-play").textContent === "Pause") $("cv-play").click(); scrollToEl(s.el()); }
+    if (s.run) s.run(); else { closeInline(); if ($("cv-play").textContent === "Pause") $("cv-play").click(); scrollToEl(s.el()); }
     tourUrl(); tourArm();
   }
   // auto: advance by itself, longer on steps that play clips; any manual step keeps it running, Exit or the last step stops it
@@ -995,7 +1033,7 @@ import * as RunInfo from "./runinfo.js";
     tourTimer = setTimeout(function () { tourGo(tourAt + 1); }, tourSteps[tourAt].run ? 14000 : 8000);
   }
   function tourExit() {
-    tourAuto = false; tourArm();
+    tourAuto = false; tourArm(); closeInline();
     tourAt = -1; $("tour").hidden = true; document.body.classList.remove("touring");
     Array.prototype.forEach.call(document.querySelectorAll(".tour-on, .tour-here"), function (n) { n.classList.remove("tour-on"); n.classList.remove("tour-here"); });
     tourUrl();
