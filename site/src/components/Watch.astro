@@ -1,18 +1,21 @@
 <section id="watch" aria-labelledby="h-watch">
   <h2 id="h-watch" class="sec">Watch</h2>
-  <p class="sub">Rollouts from our runs. Compare up to three runs on one task, or browse every task of one run.</p>
+  <p class="sub">Rollouts from our runs. Watch the control and treatment of one test side by side, or browse every task of one run.</p>
   <div class="tabs" role="tablist" aria-label="Watch mode">
     <button type="button" role="tab" id="tab-compare" aria-controls="compare-clips" aria-selected="true">Compare runs</button>
     <button type="button" role="tab" id="tab-scenes" aria-controls="scenes" aria-selected="false">Browse one run</button>
   </div>
   <div id="compare-clips" role="tabpanel" aria-labelledby="tab-compare">
     <div class="filters" id="cv-pick" hidden>
+      <label class="wide">Test <select id="cv-test"></select></label>
+      <label id="cv-trt-wrap">Treatment <select id="cv-trt"></select></label>
+      <label id="cv-o1-wrap" hidden>Control <select id="cv-o1"></select></label>
+      <label id="cv-o2-wrap" hidden>Treatment <select id="cv-o2"></select></label>
       <label>Task <select id="cv-task"></select></label>
-      <label>Reference (optional) <select id="cv-s0" data-slot="0"></select></label>
-      <label>Control <select id="cv-s1" data-slot="1"></select></label>
-      <label>Treatment <select id="cv-s2" data-slot="2"></select></label>
     </div>
-    <p class="scnote" id="cv-help">Control and Treatment are the two arms of one A/B: same tasks, same seed, one flag different. Reference is an optional third run, usually the starting model.</p>
+    <p class="scnote" id="cv-help">Control and Treatment are the two arms of one test: same tasks, same seed, one change.</p>
+    <p class="cvdiff" id="cv-diff" hidden></p>
+    <p class="cvctl" id="cv-ctl" hidden></p>
     <p class="callout" id="cv-empty" style="margin-top:0">Loading published clips.</p>
     <div class="sclabels" id="cv-notes" hidden></div>
     <div class="cvbar" id="cv-bar" role="group" aria-label="Playback for all clips" hidden>
@@ -38,6 +41,7 @@
       <label>Run <select id="sc-run"></select></label>
       <label>Family <select id="sc-fam"></select></label>
     </div>
+    <p class="scdesc" id="sc-desc" hidden></p>
     <div class="sclabels" id="sc-labels" hidden></div>
     <p class="callout" id="sc-empty" style="margin-top:0">Loading scenes.</p>
     <div class="scenes" id="sc-grid" aria-live="polite"></div>
