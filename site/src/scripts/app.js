@@ -800,7 +800,7 @@ import * as RunInfo from "./runinfo.js";
     var shown = bestFinal() || bestClosed();
     var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can inference-time changes lift an open world model past Genie 3 (" + fmt(TARGET) + ") on PlayWorld? No retraining." }];
     steps.push({ el: function () { return $("scores"); }, title: "Where we start",
-      line: shown ? "The unmodified model, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks. Genie 3: " + fmt(TARGET) + " on all " + FULL_TASKS + "." : "No run big enough to estimate a score yet." });
+      line: shown ? "Our best official score, AI played (" + shown.exp + "): " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks. Genie 3: " + fmt(TARGET) + " on all " + FULL_TASKS + "." : "No run big enough to estimate a score yet." });
     storyShown.forEach(function (x) {
       var s = x.s;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
