@@ -28,6 +28,10 @@ Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 t
 closed-loop player how far one action turns the camera and where the commanded camera
 is relative to the start; see player_hint.py. The world model's inputs do not change.
 
+Return stop (off by default): `--lingbot-return-stop` or LINGBOT_RETURN_STOP=1 ends a closed-loop
+rollout (WAIT for LINGBOT_RETURN_STOP_HOLD chunks, then END) once the commanded camera has left
+and come back to the start, on goals that end with a return; see return_stop.py.
+
 GC completion hint (off by default): `--lingbot-gc-completion-hint` or
 LINGBOT_GC_COMPLETION_HINT=1 reminds the player to finish the requested path once, then
 END on visual completion. Counts hints and END replies; never forces an action.
@@ -45,6 +49,9 @@ Env:
   LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
   LINGBOT_REANCHOR_DEG / LINGBOT_REANCHOR_TRANS   return tolerance: degrees / key units (6 / 2)
   LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
+  LINGBOT_RETURN_STOP  1 = same as --lingbot-return-stop
+  LINGBOT_RETURN_STOP_HOLD / LINGBOT_RETURN_STOP_FRAC   WAIT chunks before END (2) / share of the goal's angle
+                    or steps that counts as having left (0.75)
   LINGBOT_GC_COMPLETION_HINT  1 = same as --lingbot-gc-completion-hint
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
@@ -84,11 +91,12 @@ from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
+from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
-              "--lingbot-gc-completion-hint",
-              "--lingbot-reanchor", "--lingbot-player-hint")
+              "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
+              "--lingbot-gc-completion-hint")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -103,6 +111,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "prompt_mode": mode,
         "reanchor": "--lingbot-reanchor" in argv or environ.get("LINGBOT_REANCHOR", "0") == "1",
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
+        "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
@@ -110,7 +119,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 
 
 # Set by main() from configure(); the engine reads them at call time.
-STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = GC_COMPLETION = False
+STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
@@ -186,6 +195,7 @@ class LingBotWorld2Engine:
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + (", player hint on" if PLAYER_HINT else "")
+              + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else ""),
               flush=True)
 
@@ -299,12 +309,12 @@ def main(argv: list[str] | None = None) -> int:
     """One run_agent invocation. argv is run_agent's (argv[0] is the script). Every call re-reads the flags,
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
-    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, GC_COMPLETION, STATS, FAST
+    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
-    GC_COMPLETION = flags["gc_completion"]
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, gc_completion=GC_COMPLETION)
+    RETURN_STOP, GC_COMPLETION = flags["return_stop"], flags["gc_completion"]
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
@@ -319,6 +329,10 @@ def main(argv: list[str] | None = None) -> int:
     if GC_COMPLETION:
         run_agent.decide_action = C.wrap(run_agent.decide_action, STATS.completion_hint, STATS.completion_end)
         print("[lingbot] GC completion hint: on", flush=True)
+    if RETURN_STOP:  # outermost: a stopped step never reaches the player (or the hint)
+        run_agent.decide_action = RS.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                          turn_cal=TURN_CAL, on_event=STATS.return_stop_event)
+        print("[lingbot] return stop: on", flush=True)
     rc = run_agent.main()
     print(STATS.total_line(), flush=True)
     return rc or 0

@@ -15,7 +15,11 @@ Values:
   player_hint    off | on
   player_hints   decide_action calls that got the hint appended
 
-With --lingbot-gc-completion-hint, also report gc_completion=on,
+Only with --lingbot-return-stop the line also ends with (so lines without the flag are unchanged):
+  return_stop    on (the goal armed the stop) | skip (no single final return in the goal, or no player)
+  return_stops   decisions answered by the stop (WAIT or END) instead of the player
+
+With --lingbot-gc-completion-hint, also add gc_completion=on,
 gc_completion_hints (GC decisions receiving the reminder), and gc_completion_ends
 (END replies from those decisions). They are observations, not forced stops.
 
@@ -30,12 +34,13 @@ from pathlib import Path
 
 class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
-                 gc_completion: bool = False):
+                 return_stop: bool = False, gc_completion: bool = False):
+        self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
         self.gc_completion = bool(gc_completion)
-        self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0}
-        self.totals.update(gc_completion_hints=0, gc_completion_ends=0)
+        self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
+                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -44,6 +49,8 @@ class FlagStats:
         self.reanchor_armed = False
         self.reanchor_events = 0
         self.player_hints = 0
+        self.return_stop_armed = False
+        self.return_stops = 0
         self.gc_completion_hints = self.gc_completion_ends = 0
 
     def caption(self, used: bool):
@@ -60,6 +67,13 @@ class FlagStats:
 
     def hint(self):
         self.player_hints += 1
+
+    def return_stop_event(self, kind: str):
+        """return_stop.wrap on_event: "armed" or "stop"."""
+        if kind == "armed":
+            self.return_stop_armed = True
+        elif kind == "stop":
+            self.return_stops += 1
 
     def completion_hint(self):
         self.gc_completion_hints += 1
@@ -82,10 +96,13 @@ class FlagStats:
         else:
             caption = "used" if self.caption_used else "none"
         reanchor = "off" if not self.reanchor else ("on" if self.reanchor_armed else "skip")
-        return {"task": task_id, "turn_cal": int(self.turn_cal), "caption": caption,
-                "reanchor": reanchor, "reanchor_events": self.reanchor_events,
-                "player_hint": "on" if self.player_hint else "off", "player_hints": self.player_hints,
-                **self.completion_summary(vars(self))}
+        s = {"task": task_id, "turn_cal": int(self.turn_cal), "caption": caption,
+             "reanchor": reanchor, "reanchor_events": self.reanchor_events,
+             "player_hint": "on" if self.player_hint else "off", "player_hints": self.player_hints}
+        if self.return_stop:
+            s.update(return_stop="on" if self.return_stop_armed else "skip", return_stops=self.return_stops)
+        s.update(self.completion_summary(vars(self)))
+        return s
 
     @staticmethod
     def line(summary: dict) -> str:
@@ -96,6 +113,7 @@ class FlagStats:
         return (f"[lingbot] flags total tasks={t['tasks']} turn_cal={int(self.turn_cal)} "
                 f"caption_used={t['caption_used']} caption_fallback={t['caption_fallback']} "
                 f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}"
+                + (f" return_stops={t['return_stops']}" if self.return_stop else "")
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items()))
 
     def finish_task(self, task_id) -> dict:
@@ -106,6 +124,7 @@ class FlagStats:
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
         t["player_hints"] += self.player_hints
+        t["return_stops"] += self.return_stops
         t["gc_completion_hints"] += self.gc_completion_hints
         t["gc_completion_ends"] += self.gc_completion_ends
         print(self.line(s), flush=True)

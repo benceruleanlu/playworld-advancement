@@ -80,7 +80,7 @@ def test_runner_flag_defaults_and_installation(monkeypatch, mode):
     ra = SimpleNamespace(decide_action=original, run_task=lambda *a: None, main=lambda: 0)
     monkeypatch.setattr(upstream, "import_run_agent", lambda **kw: ra)
     monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
-    for name in ("LINGBOT_PLAYER_HINT", "LINGBOT_GC_COMPLETION_HINT"):
+    for name in ("LINGBOT_PLAYER_HINT", "LINGBOT_GC_COMPLETION_HINT", "LINGBOT_RETURN_STOP"):
         monkeypatch.delenv(name, raising=False)
     flag = "--lingbot-gc-completion-hint"
     monkeypatch.setattr(sys, "argv", ["run.py", "--seed", "42"] + ([flag] if mode == "flag" else []))
@@ -107,9 +107,38 @@ def test_completion_flag_resets_between_arms(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["run.py"])
     monkeypatch.delenv("LINGBOT_GC_COMPLETION_HINT", raising=False)
     monkeypatch.delenv("LINGBOT_PLAYER_HINT", raising=False)
+    monkeypatch.delenv("LINGBOT_RETURN_STOP", raising=False)
     assert R.main(["run.py", "--lingbot-gc-completion-hint"]) == 0
     assert modules[0][0].decide_action({"task_id": "GC033"}, None, [], 0, 30, None) == "END"
     assert R.STATS.gc_completion_hints == R.STATS.gc_completion_ends == 1
     assert R.main(["run.py"]) == 0
     assert not R.GC_COMPLETION and modules[1][0].decide_action is modules[1][1]
     assert R.STATS.gc_completion_hints == R.STATS.gc_completion_ends == 0
+
+
+def test_composes_with_return_stop(monkeypatch, capsys):
+    """Both flags on: return stop is outermost and parses the unmodified goal; a stopped decision never
+    reaches the player, so only player decisions count as completion hints or ENDs."""
+    from adapters.lingbot_world2 import run as R
+    sent = []
+    def player(task, frame, recent, chunk_idx, num_chunks, args, *rest, **kw):
+        sent.append(task["prompt"])
+        return "LEFT"
+    ra = SimpleNamespace(decide_action=player, run_task=lambda *a: None, main=lambda: 0,
+                         to_sana_key={"LEFT": "j", "RIGHT": "l", "WAIT": "none"}.get)
+    monkeypatch.setattr(R, "import_run_agent", lambda **kw: ra)
+    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    for name in ("LINGBOT_PLAYER_HINT", "LINGBOT_GC_COMPLETION_HINT", "LINGBOT_RETURN_STOP"):
+        monkeypatch.delenv(name, raising=False)
+    assert R.main(["run.py", "--lingbot-gc-completion-hint", "--lingbot-return-stop"]) == 0
+    assert R.RETURN_STOP and R.GC_COMPLETION
+    task = {"task_id": "GC033", "prompt": "Turn the camera right 90 degrees, then return to the starting view."}
+    args = SimpleNamespace(chunk_frames=33, action_frame_unit=20)
+    decide = ra.decide_action
+    assert decide(task, None, ["RIGHT", "RIGHT", "LEFT"], 3, 30, args) == "LEFT"
+    assert sent == [task["prompt"] + "\n" + C.REMINDER]
+    assert decide(task, None, ["RIGHT", "RIGHT", "LEFT", "LEFT"], 4, 30, args) == "WAIT"
+    assert len(sent) == 1
+    line = R.STATS.line(R.STATS.finish_task("GC033"))
+    assert line.endswith("return_stop=on return_stops=1 gc_completion=on gc_completion_hints=1 gc_completion_ends=0")
+    assert R.STATS.total_line().endswith("return_stops=1 gc_completion=on gc_completion_hints=1 gc_completion_ends=0")
