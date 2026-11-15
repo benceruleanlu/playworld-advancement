@@ -22,6 +22,8 @@ booked at what the current estimates predict, so one bad chunk on a static scene
 After LOCK_AFTER untrusted turn runs in one rollout the scene is taken to have a moving subject: the servo locks,
 forgets its estimates and leaves every later chunk at gain 1 (the flags line then says yaw_servo=locked).
 
+Tasks: GC call names only by default (LINGBOT_YAW_SERVO_TASKS, a regex matched at the start of the call name).
+
 Knobs (runner args, else env): --lingbot-yaw-servo-k / LINGBOT_YAW_SERVO_K (1.0: share of the heading error
 corrected per chunk), --lingbot-yaw-servo-beta / LINGBOT_YAW_SERVO_BETA (0.6: weight of the newest chunk in the
 estimates). Pure Python and numpy; the session is passed in.
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass
 
 FLAG = "--lingbot-yaw-servo"
@@ -88,6 +91,12 @@ def parse(argv: list[str], environ=os.environ) -> tuple[ServoConfig, list[str]]:
             raise SystemExit(f"{name} needs a number, got {raw!r}") from None
     _check(vals[K_FLAG], vals[BETA_FLAG])
     return ServoConfig(True, vals[K_FLAG], vals[BETA_FLAG]), rest
+def applies(name: str, environ=os.environ) -> bool:
+    """True when the servo acts on this call name. Default: GC tasks only, as --lingbot-reanchor.
+    The GC dev scenes are static, which the yaw estimate needs; three of the six out-of-sight dev scenes have a
+    moving subject, where the servo changes the first chunks and then locks. LINGBOT_YAW_SERVO_TASKS (a regex
+    matched at the start of the call name) widens it, e.g. "GC|OE048"."""
+    return re.match(environ.get("LINGBOT_YAW_SERVO_TASKS", "GC"), name or "") is not None
 
 
 def split_chunks(keys: list[str], first: bool, chunk: int = 16) -> list[list[str]]:
