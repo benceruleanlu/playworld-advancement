@@ -20,6 +20,7 @@ import os
 from dataclasses import dataclass
 
 FLAG = "--lingbot-stg"
+SAMPLER_STEPS = 4  # len(session.TIMESTEPS_INDEX): denoising steps per latent chunk (test-checked)
 _VAL_ARGS = {
     "--lingbot-stg-w": ("w", "LINGBOT_STG_W", 0.3, float),
     "--lingbot-stg-blocks": ("blocks", "LINGBOT_STG_BLOCKS", "mid", str),
@@ -72,6 +73,11 @@ def parse(argv: list[str], environ=os.environ) -> tuple[StgConfig, list[str]]:
         raw, eraw = seen.get(arg), environ.get(env, "").strip()
         kw[field] = _value(arg, raw, typ) if raw is not None else (default if eraw == "" else _value(env, eraw, typ))
     cfg = StgConfig(**kw)
+    if cfg.steps > SAMPLER_STEPS:
+        raise SystemExit(f"--lingbot-stg-steps {cfg.steps}: the sampler has {SAMPLER_STEPS} denoising steps "
+                         f"per chunk (more would silently guide every step)")
+    if cfg.w == 0:
+        raise SystemExit("--lingbot-stg-w 0 makes the guidance a no-op that still pays the extra forward")
     resolve_blocks(cfg.blocks, None)  # syntax check now; the range check needs the loaded DiT
     return cfg, rest
 

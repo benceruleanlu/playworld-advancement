@@ -189,3 +189,90 @@ def test_multi_arm_main_isolation(monkeypatch, capsys):
     flags_lines = [line for line in out.splitlines() if line.startswith("[lingbot] flags task=")]
     assert "stg" not in flags_lines[0] and "stg=on stg_chunks=0 stg_calls=0" in flags_lines[1]
     assert "stg=skip" in flags_lines[2] and flags_lines[3] == flags_lines[0]
+
+
+def test_steps_above_sampler_and_zero_w_refused():
+    assert G.SAMPLER_STEPS == len(S.TIMESTEPS_INDEX)
+    G.parse(["run.py", "--lingbot-stg", f"--lingbot-stg-steps={G.SAMPLER_STEPS}"], environ={})
+    for bad in (["--lingbot-stg-steps=5"], ["--lingbot-stg-w=0"], ["--lingbot-stg-w=0.0"]):
+        with pytest.raises(SystemExit):
+            G.parse(["run.py", "--lingbot-stg", *bad], environ={})
+    with pytest.raises(SystemExit):
+        G.parse(["run.py"], environ={"LINGBOT_STG": "1", "LINGBOT_STG_STEPS": "10"})
+
+
+class _CausalAttn:
+    """Write-then-read causal self-attention with a pinned sink and a rolling local window (the KV-cache
+    semantics of the pinned causal-fast DiT, written from its description, numpy only). Tokens are scalars."""
+
+    def __init__(self, kv_size=18, sink=6):
+        self.kv_size, self.sink = kv_size, sink
+        self.cache = np.zeros(kv_size)
+        self.global_end = self.local_end = 0
+
+    def forward(self, x, current_start, n):
+        cur_end = current_start + n
+        new = cur_end - self.global_end
+        if new > 0 and self.local_end + new > self.kv_size:  # a chunk's first forward evicts past the sink
+            evict = self.local_end + new - self.kv_size
+            keep = self.cache[self.sink + evict:self.local_end].copy()
+            self.cache[self.sink:self.sink + len(keep)] = keep
+            self.local_end = self.local_end + new - evict
+        else:
+            self.local_end += max(new, 0)
+        self.global_end = max(self.global_end, cur_end)
+        self.cache[self.local_end - n:self.local_end] = x.arr.ravel()  # write the current chunk's slot, then read
+        return _T(np.full((1, n, 1), self.cache[:self.local_end].mean()))
+
+    def __call__(self, *a, **kw): return self.forward(*a, **kw)
+
+
+def test_w0_leaves_rolling_kv_cache_identical(monkeypatch):
+    """With w=0 the skip pass must leave every block's cache and indices exactly as main leaves them, across
+    chunks that roll the window (6 chunks of 4 tokens into an 18-token cache with a 6-token sink)."""
+    finals = []
+    for stg_cfg in (None, G.StgConfig(True, 0.0, "1", 2)):
+        sess, _, _, _ = _session(monkeypatch, None)
+        dit = SimpleNamespace(blocks=[SimpleNamespace(self_attn=_CausalAttn()) for _ in range(3)])
+
+        def model(x, t, cross_attn_first_call, current_start, **kw):
+            n = x[0].shape[1]
+            h = _T(np.full((1, n, 1), float(np.mean(x[0].arr)) + float(t.arr[0]) / 1000))
+            for b in dit.blocks:
+                h = h + b.self_attn(h, current_start, n)
+            return [_T(np.full(x[0].shape, float(h.arr.mean())))]
+
+        sess.pipe.model = model
+        sess.stg = G.SkipGuidance(dit, stg_cfg) if stg_cfg is not None else None
+        sess.step(["none"] * 28)
+        sess.step(["w"] * 32)
+        sess.step(["w"] * 32)
+        assert sess.stg_calls == (0 if stg_cfg is None else 12)
+        assert all(b.self_attn.local_end == 18 and b.self_attn.global_end == 24 for b in dit.blocks)
+        finals.append([(b.self_attn.cache.copy(), b.self_attn.local_end) for b in dit.blocks])
+    assert all(np.array_equal(a[0], b[0]) and a[1] == b[1] for a, b in zip(*finals))
+
+
+def test_no_dit_reports_skip(monkeypatch, capsys):
+    for key in tuple(R.os.environ):
+        if key.startswith("LINGBOT_"):
+            monkeypatch.delenv(key)
+    monkeypatch.setattr(R, "load_pipe", lambda environ=None: (SimpleNamespace(sample_shift=5.0),
+                                                              SimpleNamespace(_t5_cache={}), Path("."), False))
+    monkeypatch.setattr(R.agent_api, "patch", lambda ra, *a: "test")
+    monkeypatch.setattr(R.agent_api, "finish", lambda ra: None)
+
+    def fake_import(fresh=True):
+        ra = SimpleNamespace(run_task=lambda task, eng, out, args: {"task_id": task["task_id"], "success": True},
+                             decide_action=lambda *a, **kw: "WAIT", to_sana_key=lambda a: "none")
+        def run_main():
+            ra.run_task({"task_id": "OE001"}, ra.SanaWMEngine(SimpleNamespace(max_total_frames=65, seed=0, fps=16)),
+                        Path("/tmp"), None)
+        ra.main = run_main
+        return ra
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    assert R.main(["run.py", "--lingbot-stg"]) == 0
+    out = capsys.readouterr().out
+    assert "stg on (no DiT found)" in out
+    assert "stg=skip" in [ln for ln in out.splitlines() if ln.startswith("[lingbot] flags task=")][0]

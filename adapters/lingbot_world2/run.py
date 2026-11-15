@@ -483,6 +483,8 @@ class LingBotWorld2Engine:
         self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
         stg = (STGM.SkipGuidance(self.pipe.model, STG)
                if STG.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
+        if STG.enabled and stg is None:
+            STATS.stg = "skip"  # stateless or no DiT: the flags line must not read stg=on with 0 calls
         if self.weight_mod is not None:
             STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
         self.session = None
