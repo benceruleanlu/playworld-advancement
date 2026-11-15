@@ -500,3 +500,8 @@ body.touring { padding-bottom: 60px; scroll-padding-bottom: 56px; }
 .card.flat { padding: 0; margin-top: 8px; overflow: hidden; }
 table.fullres tbody th { white-space: normal; }
 @media (max-width: 720px) { table.fullres th, table.fullres td { padding: 6px 4px; } table.fullres tbody th { padding-left: 8px; } }
+/* the runs table inside a finding record wraps instead of scrolling */
+table.runs-ev th, table.runs-ev td { white-space: normal; overflow-wrap: anywhere; }
+table.runs-ev td.wrapcell { min-width: 0; }
+table.runs-ev tbody th { min-width: 9ch; }
+table.runs-ev .nw { white-space: nowrap; overflow-wrap: normal; }

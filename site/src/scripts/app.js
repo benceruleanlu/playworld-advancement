@@ -816,7 +816,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     var d = el("details", { class: "st-more", id: "detail-" + s.id }, [el("summary", { text: "Every score, judge comment and run" }), body]);
     d.addEventListener("toggle", function () {
       if (!d.open || built) return; built = true;
-      var hr = el("tr", null, ["Run", "Flags", "Commit", "Job", "Passes"].map(function (h) { return el("th", { scope: "col", text: h }); }));
+      // commit and passes are secondary: hidden on narrow screens, where the job link still leads to both
+      var hr = el("tr", null, [["Run", ""], ["Flags", ""], ["Commit", "hide-sm"], ["Job", "nw"], ["Passes", "num hide-sm"]].map(function (h) { return el("th", { scope: "col", class: h[1] || null, text: h[0] }); }));
       var tb = el("tbody");
       exps.forEach(function (e) {
         var r = rowByExp(e), ri = RI.get(e), m = MANS[e]; if (!m) return;
@@ -824,11 +825,11 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
         tb.appendChild(el("tr", null, [
           el("th", { scope: "row" }, [document.createTextNode(labels[e] || e), el("code", { class: "rawid", text: e })]),
           el("td", { class: "wrapcell", text: ri && ri.words ? (ri.words.length ? ri.words.join(", ") : "no flags") : "not recorded" }),
-          el("td", null, [/^[0-9a-f]{7,40}$/i.test(sha) ? el("a", { href: COMMIT + sha, target: "_blank", rel: "noopener", text: sha.slice(0, 7) }) : el("span", { class: "dash", text: "-" })]),
-          el("td", null, [r && /^https:\/\/github\.com\//.test(r.run_url || "") ? el("a", { href: r.run_url, target: "_blank", rel: "noopener", text: "job" }) : el("span", { class: "dash", text: "-" })]),
-          el("td", { class: "num", text: r && r.passes !== null ? String(r.passes) : "-" })]));
+          el("td", { class: "hide-sm" }, [/^[0-9a-f]{7,40}$/i.test(sha) ? el("a", { href: COMMIT + sha, target: "_blank", rel: "noopener", text: sha.slice(0, 7) }) : el("span", { class: "dash", text: "-" })]),
+          el("td", { class: "nw" }, [r && /^https:\/\/github\.com\//.test(r.run_url || "") ? el("a", { href: r.run_url, target: "_blank", rel: "noopener", text: "job" }) : el("span", { class: "dash", text: "-" })]),
+          el("td", { class: "num hide-sm", text: r && r.passes !== null ? String(r.passes) : "-" })]));
       });
-      body.appendChild(el("div", { class: "xscroll" }, [el("table", { class: "ev runs-ev" }, [el("thead", null, [hr]), tb])]));
+      body.appendChild(el("table", { class: "ev runs-ev" }, [el("thead", null, [hr]), tb]));
       var ids = {}; exps.forEach(function (e) { var tm = tasksOfRun(e); if (tm) Object.keys(tm).forEach(function (k) { ids[k] = 1; }); });
       Object.keys(ids).sort().forEach(function (k) {
         var blk = el("div", { class: "task-blk" }, [el("h4", { text: k })]);
