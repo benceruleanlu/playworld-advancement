@@ -1,6 +1,16 @@
 {
  "runs": [
   {
+   "exp": "pm14-fx-v1-a3",
+   "generated": "2026-11-15T04:56:05Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v1-a3",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
    "exp": "pm14-fx-v1-a1",
    "generated": "2026-11-15T04:56:01Z",
    "n_tasks": 6,
@@ -56,18 +66,6 @@
     "not scored",
     "replayed dataset moves (open loop), A/B only",
     "arm 1/4 of pm14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-anchor 1"
-   ]
-  },
-  {
-   "exp": "pm14-fx-v1-a3",
-   "generated": "2026-11-15T04:50:11Z",
-   "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v1-a3",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 3/3 of pm14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-latents 8 --lingbot-sink-size 10 --lingbot-local-attn 22"
    ]
   },
   {
