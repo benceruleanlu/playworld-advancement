@@ -322,3 +322,78 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
         assert c["module"].run_task is c["run_task"]
     assert a1["module"].decide_action is not a1["decide"]  # player hint wraps it on arm 1 only
     assert a2["module"].decide_action is a2["decide"] and a3["module"].decide_action is a3["decide"]
+
+
+def test_lingbot_return_stop_is_per_arm(tmp_path, monkeypatch, capsys):
+    """Two arms in one process, the first with --lingbot-return-stop (plus hint and turn-cal), the second
+    without: the stop answers only in arm 1, arm 2 asks its own player, and no counter or wrapper carries over."""
+    from adapters.lingbot_world2 import run as R
+
+    root, weights = tmp_path / "lingbot", tmp_path / "weights"
+    (root / "wan").mkdir(parents=True)
+    (weights / "lingbot-world-v2-14b-causal-fast").mkdir(parents=True)
+    for k in ("LINGBOT_VARIANT", "LINGBOT_TURN_CAL", "LINGBOT_SESSION", "LINGBOT_PLAYER_HINT", "LINGBOT_PROMPT_MODE",
+              "LINGBOT_REANCHOR", "LINGBOT_RETURN_STOP", "LINGBOT_RETURN_STOP_HOLD", "LINGBOT_RETURN_STOP_FRAC",
+              "LINGBOT_YAW_RAD", "LINGBOT_PITCH_RAD", "PLAYER_API_PROVIDER", "LINGBOT_FAST", "LINGBOT_FAST_T5",
+              "LINGBOT_FAST_LOAD", "LINGBOT_FAST_Y", "LINGBOT_T5_CPU"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("LINGBOT_ROOT", str(root))
+    monkeypatch.setenv("LINGBOT_WEIGHTS", str(weights))
+    wan = types.ModuleType("wan")
+    wan.WanI2VCausal = lambda **kw: SimpleNamespace()
+    configs = types.ModuleType("wan.configs")
+    configs.WAN_CONFIGS = {"i2v-A14B": SimpleNamespace(sample_shift=5.0)}
+    i2v = types.ModuleType("wan.image2video")
+    for n in ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model"):
+        setattr(i2v, n, lambda *a, **k: None)
+    wan.image2video = i2v
+    monkeypatch.setitem(sys.modules, "wan", wan)
+    monkeypatch.setitem(sys.modules, "wan.configs", configs)
+    monkeypatch.setitem(sys.modules, "wan.image2video", i2v)
+    monkeypatch.setattr(R, "_PIPES", {})
+
+    goal = "Turn the camera right 90 degrees, then return to the starting view."
+    key = {"RIGHT": "l", "LEFT": "j", "WAIT": "none", "W": "w"}.get
+    arms_seen = []
+
+    def fake_import(fresh=False):
+        m = types.ModuleType("run_agent")
+        asked = []
+
+        def decide_action(task, frame, recent, chunk_idx, num_chunks, args, **kw):
+            asked.append((task["prompt"], list(recent)))
+            return "RIGHT"
+
+        def run_task(task, engine, output_dir, args):
+            arms_seen[-1]["answers"] = [m.decide_action(task, None, acts, len(acts), 30, args)
+                                        for acts in (["RIGHT", "RIGHT", "LEFT"], ["RIGHT", "RIGHT", "LEFT", "LEFT"])]
+            return {"task_id": task["task_id"], "success": True}
+
+        def main():
+            args = SimpleNamespace(seed=42, fps=16, max_total_frames=961, chunk_frames=33, action_frame_unit=20)
+            m.run_task({"task_id": "OE034", "prompt": goal}, m.SanaWMEngine(args), str(tmp_path), args)
+
+        m.run_task, m.main, m.decide_action, m.to_sana_key = run_task, main, decide_action, key
+        arms_seen.append({"module": m, "decide": decide_action, "asked": asked})
+        return m
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    assert R.main(["run.py", "--tasks", "OE034", "--lingbot-return-stop", "--lingbot-player-hint",
+                   "--lingbot-turn-cal"]) == 0
+    out1 = capsys.readouterr().out
+    stats1 = R.STATS
+    assert R.main(["run.py", "--tasks", "OE034"]) == 0
+    out2 = capsys.readouterr().out
+    a1, a2 = arms_seen
+
+    # arm 1: the first decision still goes to the (hinted) player; at the return the stop answers WAIT itself
+    assert a1["answers"] == ["RIGHT", "WAIT"] and len(a1["asked"]) == 1 and "Controls:" in a1["asked"][0][0]
+    assert stats1.totals["return_stops"] == 1 and stats1.totals["player_hints"] == 1
+    assert "return_stop=on return_stops=1" in out1 and "[lingbot] return stop: OE034" in out1
+    assert "return stop on" in out1 and out1.rstrip().endswith("return_stops=1")
+    # arm 2: no stop, no hint, the player answers both; the flag lines have no return-stop fields
+    assert a2["answers"] == ["RIGHT", "RIGHT"] and [p for p, _ in a2["asked"]] == [goal, goal]
+    assert a2["module"].decide_action is a2["decide"]
+    assert R.RETURN_STOP is False and "return_stop" not in R.STATS.summary("OE034")
+    lingbot2 = [x for x in out2.splitlines() if "[lingbot]" in x and str(tmp_path) not in x]
+    assert lingbot2 and not any("return_stop" in x or "return stop" in x for x in lingbot2)
