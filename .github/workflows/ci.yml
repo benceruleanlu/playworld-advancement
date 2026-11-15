@@ -54,3 +54,20 @@ jobs:
           node src/scripts/runinfo.check.mjs
           npm run build
           test -s dist/index.html
+
+  slides:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: slides/package-lock.json
+      - name: Build the Slidev deck
+        working-directory: slides
+        run: |
+          npm ci --no-audit --no-fund
+          npx slidev build --base /playworld-advancement/slides/
+          test -s dist/index.html
