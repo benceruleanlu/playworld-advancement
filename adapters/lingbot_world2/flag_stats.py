@@ -104,7 +104,8 @@ class FlagStats:
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
-                 pose_mem: bool = False, yaw_servo: bool = False):
+                 pose_mem: bool = False, yaw_servo: bool = False, if_fixed_camera: bool = False):
+        self.if_fixed_camera = bool(if_fixed_camera)
         self.pose_mem = bool(pose_mem)
         self.yaw_servo = bool(yaw_servo)  # --lingbot-yaw-servo
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
@@ -137,7 +138,7 @@ class FlagStats:
                        "noise_mean_samples": 0, "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
-                       "if_repeat_checks": 0, "if_translation_frames": 0,
+                       "if_repeat_checks": 0, "if_translation_frames": 0, "if_fixed_camera_frames": 0,
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
                        "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
@@ -154,6 +155,7 @@ class FlagStats:
         self.insight_director_prompts = 0
         self.if_repeat_checks = 0
         self.if_translation_frames = 0
+        self.if_fixed_camera_frames = 0
         self.noise_mean_samples = 0
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
@@ -314,6 +316,8 @@ class FlagStats:
             s.update(if_repeat="on", if_repeat_checks=self.if_repeat_checks)
         if self.if_slow:
             s.update(if_slow="on", if_translation_frames=self.if_translation_frames)
+        if self.if_fixed_camera:
+            s.update(if_fixed_camera="on", if_fixed_camera_frames=self.if_fixed_camera_frames)
         if self.noise_mean:
             s.update(noise_mean="on", noise_mean_samples=self.noise_mean_samples)
         s.update(self.director_summary(vars(self)))
@@ -377,6 +381,7 @@ class FlagStats:
                 + (f" insight_director_prompts={t['insight_director_prompts']}" if self.insight_director else "")
                 + (f" if_repeat_checks={t['if_repeat_checks']}" if self.if_repeat else "")
                 + (f" if_translation_frames={t['if_translation_frames']}" if self.if_slow else "")
+                + (f" if_fixed_camera=on if_fixed_camera_frames={t['if_fixed_camera_frames']}" if self.if_fixed_camera else "")
                 + (f" noise_mean=on noise_mean_samples={t['noise_mean_samples']}" if self.noise_mean else "")
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
@@ -413,6 +418,7 @@ class FlagStats:
         t["insight_director_prompts"] += self.insight_director_prompts
         t["if_repeat_checks"] += self.if_repeat_checks
         t["if_translation_frames"] += self.if_translation_frames
+        t["if_fixed_camera_frames"] += self.if_fixed_camera_frames
         t["tasks"] += 1
         t["noise_mean_samples"] += self.noise_mean_samples
         t["gc_director_chunks"] += self.gc_director_chunks
