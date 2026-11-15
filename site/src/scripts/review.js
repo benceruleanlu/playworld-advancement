@@ -1,5 +1,6 @@
 // Blind review page: two clips of one task side by side, control and treatment on seeded random sides, votes kept in
-// this browser only, arms revealed only after "Finish and reveal". Pure logic lives in review-core.js.
+// this browser only, arms revealed only after "Finish and reveal", or per trial right after its vote in the per-trial
+// reveal mode (exploring only; the session records the mode). Pure logic lives in review-core.js.
 import { $, el, clear } from "./ui.js";
 import { FAMINFO } from "./families.js";
 import * as C from "./review-core.js";
@@ -12,7 +13,7 @@ import { fmtT } from "./clips.js";
   var DRIFT = 0.15, END = 0.05;
   var mans = {}, pairs = [], dropped = [];
   var store = { last: {}, reviewers: {}, rounds: {} };
-  var cur = { reviewer: "", rkey: "", group: "all", family: "all", list: [], pos: 0, q: 0, sides: {}, left: 0 };
+  var cur = { reviewer: "", rkey: "", group: "all", family: "all", list: [], pos: 0, q: 0, sides: {}, left: 0, mode: "at_end" };
   var storageOk = true;
   var blobs = [];
 
@@ -29,11 +30,19 @@ import { fmtT } from "./clips.js";
     if (!r) r = store.reviewers[key] = { name: name, votes: {}, revealed: {}, unblinded: {}, pos: {} };
     if (!r.revealed || typeof r.revealed !== "object") r.revealed = {};
     r.unblinded = r.unblinded || {};
+    r.shown = r.shown || {}; // per-trial reveal: pair id -> selection it was revealed in
     return r;
   }
   function rec() { return recFor(cur.rkey, cur.reviewer); }
   function round(key) { return store.rounds[key] || 0; }
   function selKey() { return cur.group + "|" + cur.family; }
+  // reveal mode of a stored session: "per_trial" (answer shown after each vote) or "at_end" (fully blind until Finish)
+  function modeOf(r) { return (r && r.mode) || "at_end"; }
+  function wantMode() { return $("rv-reveal-each").checked ? "per_trial" : "at_end"; }
+  function eachMode() { return cur.mode === "per_trial"; }
+  function startOver(key) {
+    delete store.reviewers[key]; store.rounds[key] = round(key) + 1; save(); other = null; show("start"); renderStart();
+  }
 
   /* ---------- manifests ---------- */
   function mediaOverride() {
@@ -114,14 +123,26 @@ import { fmtT } from "./clips.js";
       (gone ? gone + " of " + sel.length + " trials here were revealed in another selection and are left out. " : "") +
       (r && Object.keys(r.votes).length ? Object.keys(r.votes).length + " votes saved in this browser for this name." : "");
     if (gone === sel.length && gone && !rv) $("rv-go").disabled = true;
+    // one stored session holds one mode: votes made blind and votes made with answers shown never mix
+    var mm = r && Object.keys(r.votes).length && modeOf(r) !== wantMode();
+    $("rv-mismatch").hidden = !mm;
+    if (mm) {
+      $("rv-mismatch-text").textContent = "The votes saved for this name were made " + (modeOf(r) === "per_trial" ? "with the answer shown after each vote" : "fully blind") +
+        " and cannot mix with the other mode. Set the box back to continue them, or";
+      $("rv-go").disabled = true;
+    }
     attribution($("rv-attr-start"));
   }
   function start() {
     cur.reviewer = $("rv-name").value.trim(); cur.rkey = cur.reviewer.toLowerCase();
     cur.group = $("rv-group").value; cur.family = $("rv-fam").value;
     if (!cur.reviewer) return;
-    store.last = { reviewer: cur.reviewer, group: cur.group, family: cur.family }; save();
+    cur.mode = wantMode();
+    store.last = { reviewer: cur.reviewer, group: cur.group, family: cur.family, reveal: cur.mode === "per_trial" }; save();
     var r = rec(); r.name = cur.reviewer;
+    if (!Object.keys(r.votes).length) r.mode = cur.mode;
+    if (modeOf(r) !== cur.mode) { renderStart(); return; }
+    save();
     cur.sides = C.assignSides(C.sideSeed(cur.rkey, round(cur.rkey)), pairs);
     var mine = pairs.filter(function (p) { return inGroup(p, cur.group) && inFam(p, cur.family); });
     var rv = r.revealed[selKey()];
@@ -130,7 +151,7 @@ import { fmtT } from "./clips.js";
       cur.list = mine.filter(function (p) { return p.id in at; }).sort(function (a, b) { return at[a.id] - at[b.id]; });
       showReveal(); return;
     }
-    var open = mine.filter(function (p) { return !r.unblinded[p.id]; });
+    var open = mine.filter(function (p) { return !r.unblinded[p.id] || r.shown[p.id] === selKey(); });
     cur.left = mine.length - open.length;
     if (!open.length) return;
     cur.list = C.shuffled(open, C.sideSeed(cur.rkey, round(cur.rkey)) + "|" + cur.group + "|" + cur.family);
@@ -236,6 +257,7 @@ import { fmtT } from "./clips.js";
   function setVote(p, key, val) {
     var r = rec(), v = r.votes[p.id], now = new Date().toISOString();
     if (!v) v = r.votes[p.id] = { first: now, side: sideOf(p) };
+    if (v.shown && key !== "note") return; // revealed per trial: the vote is locked
     if (key === "note") v.note = val; else v[key] = v[key] === val ? "" : val;
     v.last = now; save();
   }
@@ -254,7 +276,8 @@ import { fmtT } from "./clips.js";
     var info = FAMINFO[p.family] || {};
     $("rv-task").textContent = p.task + " · " + famName(p.family);
     $("rv-ask").textContent = info.ask || "";
-    $("rv-mode").textContent = C.GROUPS[p.group].what + (cur.left ? " " + cur.left + " trials of this selection were revealed earlier and are left out." : "");
+    $("rv-mode").textContent = C.GROUPS[p.group].what + (cur.left ? " " + cur.left + " trials of this selection were revealed earlier and are left out." : "") +
+      (eachMode() ? " The answer is shown after you vote." : "");
     var grid = $("rv-grid"); clear(grid);
     [["Left", "top", left], ["Right", "bottom", right]].forEach(function (x) {
       var v = el("video", { muted: "", playsinline: "", preload: "auto", disablepictureinpicture: "", controlslist: "nodownload noremoteplayback", "aria-label": x[0] + " clip" });
@@ -267,12 +290,12 @@ import { fmtT } from "./clips.js";
       v.addEventListener("loadedmetadata", function () { syncTo(S.t, true); bar(); });
       v.addEventListener("error", function () { if (v.getAttribute("src")) { slot.failed = true; endEl.hidden = false; endEl.textContent = "Clip failed to load"; } });
       live.push(slot);
-      grid.appendChild(el("div", { class: "cvslot" }, [el("div", { class: "cvhead" }, [el("span", { class: "cvlab", text: x[0] }), el("span", { class: "rvpos", text: "(" + x[1] + ")" })]), media]));
+      grid.appendChild(el("div", { class: "cvslot" }, [el("div", { class: "cvhead", "data-side": x[0].toLowerCase() }, [el("span", { class: "cvlab", text: x[0] }), el("span", { class: "rvpos", text: "(" + x[1] + ")" })]), media]));
       loadClip(v, x[2].video, slot, token);
     });
     bar();
     var vv = vote(p); cur.q = vv && vv.follow ? 1 : 0;
-    renderQuestions(p);
+    renderQuestions(p); renderInstant(p);
     $("rv-back").disabled = cur.pos === 0;
     var all = n === total;
     $("rv-next").textContent = cur.pos === total - 1 ? (all ? "Finish and reveal" : "Next unanswered") : "Next";
@@ -288,6 +311,7 @@ import { fmtT } from "./clips.js";
       var row = el("div", { class: "rvchoices" });
       CHOICES.forEach(function (c) {
         var b = el("button", { type: "button", class: "cvbtn", "aria-pressed": String(v[q[0]] === c[0]) }, [el("kbd", { text: c[2] }), " " + c[1]]);
+        if (v.shown) b.disabled = true;
         b.addEventListener("click", function () { answer(qi, c[0]); });
         row.appendChild(b);
       });
@@ -298,8 +322,14 @@ import { fmtT } from "./clips.js";
   }
   function markActive() { Array.prototype.forEach.call(document.querySelectorAll(".rvq"), function (f, i) { f.classList.toggle("active", i === cur.q); }); }
   function answer(qi, val) {
-    var p = cur.list[cur.pos]; setVote(p, QS[qi][0], val);
+    var p = cur.list[cur.pos], v0 = vote(p);
+    if (v0 && v0.shown) { var lk = $("rv-lock"); if (lk) { lk.textContent = "Locked: this trial's answer is already shown, so its vote cannot change."; lk.classList.add("warn"); } return; }
+    setVote(p, QS[qi][0], val);
     var v = vote(p);
+    if (eachMode() && qi === 0 && v.follow) {
+      var r = rec(); v.shown = new Date().toISOString(); r.unblinded[p.id] = 1; r.shown[p.id] = selKey(); save();
+      renderInstant(p);
+    }
     if (qi === 0 && v.follow) cur.q = 1;
     var keepQ = cur.q; renderQuestions(p); cur.q = keepQ; markActive();
     var n = answered(), total = cur.list.length;
@@ -309,6 +339,45 @@ import { fmtT } from "./clips.js";
     $("rv-done").hidden = !all;
     $("rv-next").textContent = cur.pos === total - 1 ? (all ? "Finish and reveal" : "Next unanswered") : "Next";
     $("rv-next").classList.toggle("primary", all && cur.pos === total - 1);
+  }
+  /* ---------- per-trial reveal: shown only once the trial has its vote ---------- */
+  function scoreOf(exp, task) {
+    var m = mans[exp], t = m && (m.tasks || []).filter(function (x) { return x.task_id === task; })[0];
+    var judge = m && (m.judge || m.judge_model) ? (m.judge || m.judge_model) : "";
+    if (!t || typeof t.mean !== "number") return "not scored";
+    var st = Array.isArray(t.status) ? t.status.join(", ") : (t.status || "");
+    return (judge ? judge + " " : "") + "mean " + t.mean.toFixed(2) + (st ? " (" + st + ")" : "");
+  }
+  function prefText(pr, G) { return pr === "treatment" ? "the treatment (" + G.short + ")" : pr === "control" ? "the control" : pr === "none" ? "no difference" : "no answer"; }
+  function renderInstant(p) {
+    var box = $("rv-instant"), v = vote(p);
+    Array.prototype.forEach.call(document.querySelectorAll("#rv-grid .cvhead .badge"), function (b) { b.remove(); });
+    clear(box); box.hidden = true;
+    if (!v || !v.shown) return; // before the vote nothing is added: the pair stays blind
+    var G = C.GROUPS[p.group], side = v.side || cur.sides[p.id], other = side === "left" ? "right" : "left";
+    var lab = {}; lab[side] = G.short; lab[other] = "control";
+    Array.prototype.forEach.call(document.querySelectorAll("#rv-grid .cvhead"), function (h) {
+      var s = h.getAttribute("data-side");
+      h.appendChild(el("span", { class: "badge", text: s === side ? "Treatment " + G.short : "Control" }));
+    });
+    box.appendChild(el("p", null, [el("b", { text: "Left: " + lab.left + ". Right: " + lab.right + "." })]));
+    var fp = C.pref(v.follow, side), sp = C.pref(v.stable, side);
+    box.appendChild(el("p", { text: (p.attention ? "Attention check: both clips are the same file, so the expected answer is no difference. " : "") +
+      "Your vote on following the task picked " + prefText(fp, G) + (v.stable ? "; on stability, " + prefText(sp, G) : "") + "." }));
+    var sides = el("div", { class: "rvsides" });
+    [["left", side === "left" ? p.trt : p.ctl], ["right", side === "left" ? p.ctl : p.trt]].forEach(function (x) {
+      var isT = x[0] === side;
+      sides.appendChild(el("div", { class: "rvside" + (isT ? " trt" : "") }, [el("b", { text: (x[0] === "left" ? "Left" : "Right") + ", " + (isT ? "treatment" : "control") + ": " }),
+        document.createTextNode(x[1].exp), el("br"), document.createTextNode("Score: " + scoreOf(x[1].exp, p.task))]));
+    });
+    box.appendChild(sides);
+    var c = { treatment: 0, control: 0, none: 0 };
+    cur.list.forEach(function (q) { var w = vote(q); if (q.group !== p.group || q.attention || !w || !w.shown) return; var k = C.pref(w.follow, w.side || cur.sides[q.id]); if (k) c[k]++; });
+    var n = c.treatment + c.control + c.none;
+    box.appendChild(el("p", { class: "scnote", text: "So far in " + G.name + " (follows the task, attention checks left out): treatment preferred " + c.treatment +
+      ", control preferred " + c.control + ", no difference " + c.none + ", n " + n + "." }));
+    box.appendChild(el("p", { class: "scnote", id: "rv-lock", text: "This vote is locked now that the answer is shown." }));
+    box.hidden = false;
   }
   function go(d) {
     var total = cur.list.length;
@@ -352,11 +421,11 @@ import { fmtT } from "./clips.js";
       votes.push({ pair_id: p.id, task: p.task, family: p.family, group: p.group, set: p.set, attention: p.attention,
         control: p.ctl.exp, treatment: p.trt.exp, treatment_side: side,
         follow: v.follow || "", follow_pref: C.pref(v.follow, side), stable: v.stable || "", stable_pref: C.pref(v.stable, side),
-        note: v.note || "", first_voted: v.first || "", last_voted: v.last || "" });
+        note: v.note || "", first_voted: v.first || "", last_voted: v.last || "", revealed_at: v.shown || "" });
     });
     var rv = r.revealed[selKey()];
     return { page_version: C.PAGE_VERSION, page: location.origin + location.pathname, exported: new Date().toISOString(), reviewer: r.name || cur.reviewer,
-      round: round(cur.rkey), selection: { group: cur.group, family: cur.family, trials: cur.list.length }, revealed: rv ? rv.at : null, manifests: manVersions(), votes: votes };
+      round: round(cur.rkey), reveal: modeOf(r), selection: { group: cur.group, family: cur.family, trials: cur.list.length }, revealed: rv ? rv.at : null, manifests: manVersions(), votes: votes };
   }
   function askReveal() {
     var n = answered(), total = cur.list.length;
@@ -407,6 +476,7 @@ import { fmtT } from "./clips.js";
   function showReveal() {
     show("reveal");
     var doc = exportDoc(), box = $("rv-results"); clear(box);
+    $("rv-modenote").hidden = doc.reveal !== "per_trial";
     var voted = doc.votes.filter(function (v) { return v.follow_pref && !v.attention; });
     var att = doc.votes.filter(function (v) { return v.attention; });
     var attAll = cur.list.filter(function (p) { return p.attention; }).length;
@@ -479,7 +549,12 @@ import { fmtT } from "./clips.js";
     $("rv-home").addEventListener("click", function () { show("start"); renderStart(); });
     $("rv-clear").addEventListener("click", function () {
       if (!confirm("Delete every vote saved in this browser for " + cur.reviewer + "? Starting over draws new sides for this name, because the reveal showed the old ones.")) return;
-      delete store.reviewers[cur.rkey]; store.rounds[cur.rkey] = round(cur.rkey) + 1; save(); other = null; show("start"); renderStart();
+      startOver(cur.rkey);
+    });
+    $("rv-newsession").addEventListener("click", function () {
+      var name = $("rv-name").value.trim(); if (!name) return;
+      if (!confirm("Delete every vote saved in this browser for " + name + "? Starting over draws new sides for this name.")) return;
+      startOver(name.toLowerCase());
     });
   }
   function copy(text) {
@@ -496,6 +571,8 @@ import { fmtT } from "./clips.js";
     if (l.reviewer) $("rv-name").value = l.reviewer;
     $("rv-nostore").hidden = storageOk;
     cur.group = l.group || "all"; cur.family = l.family || "all";
+    $("rv-reveal-each").checked = new URLSearchParams(location.search).get("reveal") === "1" || !!l.reveal;
+    $("rv-reveal-each").addEventListener("change", renderStart);
     ["rv-name", "rv-group", "rv-fam"].forEach(function (id) { $(id).addEventListener(id === "rv-name" ? "input" : "change", renderStart); });
     $("rv-form").addEventListener("submit", function (e) { e.preventDefault(); start(); });
     wirePlayer(); wireTrial(); wireReveal();

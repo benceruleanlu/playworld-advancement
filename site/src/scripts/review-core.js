@@ -25,9 +25,9 @@ export const SETS = [
 // stksv14-fx-gc-v1-a1 (servo control) byte for byte. The reveal says so when both groups are in a selection.
 export const SHARED_CLIPS = { sets: ["stk-dev-s0", "stksv-gc"], tasks: ["GC005", "GC016", "GC031", "GC033", "GC038"] };
 export const GROUPS = {
-  stack: { name: "Stack vs no flags", what: "Same seed and same fixed moves in both clips.", treat: "stack: turn calibration, caption prompt, insight director, IF slow translation, keep-first 10, attention window 22", control: "no flags" },
-  servo: { name: "Yaw servo vs control (GC)", what: "Same seed and same fixed moves in both clips.", treat: "yaw servo on", control: "yaw servo off" },
-  "servo-cl": { name: "Yaw servo vs control (GC, closed loop)", what: "Closed loop: the AI player chose the moves for each clip, so the two clips can follow different moves and run for different lengths. A clip that ends holds its last frame under a \"Clip ended\" label; judge stability only over the part both clips play.", treat: "yaw servo on", control: "yaw servo off", closed: true }
+  stack: { name: "Stack vs no flags", short: "+ stack", what: "Same seed and same fixed moves in both clips.", treat: "stack: turn calibration, caption prompt, insight director, IF slow translation, keep-first 10, attention window 22", control: "no flags" },
+  servo: { name: "Yaw servo vs control (GC)", short: "+ yaw servo", what: "Same seed and same fixed moves in both clips.", treat: "yaw servo on", control: "yaw servo off" },
+  "servo-cl": { name: "Yaw servo vs control (GC, closed loop)", short: "+ yaw servo", what: "Closed loop: the AI player chose the moves for each clip, so the two clips can follow different moves and run for different lengths. A clip that ends holds its last frame under a \"Clip ended\" label; judge stability only over the part both clips play.", treat: "yaw servo on", control: "yaw servo off", closed: true }
 };
 export const FAMS = ["gc", "if", "insight", "outsight"];
 
@@ -128,12 +128,12 @@ export function tally(votes, q) {
 }
 
 /* ---------- export / import ---------- */
-export const CSV_COLS = ["reviewer", "round", "pair_id", "task", "family", "group", "set", "attention", "treatment_side", "follow", "follow_pref", "stable", "stable_pref", "note", "first_voted", "last_voted", "page_version", "manifests"];
+export const CSV_COLS = ["reviewer", "round", "pair_id", "task", "family", "group", "set", "attention", "treatment_side", "follow", "follow_pref", "stable", "stable_pref", "note", "first_voted", "last_voted", "revealed_at", "reveal", "page_version", "manifests"];
 function q(v) { const s = v === null || v === undefined ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 export function toCSV(doc) {
   const mv = Object.keys(doc.manifests || {}).sort().map((k) => k + "@" + doc.manifests[k]).join(" ");
   const lines = [CSV_COLS.join(",")];
-  doc.votes.forEach((v) => { lines.push(CSV_COLS.map((c) => q(c === "page_version" ? doc.page_version : c === "manifests" ? mv : c === "reviewer" ? doc.reviewer : c === "round" ? (doc.round || 0) : v[c])).join(",")); });
+  doc.votes.forEach((v) => { lines.push(CSV_COLS.map((c) => q(c === "page_version" ? doc.page_version : c === "manifests" ? mv : c === "reviewer" ? doc.reviewer : c === "round" ? (doc.round || 0) : c === "reveal" ? (doc.reveal || "at_end") : v[c])).join(",")); });
   return lines.join("\n") + "\n";
 }
 export function parseCSV(text) {

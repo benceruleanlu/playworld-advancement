@@ -54,3 +54,12 @@ nav.top span.nl { color: var(--ink); font-size: 14px; }
 main.rv > section { border-top: 0; padding-top: 0; }
 table.rvtally th.num, table.rvtally td.num { white-space: nowrap; overflow-wrap: normal; }
 table.rvtally .rvn { display: block; font-size: var(--fs-xs); color: var(--ink2); }
+/* per-trial reveal mode */
+.rvcheck { display: flex; align-items: center; gap: 6px; font-size: var(--fs-s); }
+.rvinstant { margin: 12px 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rvinstant p { margin: 0; overflow-wrap: anywhere; }
+.rvinstant .rvsides { display: grid; grid-template-columns: 1fr; gap: 6px; }
+@media (min-width: 640px) { .rvinstant .rvsides { grid-template-columns: 1fr 1fr; } }
+.rvinstant .rvside { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-s); min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-s); }
+.rvinstant .rvside.trt { border-color: var(--accent); }
+.cvhead .badge { margin-left: 6px; }
