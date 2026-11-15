@@ -12,6 +12,17 @@
    ]
   },
   {
+   "exp": "wm14-arm-c10-v1",
+   "generated": "2026-11-15T02:28:07Z",
+   "n_tasks": 4,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-wm14-arm-c10-v1",
+   "scored": false,
+   "labels": [
+    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+    "not scored"
+   ]
+  },
+  {
    "exp": "ins14-base-v2",
    "generated": "2026-11-15T02:22:37Z",
    "n_tasks": 6,
