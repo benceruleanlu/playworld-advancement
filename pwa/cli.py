@@ -29,7 +29,7 @@ env overrides: PWA_ROOT (repo), PWA_RUNS (runs dir), PWA_RESULTS_CSV (experiment
 
 
 def _sel_args(p, default_split=None):
-    p.add_argument("--split", default=None, help="dev | heldout | all | path to TSV (default: "
+    p.add_argument("--split", default=None, help="dev | dev2 | dev48 | heldout | all | path to TSV (default: "
                    + (default_split or "the task list recorded by `pwa gen`") + "; --tasks alone may name any task)")
     p.add_argument("--family", nargs="+", choices=FAMILIES, help="restrict to families")
     p.add_argument("--tasks", nargs="+", metavar="ID", help="restrict to task ids")
