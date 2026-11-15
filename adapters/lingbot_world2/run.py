@@ -89,7 +89,8 @@ Refused together with --lingbot-weight-mod: both wrap the same layers.
 Noisy KV writes (off by default, session only): `--lingbot-kv-noise` or LINGBOT_KV_NOISE=1 writes each
 generated chunk into the KV cache from add_noise(x0, eps, t_kv) at t_kv (--lingbot-kv-noise-t, default 25,
 snapped to the scheduler table) instead of x0 at t=0; eps has its own generator, so denoising and the
-returned frames of the current chunk are unchanged. Chunks with an image latent stay clean. See kv_noise.py.
+returned frames of the current chunk are unchanged. Chunks with an image latent or overlapping the attention
+sink stay clean (58 of 60 chunks noised at sink 6); T is capped at 250. See kv_noise.py.
 
 Weight modulation (off by default): `--lingbot-weight-mod` or LINGBOT_WEIGHT_MOD=1 multiplies the outputs of
 every DiT block's cam_scale_layer / cam_shift_layer (camera FiLM) and cross_attn.o (text cross-attention) by a

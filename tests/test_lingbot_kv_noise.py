@@ -35,7 +35,7 @@ def test_parse_and_configure(monkeypatch):
     cfg, _ = KVN.parse(["run.py"], environ={"LINGBOT_KV_NOISE": "1", "LINGBOT_KV_NOISE_T": "100"})
     assert cfg == KVN.KVNoiseConfig(True, 100.0)
     for bad in (["--lingbot-kv-noise-t"], ["--lingbot-kv-noise-t=0"], ["--lingbot-kv-noise-t=-5"],
-                ["--lingbot-kv-noise-t=1001"], ["--lingbot-kv-noise-t=nan"], ["--lingbot-kv-noise-t=x"]):
+                ["--lingbot-kv-noise-t=1001"], ["--lingbot-kv-noise-t=251"], ["--lingbot-kv-noise-t=nan"], ["--lingbot-kv-noise-t=x"]):
         with pytest.raises(SystemExit):
             KVN.parse(["run.py", *bad], environ={})
 
@@ -142,6 +142,18 @@ def test_reanchored_chunk_stays_clean(monkeypatch):
     sess._anchored.add(5)  # a latent of chunk 1 re-anchored to the input image (as _anchor_y records it)
     sess.step(["none"] * 32)
     assert [t for t, _ in calls[4::5]] == [0.0, 0.0, 29.0] and sess.kv_noise_chunks == 1
+
+
+@pytest.mark.parametrize("sink, kv_ts", [(0, [0.0, 29.0, 29.0, 29.0]), (6, [0.0, 0.0, 29.0, 29.0]),
+                                          (8, [0.0, 0.0, 29.0, 29.0]), (9, [0.0, 0.0, 0.0, 29.0])])
+def test_sink_chunks_stay_clean(monkeypatch, sink, kv_ts):
+    # sink slots are never evicted: a chunk whose latents overlap [0, sink) keeps the clean write
+    _torch(monkeypatch)
+    sess, calls, _ = _session(KVN.KVNoise())
+    sess.pipe.sink_size = sink
+    sess.step(["none"] * 28)
+    sess.step(["w"] * 32)
+    assert [t for t, _ in calls[4::5]] == kv_ts and sess.kv_noise_chunks == kv_ts.count(29.0)
 
 
 def test_flag_stats_lines():

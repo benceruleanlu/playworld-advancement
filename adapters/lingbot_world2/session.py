@@ -540,9 +540,14 @@ class LingBotSession:
                     self.cond_sched.reset()
                 if chunk_hit:
                     self.cond_sched_chunks += 1
-                if self.kv_noise is not None and cid > 0 and not self._anchored.intersection(
-                        range(cid * CHUNK, (cid + 1) * CHUNK)):
-                    # --lingbot-kv-noise: write keys/values of a lightly re-noised x0 at t_kv
+                # weight_mod.end_chunk() and cond_sched.reset() ran above, so either KV write below uses
+                # cond scales 1.0 and the chunk's base weight-mod scale.
+                if (self.kv_noise is not None and cid > 0
+                        and cid * CHUNK >= int(getattr(pipe, "sink_size", 0) or 0)
+                        and not self._anchored.intersection(range(cid * CHUNK, (cid + 1) * CHUNK))):
+                    # --lingbot-kv-noise: write keys/values of a lightly re-noised x0 at t_kv. Chunks that
+                    # overlap the attention sink stay clean: sink slots are never evicted, so a noised
+                    # write there would stay in every later chunk's context.
                     x_kv, t_kv = self.kv_noise.kv_input(x0, pipe.scheduler)
                     self.kv_noise_chunks += 1
                     pipe.model(x=[x_kv], t=torch.stack([t_kv]).to(pipe.device), cross_attn_first_call=False, **kwargs)

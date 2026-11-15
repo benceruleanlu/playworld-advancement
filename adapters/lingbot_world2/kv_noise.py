@@ -14,8 +14,15 @@ x_t = (1 - sigma) * x0 + sigma * eps, and the DiT embeds the raw t. add_noise lo
 in that table (no entry raises), so T is snapped: at shift 10 (14B) T=25 -> 29 (sigma 0.029), shift 5
 (1.3B) T=25 -> 24 (sigma 0.024). The low end of the table is sparse (9, 19, 29, ... at shift 10).
 
-Chunks that carry the input image stay clean: chunk 0 of the rollout (latent 0 has mask 1 and the image
-latent in y) and any chunk holding a latent re-anchored by --lingbot-reanchor.
+Chunks that stay clean: chunk 0 of the rollout (latent 0 has mask 1 and the image latent in y), any chunk
+holding a latent re-anchored by --lingbot-reanchor, and any chunk whose latents overlap the attention sink
+(cid * 4 < sink_size; sink slots are never evicted, so a noised write there would persist for the whole
+rollout). At the default sink 6, chunks 0 and 1 stay clean, so a 30-decision rollout of 2-chunk steps
+noises 58 of 60 chunks.
+
+Not trained for: the distilled student samples at 4 timesteps, 999/967/908/768 (14B, shift 10) and
+999/937/833/624 (1.3B, shift 5), and writes the cache at t=0. t_kv=29 or 24 is a value it never sees at any
+forward. T is capped at 250: larger T writes keys of mostly-noise latents.
 """
 from __future__ import annotations
 
@@ -26,6 +33,7 @@ from dataclasses import dataclass
 FLAG = "--lingbot-kv-noise"
 T_ARG = "--lingbot-kv-noise-t"
 DEFAULT_T = 25.0
+MAX_T = 250.0   # above this the write is mostly noise (sigma > 0.25)
 SEED_OFFSET = 7_919  # eps generator seed = session seed + this; keeps it apart from the main noise stream
 
 
@@ -43,8 +51,9 @@ def _t(label: str, raw: str) -> float:
         v = float(raw)
     except ValueError as exc:
         raise SystemExit(f"{label} must be a number, got {raw!r}") from exc
-    if not (math.isfinite(v) and 0 < v <= 1000):
-        raise SystemExit(f"{label} must be in (0, 1000] (scheduler timestep scale), got {raw!r}")
+    if not (math.isfinite(v) and 0 < v <= MAX_T):
+        raise SystemExit(f"{label} must be in (0, {MAX_T:g}] (scheduler timestep scale; larger T writes "
+                         f"mostly-noise keys), got {raw!r}")
     return v
 
 
