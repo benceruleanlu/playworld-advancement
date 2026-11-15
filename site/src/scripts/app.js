@@ -1,5 +1,6 @@
 // Client-side results page: fetches results/experiments.csv from main at view time.
 import * as RunInfo from "./runinfo.js";
+import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from "./ui.js";
 (function () {
   var REPO = "benceruleanlu/playworld-advancement";
   var RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/experiments.csv";
@@ -19,51 +20,6 @@ import * as RunInfo from "./runinfo.js";
   var GENIE = REFS[0];
 
   /* ---------- helpers ---------- */
-  function $(id) { return document.getElementById(id); }
-  function el(tag, attrs, kids) {
-    var e = document.createElement(tag);
-    if (attrs) for (var k in attrs) {
-      if (k === "text") e.textContent = attrs[k];
-      else if (k === "class") e.className = attrs[k];
-      else if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
-    }
-    (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
-    return e;
-  }
-  // The judge's reason: the English display copy (translated after scoring) with a toggle for the judge's original,
-  // which is authoritative; the original alone, marked untranslated, when no copy exists.
-  // A failing pass (gate, IF/OE check, error) that is not the representative one keeps its own reason under it.
-  function judgeComment(t, open) {
-    if (!t.reason) return null;
-    var attrs = open ? { open: "" } : null;
-    var failSt = (t.status || []).filter(function (s) { return s !== "ok"; }).join(", ") || "failed";
-    var failHead = t.fail_reason ? "Pass " + (t.fail_pass === null || t.fail_pass === undefined ? "?" : t.fail_pass) + " (" + failSt + "): " : "";
-    if (t.reason_en) {
-      var origs = [el("p", { class: "jorig", text: t.reason })];
-      var kids = [el("summary", { text: "Judge's comment (translated from the judge's original)" }), el("p", { text: t.reason_en })];
-      if (t.fail_reason) {
-        kids.push(el("p", { class: "jfail", text: failHead + (t.fail_reason_en || t.fail_reason) }));
-        if (t.fail_reason_en) origs.push(el("p", { class: "jorig", text: failHead + t.fail_reason }));
-      }
-      origs.forEach(function (o) { o.hidden = true; });
-      var btn = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
-      btn.addEventListener("click", function () {
-        var hide = !origs[0].hidden;
-        origs.forEach(function (o) { o.hidden = hide; });
-        btn.textContent = hide ? "show original" : "hide original";
-        btn.setAttribute("aria-expanded", hide ? "false" : "true");
-      });
-      return el("details", attrs, kids.concat([btn]).concat(origs));
-    }
-    var plain = [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })];
-    if (t.fail_reason) plain.push(el("p", { class: "jfail", text: failHead + t.fail_reason }));
-    plain.push(el("p", { class: "jnote", text: "judge's own words, untranslated" }));
-    return el("details", attrs, plain);
-  }
-  function passesText(t) {
-    var ps = t.pass_scores || [];
-    return ps.length ? "per pass " + ps.map(function (v) { return typeof v === "number" ? String(Math.round(v * 100) / 100) : "-"; }).join("/") : null;
-  }
   var SVGNS = "http://www.w3.org/2000/svg";
   function sv(tag, attrs, kids) {
     var e = document.createElementNS(SVGNS, tag);
@@ -74,8 +30,6 @@ import * as RunInfo from "./runinfo.js";
     (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
     return e;
   }
-  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
-  function fmt(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : "-"; }
   function dashCell(td) { td.appendChild(el("span", { class: "dash", text: "-" })); }
   function isTest(r) { return /fake_runner/.test(r.runner || ""); }
   /* Score-less status row the experiment workflow writes while a run is in flight, or when it failed. Not a result. */
@@ -379,7 +333,7 @@ import * as RunInfo from "./runinfo.js";
   }
   // compact family table: paper rows next to the headline run
   function renderFams() {
-    var t = $("fams"); clear(t);
+    var t = $("fams"); if (!t) return; clear(t);
     var b = bestFinal() || bestClosed();
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
     var hr = el("tr");
@@ -528,6 +482,8 @@ import * as RunInfo from "./runinfo.js";
   // kind "note": text and a scene only. watch: { task, b: control, c: treatment } for the compare player; scene: [exp, task].
   // say: the one line the tour bar shows. Every number in body or say must be in results/ or research/.
   var STORY = [
+    { id: "examples", kind: "gallery", title: "What works and what breaks, by task type",
+      say: "For each task type, the rollout the judge scored highest and the one it scored lowest." },
     { id: "player", kind: "note", title: "The AI player decides most camera tasks",
       body: "In the 24-task baseline the AI player reversed direction 9 to 17 times per out-of-sight task and 25 times on GC036. On 4 of 6 out-of-sight tasks the camera never returned, so the judge had nothing to grade. Model-side tests therefore use fixed moves.",
       say: "The baseline player turned left and right for the whole rollout.",
@@ -558,17 +514,22 @@ import * as RunInfo from "./runinfo.js";
       say: "Swapping \"wait and observe\" for the scene caption moved nothing by a full point.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
-    { id: "window", prs: [104], label: "Larger attention window, seed 1", verdict: "running", title: "Does a larger attention window help the camera come back?", pending: true,
-      body: "On seed 0, three arms that keep more of the opening view scored OE039 at 3.0 to 3.1 against 1.25 to 2.0 for three control scorings, and two of them lost more than a point on OE048. This run repeats the larger window on seed 1.",
-      say: "One lead, being repeated on a second seed.",
-      ctl: "win14-fx-v1-a3", arms: [["larger window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]],
+    { id: "window", seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "not repeated", title: "A larger attention window moved different tasks on each seed",
+      body: "At seed 1 it raised OE039 by 2.4 and OE069 by 1.0 and lowered nothing by a full point. At seed 0 the same flags raised GC031 by 1.65, lowered OE048 by 1.06 and left OE039 inside the control's spread. No task moved on both seeds.",
+      say: "Our best lead, repeated on a second seed. Different tasks moved each time.",
+      ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
+    { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "running", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
+      body: "Turn calibration, caption prompt, insight director, slow IF translation and the larger attention window together, against no flags, on every dev task at two seeds.",
+      say: "The combined method on all 24 dev tasks at two seeds is running now.",
+      ctl: "stk14-fx-dev-v1-a1", arms: [["stack", "stk14-fx-dev-v1-a2", "the stack, seed 0"]],
+      watch: { task: "OE039", b: "stk14-fx-dev-v1-a1", c: "stk14-fx-dev-v1-a2" } },
     { id: "open", kind: "note", title: "Still open",
       say: "No 171-task score yet, and nothing has repeated on two seeds.",
       points: ["No 171-task score, for the starting model or for a method.",
-        "Every A/B here is one seed with fixed moves. Adoption needs the AI player and two seeds.",
+        "Every A/B here uses fixed moves, and all but one ran on a single seed. Adoption needs the AI player and two seeds.",
         "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads: a larger attention window on out-of-sight (second seed running), the insight director (one up, one down), re-anchoring on GC (weak).",
+        "Leads: a larger attention window (moves tasks, not the same ones twice), the insight director (one up, one down), re-anchoring on GC (weak).",
         "Pose memory has no result yet."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
@@ -698,7 +659,7 @@ import * as RunInfo from "./runinfo.js";
         el("span", { class: t.down ? "bad" : "", text: t.down + " down" }), document.createTextNode(" of " + t.n + " task" + (t.n === 1 ? "" : "s"))]));
     });
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: "Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here." };
+      cap: s.cap || "Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here." };
   }
   // the same settings run several times: tasks at least two runs judged, and the spread between them
   function repeatEvidence(s) {
@@ -727,7 +688,7 @@ import * as RunInfo from "./runinfo.js";
       cap: s.cap || "Judge's mean per task. Identical settings in every column." };
   }
   function storyState(s) {
-    if (s.kind === "note") return "ok";
+    if (s.kind === "note" || s.kind === "gallery") return "ok";
     var exps = s.kind === "repeat" ? s.runs.map(function (r) { return r[1]; }) : [s.ctl].concat(s.arms.map(function (a) { return a[1]; }));
     if (s.kind === "repeat" ? exps.filter(tasksOfRun).length >= 2 : tasksOfRun(s.ctl) && s.arms.some(function (a) { return tasksOfRun(a[1]); })) return "ok";
     var rows = exps.map(rowByExp).filter(Boolean);
@@ -743,6 +704,12 @@ import * as RunInfo from "./runinfo.js";
       var st = storyState(s);
       // a finding whose runs ended without a score is not a finding; one still running is shown as pending
       if (st === "ended" || st === "none" || (st === "generated" && !s.pending)) return;
+      if (s.kind === "gallery") {
+        // the examples by task type are the first finding: renderGallery() fills #gal
+        var gli = el("li", { class: "st solo", id: "story-" + s.id }, [el("h3", { text: (storyShown.length + 1) + ". " + s.title }),
+          el("div", { class: "gal", id: "gal" }), el("p", { class: "st-cap", id: "gal-note" })]);
+        ol.appendChild(gli); storyShown.push({ s: s, li: gli, ev: false }); return;
+      }
       var ev = st !== "ok" ? null : s.kind === "repeat" ? repeatEvidence(s) : s.kind === "note" ? null : abEvidence(s);
       var n = storyShown.length + 1;
       var text = el("div", { class: "st-text" }, [
@@ -767,7 +734,8 @@ import * as RunInfo from "./runinfo.js";
         var exps = s.kind === "repeat" ? s.runs.map(function (r) { return r[1]; }) : [s.ctl].concat(s.arms.map(function (a) { return a[1]; }));
         var rows = exps.map(rowByExp).filter(Boolean);
         if (rows.some(isOpen)) bd.appendChild(el("span", { class: "badge warn", title: "Fixed action scripts from the dataset, no AI player. Used for A/B tests only, never for final scores.", text: "open loop, A/B only" }));
-        if (s.kind !== "repeat") bd.appendChild(el("span", { class: "badge warn", title: "One generation per arm. The adoption rule asks for the gain to repeat on a second seed.", text: "one seed" }));
+        if (s.kind !== "repeat") bd.appendChild(s.seeds === 2 ? badge("", "two seeds", "Control and treatment were each generated on two seeds. This table shows one of them.")
+          : badge("warn", "one seed", "One generation per arm. The adoption rule asks for the gain to repeat on a second seed."));
         var ps = rows.map(function (r) { return r.passes; }).filter(function (p) { return p !== null; });
         if (ps.length) bd.appendChild(el("span", { class: "badge", text: Math.min.apply(null, ps) + " judge passes" }));
         side.appendChild(bd);
@@ -793,7 +761,7 @@ import * as RunInfo from "./runinfo.js";
       ol.appendChild(li); storyShown.push({ s: s, li: li, ev: !!ev });
     });
     if (!storyShown.length) ol.appendChild(el("li", { class: "empty", text: "No findings to show yet." }));
-    renderVerdicts(); buildTour();
+    renderGallery(); renderVerdicts(); buildTour();
   }
 
   /* ---------- verdict table: every A/B in the findings on one screen ---------- */
@@ -846,7 +814,7 @@ import * as RunInfo from "./runinfo.js";
       tb.appendChild(tr);
     });
     box.appendChild(el("table", { class: "ev vd" }, [el("thead", null, [hr]), tb]));
-    box.appendChild(el("p", { class: "st-cap", text: "Up and down count task-by-arm cells that moved a full point against control. One seed, fixed moves." }));
+    box.appendChild(el("p", { class: "st-cap", text: "Up and down count task-by-arm cells that moved a full point against control. Fixed moves; one seed unless the row says two." }));
   }
 
   /* ---------- hero: verdict line and the project in numbers ---------- */
@@ -932,24 +900,25 @@ import * as RunInfo from "./runinfo.js";
     return el("article", { class: "scene gc" }, [head, media, quote, tog, orig, foot,
       el("div", { class: "row" }, [el("code", { class: "rawid", text: c.exp }), link])]);
   }
-  function renderGallery() {
+  var galFam = "gc";
+  function renderGallery(focus) {
     var box = $("gal"); if (!box) return;
-    var pool = clipPool(); if (!pool.length) { if (scenesIdx) { clear(box); box.appendChild(el("p", { class: "callout", text: "No officially scored clips published yet." })); } return; }
+    var pool = clipPool(); if (!pool.length) { if (scenesIdx) { clear(box); renderHeroClip(pool); box.appendChild(el("p", { class: "note", text: "No officially scored clips published yet." })); } return; }
     clear(box);
     var b = bestFinal() || bestClosed(), lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
-    FAMS.forEach(function (f) {
-      var k = f[0], list = pool.filter(function (c) { return c.t.family === k; });
-      var best = pickBest(list), worst = pickWorst(list, best);
-      var info = FAMINFO[k];
-      var scores = el("p", { class: "gf-scores" }, [document.createTextNode("Genie 3 "), el("b", { text: fmt(GENIE[k]) }), document.createTextNode(" · LingBot v2 "), el("b", { text: fmt(lb[k]) }),
-        document.createTextNode(b && b[k] !== null ? " · ours " : ""), b && b[k] !== null ? el("b", { text: fmt(b[k]) }) : null]);
-      var head = el("div", { class: "gf-head" }, [el("h3", { text: info.name }), el("p", { class: "gf-q", text: info.ask }), scores]);
-      var cards = el("div", { class: "gf-cards" });
-      if (best) cards.appendChild(clipCard(best, "highest"));
-      if (worst) cards.appendChild(clipCard(worst, "lowest"));
-      if (!best) cards.appendChild(el("p", { class: "callout", text: "Nothing to show for this family yet." }));
-      box.appendChild(el("div", { class: "gfam", id: "gallery-" + k }, [head, cards]));
-    });
+    var tabs = segmented("Task type", FAMS.map(function (f) { return [f[0], FAMINFO[f[0]].name]; }), galFam, function (k, viaKey) { galFam = k; renderGallery(viaKey); });
+    box.appendChild(tabs);
+    if (focus) { var cur = tabs.querySelector('[aria-selected="true"]'); if (cur) cur.focus(); }
+    var k = galFam, info = FAMINFO[k], list = pool.filter(function (c) { return c.t.family === k; });
+    var best = pickBest(list), worst = pickWorst(list, best);
+    var scores = el("dl", { class: "kv" }, [el("dt", { text: "Genie 3" }), el("dd", { text: fmt(GENIE[k]) }), el("dt", { text: "LingBot v2" }), el("dd", { text: fmt(lb[k]) }),
+      b && b[k] !== null ? el("dt", { text: "Ours, " + b.n_tasks + " tasks" }) : null, b && b[k] !== null ? el("dd", { text: fmt(b[k]) }) : null]);
+    var head = el("div", { class: "gf-head" }, [el("p", { class: "gf-q", text: info.ask }), scores]);
+    var cards = el("div", { class: "gf-cards" });
+    if (best) cards.appendChild(clipCard(best, "highest"));
+    if (worst) cards.appendChild(clipCard(worst, "lowest"));
+    if (!best) cards.appendChild(el("p", { class: "note", text: "No scored rollout for this task type yet." }));
+    box.appendChild(el("div", { class: "gfam", id: "gallery-" + k, role: "tabpanel" }, [head, cards]));
     $("gal-note").textContent = "Quotes are the official judge's comments, machine-translated. Chosen from " + pool.length + " scored 14B rollouts by pass mean; ties on the lowest go to the longest comment. Most use fixed moves.";
     renderHeroClip(pool);
   }
@@ -965,7 +934,7 @@ import * as RunInfo from "./runinfo.js";
     fig.appendChild(v);
     var cap = el("figcaption", null, [el("b", { text: c.t.task_id + ", scored " + fmt(c.mean) + " of 5." }),
       document.createTextNode(" Our highest-scored rollout" + (c.row && !isClosed(c.row) ? ", fixed moves" : "") + ". ")]);
-    var a = el("a", { href: "#gallery", text: "What breaks" }); cap.appendChild(a);
+    var a = el("a", { href: "#story-examples", text: "What breaks" }); cap.appendChild(a);
     fig.appendChild(cap);
   }
 
@@ -1109,7 +1078,6 @@ import * as RunInfo from "./runinfo.js";
     var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can we lift an open world model past Genie 3 (" + fmt(TARGET) + ") without retraining it?" }];
     steps.push({ el: function () { return $("scores"); }, title: "Where we start",
       line: shown ? "Best official score, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks (" + shown.exp + "). Genie 3: " + fmt(TARGET) + "." : "No run big enough to estimate a score yet." });
-    steps.push({ el: function () { return $("gallery"); }, title: "What works, what breaks", line: "Four task types. The judge's highest and lowest rollout for each." });
     if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it yet." });
     storyShown.forEach(function (x) {
       var s = x.s;
@@ -1117,9 +1085,9 @@ import * as RunInfo from "./runinfo.js";
       if (s.watch && x.ev) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right. " + (s.say || "") });
       else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: s.say || "" });
     });
-    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
-    steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
-    steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "Each row links its commit and job." });
+    steps.push({ el: function () { return $("loop"); }, title: "Method", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
+    steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("tests", false); scrollToEl($("watch")); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
+    steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("runs", false); scrollToEl($("watch")); }, title: "Every run", line: "Each row links its commit and job." });
     tourSteps = steps;
     if (tourAt >= 0) tourShow();
   }
@@ -1135,7 +1103,7 @@ import * as RunInfo from "./runinfo.js";
     var node = s.el(); if (node && node.classList && node.id !== "top") node.classList.add("tour-on");
     // presenting: only the section of this step stays at full strength
     Array.prototype.forEach.call(document.querySelectorAll(".tour-here"), function (n) { n.classList.remove("tour-here"); });
-    var sec = node && node.closest ? (node.id === "top" ? document.querySelector(".view.lead") : node.closest("main > section")) : null;
+    var sec = node && node.closest ? (node.id === "top" ? document.querySelector(".view.lead") : node.closest("main > section, main > .view")) : null;
     if (sec) sec.classList.add("tour-here");
   }
   function tourUrl() {
@@ -1226,42 +1194,48 @@ import * as RunInfo from "./runinfo.js";
     f.appendChild(ul);
   }
 
-  /* ---------- watch tabs: compare player or one run's scenes ---------- */
+  /* ---------- explore tabs: compare player, one run's scenes, all tests, all runs ---------- */
+  var MODES = [["compare", "tab-compare", "compare-clips"], ["scenes", "tab-scenes", "scenes"], ["tests", "tab-tests", "testing"], ["runs", "tab-runs", "runs"]];
   var mode = "compare";
+  function modeOfHash(h) { var hit = MODES.filter(function (x) { return "#" + x[2] === h; })[0]; return hit ? hit[0] : ""; }
   function setMode(m, user) {
     mode = m;
-    [["compare", "tab-compare", "compare-clips"], ["scenes", "tab-scenes", "scenes"]].forEach(function (x) {
+    MODES.forEach(function (x) {
       var on = x[0] === m;
       $(x[1]).setAttribute("aria-selected", String(on));
       $(x[1]).setAttribute("tabindex", on ? "0" : "-1");
       $(x[2]).hidden = !on;
       if (!on) Array.prototype.forEach.call($(x[2]).querySelectorAll("video"), function (v) { if (!v.paused) v.pause(); });
     });
+    // the clip footnote belongs to the two clip tabs
+    var note = $("watch-note"); if (note) note.hidden = m !== "compare" && m !== "scenes";
     if (m !== "compare" && $("cv-play").textContent === "Pause") $("cv-play").click();
     if (!user) return;
-    // the other mode's deep-link params would win on reload, so drop them
+    // the other clip tab's deep-link params would win on reload, so drop them
     try {
       var q = new URLSearchParams(location.search);
-      (m === "scenes" ? ["compare", "a", "b", "c"] : ["scenes", "scene"]).forEach(function (k) { q.delete(k); });
-      var qs = q.toString();
-      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + "#" + (m === "scenes" ? "scenes" : "compare-clips"));
+      (m === "compare" ? ["scenes", "scene"] : m === "scenes" ? ["compare", "a", "b", "c"] : ["scenes", "scene", "compare", "a", "b", "c"]).forEach(function (k) { q.delete(k); });
+      var qs = q.toString(), panel = MODES.filter(function (x) { return x[0] === m; })[0][2];
+      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + "#" + panel);
     } catch (e) { /* sandboxed */ }
-    // each tab writes its own selection back to the URL
-    if (m === "scenes") syncUrl(); else document.dispatchEvent(new CustomEvent("pwa:mode", { detail: m }));
+    // each clip tab writes its own selection back to the URL
+    if (m === "scenes") syncUrl(); else if (m === "compare") document.dispatchEvent(new CustomEvent("pwa:mode", { detail: m }));
   }
   function initMode() {
     var q = new URLSearchParams(location.search);
-    setMode(q.has("compare") ? "compare" : (q.has("scenes") || location.hash === "#scenes") ? "scenes" : "compare", false);
-    $("tab-compare").addEventListener("click", function () { setMode("compare", true); });
-    $("tab-scenes").addEventListener("click", function () { setMode("scenes", true); });
-    ["tab-compare", "tab-scenes"].forEach(function (id) {
-      $(id).addEventListener("keydown", function (e) {
+    setMode(q.has("compare") ? "compare" : q.has("scenes") ? "scenes" : modeOfHash(location.hash) || "compare", false);
+    MODES.forEach(function (x, i) {
+      $(x[1]).addEventListener("click", function () { setMode(x[0], true); });
+      $(x[1]).addEventListener("keydown", function (e) {
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
         e.preventDefault();
-        var next = mode === "compare" ? "scenes" : "compare";
-        if (e.key === "Home") next = "compare"; else if (e.key === "End") next = "scenes";
-        setMode(next, true); $(next === "scenes" ? "tab-scenes" : "tab-compare").focus();
+        var n = e.key === "Home" ? 0 : e.key === "End" ? MODES.length - 1 : (i + (e.key === "ArrowRight" ? 1 : MODES.length - 1)) % MODES.length;
+        setMode(MODES[n][0], true); $(MODES[n][1]).focus();
       });
+    });
+    // a link to a panel that is not showing (#runs, #testing, ...) opens its tab first
+    window.addEventListener("hashchange", function () {
+      var m = modeOfHash(location.hash); if (m && m !== mode) { setMode(m, false); scrollToEl($("watch")); }
     });
   }
 
@@ -1498,7 +1472,7 @@ import * as RunInfo from "./runinfo.js";
     ["tests", "capped", "ended"].forEach(function (k) {
       $("f-" + k).addEventListener("change", function (e) { filt[k] = e.target.checked; renderBoard(); syncUrl(); });
     });
-    $("runs-more").addEventListener("click", function () { runsAll = !runsAll; renderBoard(); if (!runsAll) scrollToEl($("runs")); });
+    $("runs-more").addEventListener("click", function () { runsAll = !runsAll; renderBoard(); if (!runsAll) scrollToEl($("watch")); });
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {
       if (window.innerWidth === lastW) return; lastW = window.innerWidth;
