@@ -1,0 +1,62 @@
+{
+ "exp": "smk13-gc-base-c10-v2",
+ "release_tag": "run-smk13-gc-base-c10-v2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk13-gc-base-c10-v2",
+ "generated": "2026-11-15T01:24:05Z",
+ "git_sha": "1e73df5d604a0a079655b4b14b80c5d698debda6",
+ "branch": "main",
+ "runner": "lingbot_world2_1p3b",
+ "action_source": "agent",
+ "scored": false,
+ "max_chunks": 10,
+ "labels": [
+  "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+  "not scored"
+ ],
+ "report": "smk13-gc-base-c10-v2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2_1p3b"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC005",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk13-gc-base-c10-v2/GC005.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk13-gc-base-c10-v2/GC005.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk13-gc-base-c10-v2/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk13-gc-base-c10-v2/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk13-gc-base-c10-v2/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-smk13-gc-base-c10-v2/GC036.jpg"
+  }
+ ]
+}
