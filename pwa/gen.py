@@ -45,6 +45,13 @@ def runner_cmd(runner: Path, family: str, ids: list[str], out: Path, a) -> list[
     return cmd + list(a.extra or [])
 
 
+PLAYER_FIELDS = ("decisions", "calls", "empty", "retries", "errors", "fallbacks")  # adapters/common/agent_api.FIELDS
+
+
+def parse_kv(line: str) -> dict[str, str]:
+    return dict(tok.split("=", 1) for tok in line.split() if "=" in tok)
+
+
 def subprocess_launch(cmd: list[str], env: dict, on_line) -> int:
     """Default: the runner is a child process (one per family); its stdout and stderr go to on_line."""
     p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -108,7 +115,9 @@ def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     env.setdefault("WORLDMODEL_BENCHMARK_DIR", str(PLAYWORLD))
     expected, rc_bad = [], []
-    agent_errors = agent_fallbacks = 0
+    agent_errors = agent_fallbacks = agent_empty = 0
+    player = dict.fromkeys(PLAYER_FIELDS, 0)  # summed `[agent] player total` lines (agent_api.PlayerStats)
+    player_seen = False
     with log_path.open("a") as lf:
         for fam in FAMILIES:
             ids = [t["task_id"] for t in sel if t["family"] == fam]
@@ -123,11 +132,18 @@ def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = 
             lf.flush()
 
             def on_line(line):
-                nonlocal agent_errors, agent_fallbacks
+                nonlocal agent_errors, agent_fallbacks, agent_empty, player_seen
                 if "[agent] error attempt" in line:
                     agent_errors += 1
                 elif "[agent] fallback=" in line:
                     agent_fallbacks += 1
+                elif "[agent] empty reply" in line:
+                    agent_empty += 1
+                elif line.startswith("[agent] player total "):
+                    player_seen = True
+                    for k, v in parse_kv(line).items():
+                        if k in player and v.isdigit():
+                            player[k] += int(v)
                 if label:
                     line = line.replace("[SANA_WM]", label)
                 sys.stderr.write(line)
@@ -147,15 +163,23 @@ def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = 
             failed.append({"task_id": tid, "error": (res or {}).get("error", "no mp4 produced")})
     summary = {"exp": a.exp, "expected": len(expected), "produced": len(produced),
                "failed": failed, "runner_errors": rc_bad,
-               "agent_errors": agent_errors, "agent_fallbacks": agent_fallbacks, "log": str(log_path)}
+               "agent_errors": agent_errors, "agent_fallbacks": agent_fallbacks, "agent_empty": agent_empty,
+               "player": player if player_seen else None, "log": str(log_path)}
     meta["last_gen"] = {"at": now(), "produced": len(produced), "failed": len(failed),
-                        "agent_errors": agent_errors, "agent_fallbacks": agent_fallbacks}
+                        "agent_errors": agent_errors, "agent_fallbacks": agent_fallbacks, "agent_empty": agent_empty,
+                        **({"player": player} if player_seen else {})}
     write_json(meta_path, meta)
     log(f"[pwa] gen {a.exp}: {len(produced)}/{len(expected)} mp4s" + (f", {len(failed)} failed" if failed else ""))
+    if player_seen:
+        log(f"[pwa] player: {player['decisions']} decisions, {player['calls']} API calls, {player['empty']} empty "
+            f"replies, {player['retries']} retries, {player['errors']} errors, {player['fallbacks']} fallbacks")
     if agent_errors or agent_fallbacks:
-        log(f"[pwa] WARNING: {agent_errors} agent API errors, {agent_fallbacks} fallback actions. Upstream swallows "
-            f"these and falls back to dataset/NEXT/WAIT actions, so the rollout is not truly closed loop. "
-            f"Check PLAYER_API_PROVIDER / key / model in {log_path}")
+        of = f" of {player['decisions']} decisions" if player_seen else ""
+        log(f"[pwa] WARNING: {agent_fallbacks} fallback actions{of}, {agent_errors} agent API errors, {agent_empty} "
+            f"empty player replies. Upstream swallows these and falls back to dataset/NEXT/WAIT actions, so those "
+            f"decisions were not the player's and the rollout is not fully closed loop. Per-task counts: the "
+            f"`[agent] player task=` lines in {log_path}. Check PLAYER_API_PROVIDER / key / model and "
+            f"PLAYER_MAX_COMPLETION_TOKENS / PLAYER_REASONING_EFFORT (AGENTS.md, player notes).")
     for f in failed:
         log(f"[pwa]   FAILED {f['task_id']}: {f['error']}")
     return summary

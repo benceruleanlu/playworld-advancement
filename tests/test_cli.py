@@ -64,6 +64,19 @@ def test_gen_refuse_resume_and_failure(env):
     assert s["produced"] == 1 and s["failed"][0]["task_id"] == "GC016"
 
 
+def test_gen_reports_player_counters(env):
+    r = pwa({**env, "FAKE_PLAYER": "1"}, "gen", "p1", "--runner", FAKE, "--tasks", "GC005", "OE034", "--json")
+    s = json.loads(r.stdout)
+    assert s["agent_fallbacks"] == 2 and s["agent_empty"] == 2
+    assert s["player"] == {"decisions": 6, "calls": 8, "empty": 2, "retries": 2, "errors": 0, "fallbacks": 2}
+    assert "[pwa] player: 6 decisions, 8 API calls, 2 empty replies, 2 retries, 0 errors, 2 fallbacks" in r.stderr
+    assert "WARNING: 2 fallback actions of 6 decisions, 0 agent API errors, 2 empty player replies" in r.stderr
+    meta = json.loads((Path(env["PWA_RUNS"]) / "p1" / "meta.json").read_text())
+    assert meta["last_gen"]["player"]["fallbacks"] == 2
+    quiet = json.loads(pwa(env, "gen", "p2", "--runner", FAKE, "--tasks", "GC005", "--json").stdout)
+    assert quiet["player"] is None and quiet["agent_empty"] == 0
+
+
 def test_sharded_gen_does_not_clash(env):
     pwa(env, "gen", "sh", "--runner", FAKE, "--family", "gc", "--shard", "0", "--num-shards", "2", check=0)
     pwa(env, "gen", "sh", "--runner", FAKE, "--family", "gc", "--shard", "1", "--num-shards", "2", check=0)
