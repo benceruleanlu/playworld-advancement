@@ -56,7 +56,8 @@ def plan(goal: str, frac: float = 0.75) -> dict | None:
             "move": move.group(1).lower() if move else "any"}
 
 
-def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20):
+def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn_cal: bool, unit: int = 20,
+                turntable=None):
     """1-based count of actions after which the commanded camera first has left (per plan p)
     and is back at the start, or None."""
     yaw_step, pitch_step = H.step_size(chunk_frames, session, turn_cal, unit)
@@ -64,9 +65,9 @@ def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn
     pos = lo = hi = t_lo = t_hi = 0.0
     far = {"right": 0.0, "left": 0.0, "forward": 0.0, "backward": 0.0, "any": 0.0}
     for k in range(1, len(actions) + 1):
-        s = H.replay(actions[:k], to_key, chunk_frames, session, turn_cal, unit)
+        s = H.replay(actions[:k], to_key, chunk_frames, session, turn_cal, unit, turntable=turntable)
         net = s["turned_right"] - s["turned_left"]
-        dist = math.hypot(s["forward"], s["right"])
+        dist = math.hypot(s["forward"], s["right"], s["up"]) if "up" in s else math.hypot(s["forward"], s["right"])
         lo, hi = min(lo, net), max(hi, net)
         for name, v in (("right", s["right"]), ("left", -s["right"]), ("forward", s["forward"]),
                         ("backward", -s["forward"]), ("any", dist)):
@@ -89,7 +90,7 @@ def returned_at(actions, to_key, p: dict, chunk_frames: int, session: bool, turn
 
 
 def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_event=None, hold: int | None = None,
-         frac: float | None = None):
+         frac: float | None = None, turntable=None):
     """Wrap decide_action. on_event("armed") once per decision of an armed task,
     on_event("stop") for every decision answered here instead of by the player."""
     hold = int(os.environ.get("LINGBOT_RETURN_STOP_HOLD", "2")) if hold is None else hold
@@ -102,7 +103,7 @@ def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_event=None, ho
             emit("armed")
             acts = list(recent_actions or [])
             k = returned_at(acts, to_key, p, int(getattr(args, "chunk_frames", 33) or 33), session, turn_cal,
-                            int(getattr(args, "action_frame_unit", 20) or 20))
+                            int(getattr(args, "action_frame_unit", 20) or 20), turntable=turntable)
             if k is not None:
                 action = "WAIT" if len(acts) - k < hold else "END"
                 emit("stop")
