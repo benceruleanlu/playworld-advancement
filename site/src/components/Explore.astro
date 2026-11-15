@@ -1,8 +1,13 @@
-<section id="watch" aria-labelledby="h-watch">
-  <h2 id="h-watch" class="sec">Watch</h2>
-  <div class="tabs" role="tablist" aria-label="Watch mode">
-    <button type="button" role="tab" id="tab-compare" aria-controls="compare-clips" aria-selected="true">Compare runs</button>
-    <button type="button" role="tab" id="tab-scenes" aria-controls="scenes" aria-selected="false">Browse one run</button>
+---
+// Reference material behind the story, as four tabs of one section. The panel ids are the old section ids, so deep links still land.
+import Section from "./Section.astro";
+---
+<Section id="watch" title="Explore" lede="Compare any two runs, browse one run's clips, or read every test and every run.">
+  <div class="tabs" role="tablist" aria-label="Explore">
+    <button type="button" role="tab" id="tab-compare" aria-controls="compare-clips" aria-selected="true">Compare clips</button>
+    <button type="button" role="tab" id="tab-scenes" aria-controls="scenes" aria-selected="false">Browse a run</button>
+    <button type="button" role="tab" id="tab-tests" aria-controls="testing" aria-selected="false">All tests</button>
+    <button type="button" role="tab" id="tab-runs" aria-controls="runs" aria-selected="false">All runs</button>
   </div>
   <div id="compare-clips" role="tabpanel" aria-labelledby="tab-compare">
     <div class="filters" id="cv-pick" hidden>
@@ -46,5 +51,18 @@
     <div class="scenes" id="sc-grid" aria-live="polite"></div>
     <p class="scnote" id="sc-attr"><span id="sc-model"></span><a id="sc-files" href="https://github.com/benceruleanlu/playworld-advancement/releases" target="_blank" rel="noopener" hidden>All files of this run</a></p>
   </div>
-  <p class="scnote">Judge comments are machine-translated; "show original" has the judge's text. Task images come from <a href="https://github.com/kxding/PlayWorld" target="_blank" rel="noopener">PlayWorld</a> (Pexels and web image search, their terms). Videos: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial. <a href="https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request" target="_blank" rel="noopener">Request removal</a>.</p>
-</section>
+  <div id="testing" role="tabpanel" aria-labelledby="tab-tests" hidden>
+    <p class="sub">Off by default. Kept only if tasks move a full point on two seeds.</p>
+    <div id="methods"><div class="sk" style="height:140px"></div></div>
+  </div>
+  <div id="runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+    <div class="filters" id="filters">
+      <label class="check"><input type="checkbox" id="f-capped"> Capped smoke runs <span id="capped-count" class="std"></span></label>
+      <label class="check"><input type="checkbox" id="f-ended"> Runs without a score <span id="ended-count" class="std"></span></label>
+      <label class="check"><input type="checkbox" id="f-tests"> Pipeline tests <span id="tests-count" class="std"></span></label>
+    </div>
+    <div class="scroll"><table id="board"><tbody><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr></tbody></table></div>
+    <button type="button" class="scmore" id="runs-more" hidden></button>
+    </div>
+  <p class="scnote" id="watch-note">Judge comments are machine-translated; "show original" has the judge's text. Task images come from <a href="https://github.com/kxding/PlayWorld" target="_blank" rel="noopener">PlayWorld</a> (Pexels and web image search, their terms). Videos: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial. <a href="https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request" target="_blank" rel="noopener">Request removal</a>.</p>
+</Section>

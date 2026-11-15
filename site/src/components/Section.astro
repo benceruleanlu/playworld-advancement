@@ -1,0 +1,9 @@
+---
+// One section of the page: an id for deep links and the nav, a short title that matches its nav label, and one sentence under it.
+const { id, title, lede } = Astro.props;
+---
+<section id={id} aria-labelledby={`h-${id}`}>
+  <h2 id={`h-${id}`} class="sec">{title}</h2>
+  {lede && <p class="sub">{lede}</p>}
+  <slot />
+</section>

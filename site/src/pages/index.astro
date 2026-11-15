@@ -1,16 +1,12 @@
 ---
 // Static shell. All numbers are rendered client-side by src/scripts/app.js from the live CSV.
+// Order is the story: the question with the baseline, the findings, the method. Explore holds the reference material.
 import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Header from "../components/Header.astro";
-import Gallery from "../components/Gallery.astro";
-import Story from "../components/Story.astro";
-import Loop from "../components/Loop.astro";
+import Section from "../components/Section.astro";
+import Explore from "../components/Explore.astro";
 import Tour from "../components/Tour.astro";
-import Watch from "../components/Watch.astro";
-import Scores from "../components/Scores.astro";
-import Testing from "../components/Testing.astro";
-import Runs from "../components/Runs.astro";
 ---
 <Base>
   <a class="skip" href="#top">Skip to results</a>
@@ -19,13 +15,21 @@ import Runs from "../components/Runs.astro";
     <div class="view lead">
       <Header />
     </div>
-    <Scores />
-    <Gallery />
-    <Story />
-    <Watch />
-    <Loop />
-    <Testing />
-    <Runs />
+    <Section id="story" title="Findings" lede="What we tested, what moved and what did not.">
+      <div class="vdbox" id="verdicts" hidden></div>
+      <ol class="story" id="story-list"><li class="sk" style="height:180px"></li></ol>
+    </Section>
+    <Section id="loop" title="Method" lede="Every proposal is a pull request. Every experiment is a GitHub Actions run that generates, scores and publishes.">
+    <ol class="loop" id="loop-steps"><li class="sk" style="height:96px"></li></ol>
+    <div class="trail" id="trail"></div>
+    <div class="card tl" id="tl" hidden>
+      <h3>Runs above the line, merged pull requests below</h3>
+      <div id="tl-chart"></div>
+      <p class="st-cap" id="tl-cap"></p>
+    </div>
+    <p class="scnote" id="loop-note"></p>
+      </Section>
+    <Explore />
   </main>
   <footer class="wrap" id="foot"></footer>
   <Tour />
