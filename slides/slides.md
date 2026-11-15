@@ -27,23 +27,145 @@ Site: benceruleanlu.github.io/playworld-advancement
 </div>
 
 <!--
-One sentence version: we have a working harness, about a hundred logged runs and many inference-time flags, but no full-benchmark score: no 171-task run was launched before judge credits and GPU access ran out, and on six-task comparisons the judge disagrees with itself by about as much as most flags moved scores.
+One sentence version: we have a working harness, about a hundred logged runs and more than 30 inference-time flags, but no full-benchmark score: no 171-task run was launched before judge credits and GPU access ran out, and on six-task comparisons the judge disagrees with itself by about as much as most flags moved scores.
 
-The slides follow that order: benchmark, what we built, the best official score, the judge noise, then what the model does and what our flags changed, then what ran out before a full run.
+The slides follow that order: our setup (slides 2 and 3) and our approach (slide 4), then the benchmark's published scores for context, our best official score, the judge noise, what the model remembers and what our flags changed, what stopped a full run, and where to look at the clips.
 
-Every number in this deck comes from AGENTS.md ("Status against the timeline" and "Reference scores"), results/experiments.csv or results/reports/ on main.
+Every number in this deck comes from AGENTS.md, README.md, results/experiments.csv or results/reports/ on main. Each slide's notes name the section.
 -->
 
 ---
 
-# PlayWorld scores world models on 171 tasks in four families, and Genie 3 leads at 2.12
+# We ran LingBot-World v2, mostly the 14B, on PlayWorld tasks through our own harness on Modal GPUs
+
+<div class="flow mt-5 text-xs">
+  <div class="box"><b>Task</b><br>start image, goal, action list</div>
+  <div class="arr">→</div>
+  <div class="box"><b>Runner</b><br>LingBot v2 14B<br>session + flags</div>
+  <div class="arr">→</div>
+  <div class="box"><b>Clip</b><br>up to 30 chunks<br>about 60 s</div>
+  <div class="arr">→</div>
+  <div class="box"><b>Judge</b><br>scores 1 to 5<br>failed gate: 1.0</div>
+  <div class="arr">→</div>
+  <div class="box"><b>Report</b><br><code>pwa report</code><br>experiments.csv</div>
+  <div class="arr">→</div>
+  <div class="box"><b>Site</b><br>scores and clips</div>
+</div>
+
+<div class="text-sm mt-5">
+
+- Model: LingBot-World v2 (Robbyant Team), 14B for most runs and 1.3B for early A/B tests. Weights unchanged; our session code re&#8209;implements its sampling loop.
+- Benchmark: PlayWorld (Ding et al.), 171 tasks: GC 48, IF 50, insight 30, out-of-sight 43. Splits: dev and dev2 (24 each), heldout 123 (unscored).
+- Compute: one H100 per shard on Modal, launched from GitHub Actions.
+
+</div>
+
+<style>
+.flow { display: flex; align-items: stretch; gap: 0.3rem; }
+.flow .box { flex: 1; border: 1px solid currentColor; border-radius: 4px; padding: 0.35rem 0.4rem; line-height: 1.3; text-align: center; }
+.flow .box code { font-size: 0.65rem; }
+.flow .arr { display: flex; align-items: center; opacity: 0.7; }
+</style>
+
+<!--
+The boxes are the path one task takes. The runner is adapters/lingbot_world2/run.py (or adapters/lingbot_world2_1p3b for the 1.3B), which reuses the upstream PlayWorld harness and swaps in our engine (AGENTS.md "Layout" and "Adapters"). pwa gen, pwa score and pwa report are the CLI steps (AGENTS.md "CLI"); the site reads results/experiments.csv from main (AGENTS.md "Results site"). The experiment and arms workflows launch the Modal shards.
+
+Model size: 9 of the 101 logged runs used lingbot_world2_1p3b, including 4 scored rows (rs13-arms-v1, gch13-arms-v1); the rest used the 14B (results/experiments.csv). The plan of record cut the 1.3B for decisions.
+
+The model weights are not changed. Our use is not "unmodified": adapters/lingbot_world2/session.py re-implements LingBot's sampling loop as a persistent session that keeps the attention cache between the player's steps (AGENTS.md "Scenes and attribution").
+
+Family counts: AGENTS.md "Run speed", the sharding bullet (gc 48, if 50, insight 30, outsight 43; 171 in all). Splits: AGENTS.md "Layout" (dev 24, dev2 24 with 6 per family, heldout 123). The 30-chunk cap and the 60 s figure: "Run speed", Verified (mean 29.7 chunks, about 60 s of video). A task with a gate (for example, return to the start view) scores 1.0 if the gate fails: "Workstreams" in the first AGENTS.md (commit 2d8b8c4) and the PlayWorld harness.
+
+Timings: AGENTS.md "Run speed", measured on lb14-session-agent-dev-v1: model load 267 to 357 s once per family per shard, agent rollouts 522 to 610 s with the first chunk (insight rollouts 367 to 443 s), 142 min wall clock or about 18 min per task on an 8-task shard, including GPU queueing. A later flag (--lingbot-fast-dit, #79) cuts the 14B load to about 31 s.
+-->
+
+---
+
+# Most comparisons used fixed actions with no AI player; 35 of 101 logged runs were closed loop
+
+<div class="grid grid-cols-2 gap-8 mt-4 text-sm">
+<div>
+
+**Actions (101 logged runs)**
+
+- Dataset actions: open loop, A/B tests only. 62 runs.
+- Scripted player (#102): replays a fixed plan, also open loop. 4 runs.
+- AI player, closed loop: picks each chunk's action from the frames so far. 35 runs.
+
+</div>
+<div>
+
+**Judge**
+
+- Gemini 3.1 Pro, the official judge, at upstream settings, 2 or 4 passes. 42 runs scored.
+- 34 runs were generated but never Gemini-scored. Later ones have proxy scores from Luna, which are not comparable to the paper (slide 13).
+
+</div>
+</div>
+
+<!--
+Sources: AGENTS.md "Rules" (dataset mode for A/B only, the Luna default, verifier settings unchanged: frame rate, resolution, JPEG), "Status against the timeline" ("Dataset actions and a scripted player are open loop"; the bullet that starts "Since about 18:35": both arms of a pair see the same actions), and "Settled" (player gpt-6-luna for compared runs, gpt-4.1-mini baseline is a diagnostic).
+
+Run counts: results/experiments.csv on main has 105 rows; 4 are fake_runner pipeline tests. Of the other 101, action_source is dataset on 62 and agent on 39. Four of the 39 are the sp14-gc-v1 arms, whose notes say "scripted player: dataset moves, no AI player", so 35 had an AI player. Status: 42 scored, 34 generated, 15 cancelled, 7 failed, 3 predate the status column.
+
+Players: gpt-4.1-mini on the dev baseline (slide 6), gpt-6-luna in later closed-loop arms. The only Luna closed-loop arms with a Gemini score are on the 1.3B or capped at 10 chunks (rs13, gch13, smk14-arms-gc-v2); in gch13, 22 of 110 player decisions fell back. The full-length 14B closed-loop runs (clstk14-dev-v1, stksv14-cl-gc-v1) were generated only.
+
+Pass counts: the dev baseline was scored at 2 passes, the arm groups at 4 (AGENTS.md "Status against the timeline").
+
+Luna (openai:gpt-6-luna) as a judge is a proxy only. Its noise and its agreement with Gemini are on slide 7; when the Gemini credits ran out is on slide 13.
+-->
+
+---
+
+# Each change is an opt-in flag on the model or the AI player, with no retraining
+
+<div class="grid grid-cols-[1.1fr_1fr] gap-6 mt-4 text-sm">
+<div>
+
+**Flags, grouped by the first plan's workstreams**
+
+- Insight: caption prompt, insight director, conditioning schedule.
+- Control and gates: turn calibration, yaw gain, yaw servo, re-anchor, IF slow translation, IF fixed camera.
+- Player prompts: return stop, player hint.
+- Out-of-sight memory: sink size, attention window, sink key scale, pose memory.
+
+More than 30 flags on main, all off by default.
+
+</div>
+<div>
+
+**What would count**
+
+- A delta of at least twice the pass-to-pass spread.
+- Decision tier: closed loop, 14B, full length, all 6 dev tasks of a family, 2 seeds, official judge.
+- Adoption: a task moves a full point, the gain repeats on both seeds, no gate is lost.
+- No run reached the decision tier, so no flag is adopted.
+
+</div>
+</div>
+
+<!--
+The four groups follow the workstreams of the first plan (AGENTS.md as scaffolded, commit 2d8b8c4); the plan of record in #66 replaced that section and later cut out-of-sight memory and sink work for the event ("Cut for this event"), but fixed-action runs on the sink and window went ahead anyway. The flags under each are documented in AGENTS.md "Adapters". Return stop and player hint change what the AI player is told, not the model (README.md), and were scored only on the 1.3B. The eval infrastructure (pwa CLI, experiment and arms workflows, per-run reports, results site, blind review page) is on slides 2 and 14.
+
+Flag count: AGENTS.md "Status against the timeline" recorded 28 method flags at 22:25, and #115, #116, #121, #132, #133, #139, #144 and #147 added more since; those eight are merged and unscored. None has decision-tier evidence.
+
+Rules: AGENTS.md "Rules" and "Testing tiers and the adoption rule". Also in "Rules": a new experiment name for every run (pwa gen refuses an existing run directory because upstream --skip-done silently reuses old videos), heldout unscored until code freeze, and final numbers closed loop with Gemini 3.1 Pro over 2 or more passes.
+
+Practice, not a written rule: since about 18:35 model-side flags were compared with the same actions in both arms (dataset or scripted player) at the same seed. Generation is deterministic, so any difference between such arms is the flag or the judge. AGENTS.md calls these runs a change from the plan as written: they are open loop and cannot meet the decision tier. Some servo groups borrow controls from other groups (sks14, mem14, win14).
+
+The rest of the deck reads results against these rules. Slide 7 shows why the judge spread sets the bar.
+-->
+
+---
+
+# In the PlayWorld paper Genie 3 scores 2.12 overall, and LingBot-World v2's web demo scores 1.82
 
 <div class="grid grid-cols-[1fr_1.1fr] gap-8 mt-4">
 <div class="text-sm">
 
-- Families: goal-conditioned camera control (GC), interactive first and third person (IF), insight, out-of-sight.
-- An AI player drives the model in a closed loop; Gemini 3.1 Pro scores each rollout from 1 to 5.
-- Some tasks have a gate (for example, the camera must return to the start view). A failed gate scores 1.0.
+- These are the benchmark's published scores on all 171 tasks, for context. None of our runs is on that footing.
+- LingBot's web demo already leads Genie 3 on insight, 1.95 against 1.51.
+- Its largest gap is out-of-sight, 1.16 against 1.81.
 - Ding et al., arXiv:2608.13552.
 
 </div>
@@ -62,32 +184,9 @@ Every number in this deck comes from AGENTS.md ("Status against the timeline" an
 <!--
 The reference scores are the PlayWorld paper's numbers, copied in AGENTS.md "Reference scores".
 
-LingBot-World v2 is the open model we used. Its web demo already beats Genie 3 on insight, 1.95 against 1.51. Its biggest gap is out-of-sight, 1.16 against 1.81.
+LingBot-World v2 is the open model we used, but the paper scored it through its web demo, not through the released code we run.
 
-The red-team review in research/red-team-and-plan.md estimated that out-of-sight alone cannot reach 2.12, so two or three families would have to move.
--->
-
----
-
-# We built a scoring harness and more than 30 opt-in inference-time flags for LingBot-World v2, without retraining
-
-<div class="text-sm mt-4">
-
-- `pwa` CLI: generate, score, report and compare runs; refuses to reuse an existing run name.
-- GitHub Actions workflows that generate on Modal H100s in shards, score with the judge and log one row per run.
-- 101 runs in `results/experiments.csv` (4 pipeline tests excluded), 42 of them scored. Failed and cancelled runs stay in the log.
-- A persistent session that keeps LingBot's attention cache across agent steps (`adapters/lingbot_world2/session.py`).
-- More than 30 method flags on main, all off by default: turn calibration, caption prompt, insight director, attention window sizes, yaw servo, pose memory and others.
-- A results site, and every scored run's clips published as a GitHub Release.
-
-</div>
-
-<!--
-The model weights and modules run unchanged. The session file re-implements LingBot's sampling loop so that state survives between the player's steps, so our use is not "unmodified".
-
-The run count is the rows of results/experiments.csv minus the four fake_runner pipeline tests. Of 101, 42 have status scored, 34 generated, 15 cancelled, 7 failed and 3 predate the status column (45 rows carry a score if those 3 are counted).
-
-The flag count: AGENTS.md recorded 28 method flags at 22:25, and #115, #116, #121, #132, #133, #139, #144 and #147 added more since; the "Adapters" section documents more than 30 opt-in --lingbot-* switches besides the stateless baseline. None of them has decision-tier evidence, which the next slides explain.
+The red-team review in research/red-team-and-plan.md estimated that out-of-sight alone cannot reach 2.12 (every out-of-sight task at 2.0 gives about 2.03 overall), so two or three families would have to move.
 -->
 
 ---
@@ -111,14 +210,14 @@ The flag count: AGENTS.md recorded 28 method flags at 22:25, and #115, #116, #12
 
 - Not comparable to the paper: no run covers all 171 tasks, for the base model or any method.
 - 24 tasks against 171: the task-sampling error is roughly 0.2 per family.
-- The paper's LingBot row (1.82) is all 171 tasks through its web demo. Our run used the `gpt-4.1-mini` player.
+- The paper's LingBot row (1.82) is all 171 tasks through its web demo.
 - No flag is adopted. The 123 heldout tasks are unscored.
 
 </div>
 </div>
 
 <!--
-Source: results/experiments.csv row lb14-session-agent-dev-v1 (overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and the "Ours" row in AGENTS.md "Reference scores". Other Gemini-scored rows exist (the arms runs on slide 10), but they are fixed-action or six-task subsets, so this is the best closed-loop dev number.
+Source: results/experiments.csv row lb14-session-agent-dev-v1 (overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and the "Ours" row in AGENTS.md "Reference scores". Other Gemini-scored rows exist (the arm groups on slide 12), but they are fixed-action or six-task subsets, so this is the best closed-loop dev number.
 
 This is the base model with every flag off. It is not the starting-model number for the plan, because the plan fixed the player as gpt-6-luna and this run used gpt-4.1-mini.
 
@@ -202,7 +301,7 @@ Source: AGENTS.md "Adapters", the KV window bullet: local_attn_size 18, sink_siz
 
 AGENTS.md is explicit that this reach is the configuration, not a measurement. The cache_model script counts how often dataset actions revisit an evicted view, on CPU.
 
-Two flags change this window: keep-first 10 and attention window 22. They appear in the stack three slides on (slide 9).
+Two flags change this window: keep-first 10 and attention window 22. They are part of the stack on slide 11.
 -->
 
 ---
@@ -229,7 +328,7 @@ Heading is measured by phase correlation, the same estimator the servo steers wi
 
 Sources: AGENTS.md "Status against the timeline", the yaw servo bullet, and the camera-response study bullet for the left and right ratios.
 
-GC038 improved least, 96 to 49 degrees. Walking-only GC tasks give byte-identical clips with and without the servo, which is where Luna's identical-clip noise numbers on the judge slide (slide 5) came from.
+GC038 improved least, 96 to 49 degrees. Walking-only GC tasks give byte-identical clips with and without the servo, which is where Luna's identical-clip noise numbers on the judge slide (slide 7) came from.
 
 The servo does not support out-of-sight tasks yet.
 -->
@@ -249,7 +348,7 @@ Source: AGENTS.md "Status against the timeline", the yaw servo bullet (end-headi
 
 These are open-loop clips: both arms replay the dataset's actions, so the only difference is the servo.
 
-The same comparison for GC036 is svgc14-fx-v1-a1 against a2, task GC036. The site's compare view loads either pair.
+The same comparison for GC036 is svgc14-fx-v1-a1 against a2, task GC036. The site's Pairs section loads either pair.
 -->
 
 ---
@@ -279,7 +378,7 @@ Other families were mixed across the three pairs: GC +0.59, -0.16, +0.30; IF +0.
 
 None of the six parts passed the adoption rule alone, so a gain would not say which part caused it.
 
-The 0.6 bar is the one from the judge-noise slide.
+The 0.6 bar is the one from the judge-noise slide (slide 7).
 -->
 
 ---
@@ -306,7 +405,7 @@ Pose memory: retrieves as planned after #129, no geometric gain, +0.20 under Lun
 <!--
 Sources: AGENTS.md "Status against the timeline": the sks14-fx-v1 and dec14-ins-v1 bullets, the win14-fx-v1 bullet, the "What the fixed-action results say so far" bullet, and the pose memory bullet. Generation is deterministic, so the +1.95 against +0.35 spread is a config difference or judge spread, not rollout noise.
 
-Sink key scale 0.7 lowered out-of-sight by 0.45, which is inside the six-task noise from the judge slide; scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight on the two tasks it ran, OE001 and OE018.
+Sink key scale 0.7 lowered out-of-sight by 0.45, which is inside the six-task noise from the judge slide (slide 7); scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight on the two tasks it ran, OE001 and OE018.
 
 These are drops on small samples, the same caution as the stack lead in the other direction.
 -->
@@ -349,7 +448,7 @@ AGENTS.md says the starting-model 171 run was never launched. No closed-loop com
 
 <div class="text-sm mt-4">
 
-- Results site: benceruleanlu.github.io/playworld-advancement. Every run, its scores, and a compare view that plays control and treatment together.
+- Results site: benceruleanlu.github.io/playworld-advancement. Every run, its scores, and a Pairs section that plays control and treatment side by side.
 - Clips: `github.com/benceruleanlu/playworld-advancement/releases/download/run-<EXP>/<TASK>.mp4`, 480p, with a `.jpg` poster.
 - Blind review page: benceruleanlu.github.io/playworld-advancement/review/. It hides which clip is control and which is treatment until you finish; it records a preference by eye, not a score.
 - Pairs in this deck: GC033 and GC036 in `svgc14-fx-v1` a1 against a2; OE039 in `stk14-fx-dev-v1` a1 against a2.
@@ -358,9 +457,9 @@ AGENTS.md says the starting-model 171 run was never launched. No closed-loop com
 </div>
 
 <!--
-The site's compare view opens a pair from the URL, for example ?compare=GC033&b=svgc14-fx-v1-a1&c=svgc14-fx-v1-a2#compare-clips.
+The site's Pairs section (#166) opens a pair from the URL (?cmp=KEY&pair=TASK#pairs); old links such as ?compare=GC033&b=svgc14-fx-v1-a1&c=svgc14-fx-v1-a2#compare-clips open the same pair.
 
-Given the judge noise on slide 5, looking at the clips is a fair check on any claim here. The review page (#164, site/src/pages/review.astro) shuffles sides per reviewer and reveals arms and a sign test only after "Finish and reveal". Clips load from release URLs that name the run, so blinding holds only if reviewers do not open developer tools.
+Given the judge noise on slide 7, looking at the clips is a fair check on any claim here. The review page (#164, site/src/pages/review.astro) shuffles sides per reviewer and reveals arms and a sign test only after "Finish and reveal". Clips load from release URLs that name the run, so blinding holds only if reviewers do not open developer tools.
 -->
 
 ---
