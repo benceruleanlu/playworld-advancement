@@ -8,10 +8,11 @@
   <div id="compare-clips" role="tabpanel" aria-labelledby="tab-compare">
     <div class="filters" id="cv-pick" hidden>
       <label>Task <select id="cv-task"></select></label>
-      <label>Baseline <select id="cv-s0" data-slot="0"></select></label>
-      <label>Before <select id="cv-s1" data-slot="1"></select></label>
-      <label>After <select id="cv-s2" data-slot="2"></select></label>
+      <label>Reference (optional) <select id="cv-s0" data-slot="0"></select></label>
+      <label>Control <select id="cv-s1" data-slot="1"></select></label>
+      <label>Treatment <select id="cv-s2" data-slot="2"></select></label>
     </div>
+    <p class="scnote" id="cv-help">Control and Treatment are the two arms of one A/B: same tasks, same seed, one flag different. Reference is an optional third run, usually the starting model.</p>
     <p class="callout" id="cv-empty" style="margin-top:0">Loading published clips.</p>
     <div class="sclabels" id="cv-notes" hidden></div>
     <div class="cvbar" id="cv-bar" role="group" aria-label="Playback for all clips" hidden>
