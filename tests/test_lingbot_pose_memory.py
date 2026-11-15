@@ -117,15 +117,15 @@ def test_bank_eligibility_latest_and_left():
     for cid, deg in ((2, 0), (3, 90), (4, 10), (5, 0)):
         pm.add(_entry(cid, deg))
     far = [_yaw_pose(120)] * 4
-    assert pm.select([_yaw_pose(0)] * 4, 10) == []  # nothing has been looked away from yet
+    assert pm.select([_yaw_pose(0)] * 4, 10) is None  # the newest sighting has not been looked away from yet
     pm.observe(far)
     assert [e.left for e in pm.entries] == [True, False, True, True]  # 90 vs 120 is still in view
     got = pm.select([_yaw_pose(5)] * 4, 10)
     assert [m.entry.cid for m in got] == [5]  # the most recent sighting wins
     assert [m.entry.cid for m in PM.PoseMemory(PM.PoseMemoryConfig(True, latents=12), 6, 18,
                                                pm.entries).select([_yaw_pose(5)] * 4, 12)] == [5, 4, 2]
-    assert [m.entry.cid for m in pm.select([_yaw_pose(5)] * 4, 7)] == [4]  # chunk 5 is still in chunk 7's window
-    assert [m.entry.cid for m in pm.select([_yaw_pose(5)] * 4, 6)] == [2]  # and 4 in chunk 6's
+    assert pm.select([_yaw_pose(5)] * 4, 7) is None  # chunk 5 is still in chunk 7's window: it shadows 4 and 2
+    assert pm.select([_yaw_pose(5)] * 4, 6) is None
     assert pm.select([_yaw_pose(50)] * 4, 10) == []  # 40+ degrees off: no match
     moved = PM.PoseMemory(ON, 6, 18, [_entry(2, 0, pos=(0, 0, 0))])
     moved.observe([_yaw_pose(0, pos=(0, 0, 9))])  # walking 9 units away counts as leaving
@@ -361,8 +361,9 @@ def test_latest_sighting_wins_and_fallback_restores(monkeypatch, capsys, quarter
             original = [(np.array(b["k"][:, 4:12]), np.array(b["v"][:, 4:12])) for b in sess.kv]
     got = _retrievals(capsys.readouterr().out)
     # 3: 0->90, 4: 90->0, 5-6 at 0, 7: 0->90, 8: 90->180, 9: 180->90, 10: 90->0
-    assert got == ["chunk 5 <- chunk 2", "chunk 7 <- chunk 3", "chunk 8 restore start sink", "chunk 10 <- chunk 6"]
-    assert sess.pm_restores == 1 and sess.pm_installs == 3
+    # chunk 5 recalls nothing: chunk 4 (back at 0) is in its window and shadows chunk 2
+    assert got == ["chunk 7 <- chunk 3", "chunk 8 restore start sink", "chunk 10 <- chunk 6"]
+    assert sess.pm_restores == 1 and sess.pm_installs == 2
     restored = next(i for i, c in enumerate(calls) if c["live"] and c["start"] == 8 * 4)
     for b_idx, (k, v) in enumerate(original):  # chunk 8's forwards see the original sink again
         assert np.array_equal(calls[restored]["seen"][0][4:12], k[0, :, 0, 0]) and \
@@ -373,7 +374,44 @@ def test_keep_fallback_and_dataset_mode_one_step(monkeypatch, capsys, quarter_tu
     sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, fallback="keep"))
     # dataset mode: the whole rollout is one step; memory still acts per latent chunk inside it
     sess.step(["none"] * 28 + [k for c in ".rb..rrbb" for k in [{"r": "l", "b": "j", ".": "none"}[c]] * 16])
-    assert _retrievals(capsys.readouterr().out) == ["chunk 5 <- chunk 2", "chunk 7 <- chunk 3", "chunk 10 <- chunk 6"]
+    assert _retrievals(capsys.readouterr().out) == ["chunk 7 <- chunk 3", "chunk 10 <- chunk 6"]
+
+
+def test_newer_sighting_in_window_shadows_older(monkeypatch, capsys, quarter_turns):
+    """Back-and-forth turns: the view is in the rolling window each time it comes back, so nothing is recalled."""
+    sess, calls, _ = _session(monkeypatch, ON)
+    _turn_rollout(sess, "....rb....")
+    assert _retrievals(capsys.readouterr().out) == [] and sess.pm_installs == 0 and sess.pm_forwards == 0
+
+
+def test_leave_deg_must_be_below_fov():
+    with pytest.raises(SystemExit, match="field of view"):
+        PM.parse(["--lingbot-pose-memory", "--lingbot-pose-mem-leave-deg", "80"], {})
+    with pytest.raises(SystemExit):
+        PM.parse(["--lingbot-pose-memory", "--lingbot-pose-mem-leave-deg", "79.2"], {})
+
+
+class _WM:
+    """Weight-mod stand-in: records the scales each forward runs at."""
+    def __init__(self):
+        self.cam_scale, self.text_scale, self._regime, self._base_cam = 0.25, 0.5, "static", 0.25
+
+    def step(self, rel, third_person=False):
+        self.cam_scale, self.text_scale, self._regime, self._base_cam = 1.0, 1.0, "move", 1.0
+        return False
+
+
+def test_recompute_uses_stored_chunk_scales_and_restores(monkeypatch, quarter_turns):
+    sess, calls, _ = _session(monkeypatch, ON)
+    _turn_rollout(sess, ".rrbb")
+    entry = next(e for e in sess.pmem.entries if e.cid == 2)
+    wm = _WM()
+    sess.weight_mod = wm
+    seen = []
+    monkeypatch.setattr(sess, "_mem_forward", lambda *a, **k: seen.append((wm.cam_scale, wm.text_scale)))
+    sess._mem_recompute(entry, 2, 2)
+    assert seen == [(1.0, 1.0)]  # chunk 2's own (moving) base scales
+    assert (wm.cam_scale, wm.text_scale, wm._regime, wm._base_cam) == (0.25, 0.5, "static", 0.25)
 
 
 def test_recent_rope_time(monkeypatch, capsys, quarter_turns):
@@ -381,6 +419,21 @@ def test_recent_rope_time(monkeypatch, capsys, quarter_turns):
     _turn_rollout(sess, ".rrbb")
     rec = next(c for c in calls if not c["live"])
     assert rec["start"] == 6 * 4 - 8 - 4 and "rope=recent:12" in capsys.readouterr().out
+
+
+
+@pytest.mark.parametrize("time,refresh", [("recent", True), ("sink", False)])
+def test_recent_memory_follows_the_window(monkeypatch, capsys, quarter_turns, time, refresh):
+    """A memory that stays selected is recomputed at the new RoPE time each chunk with time=recent only."""
+    sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, time=time))
+    _turn_rollout(sess, ".rrbb")
+    installed, forwards = sess._pm_installed, sess.pm_forwards
+    match = PM.Match(next(e for e in sess.pmem.entries if e.cid == installed[0][0]), 0.0, 0.0, 0.0, 1.0)
+    monkeypatch.setattr(sess.pmem, "select", lambda *_a: [match])
+    sess._pose_mem_before(7, sess.track.latents[-4:])
+    assert (sess.pm_forwards == forwards + 1) is refresh
+    if refresh:
+        assert sess._pm_installed == ((installed[0][0], 7 * 4 - 8 - 4),)
 
 
 @pytest.mark.parametrize("when", ["recompute", "denoise"])

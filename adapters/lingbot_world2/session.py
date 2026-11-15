@@ -346,7 +346,7 @@ class LingBotSession:
         self.detector = None
         self.pmem = None          # --lingbot-pose-memory bank, cleared on every reset
         self._pm_snapshot = None  # host copy of the original sink slots [anchor, anchor + latents) of every block
-        self._pm_installed = ()   # chunk ids whose recomputed K/V sit in those slots; ("start",) = original again
+        self._pm_installed = ()   # (chunk id, rope latent) pairs whose recomputed K/V sit in those slots
         self.pm_peak_bytes = 0
 
     # -- reset -------------------------------------------------------------
@@ -576,7 +576,7 @@ class LingBotSession:
             for c in range(n_chunks):
                 cid, chunk_hit, stg_hit = self.chunk_id, False, False
                 rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
-                if pm is not None:  # before weight_mod.step: the recompute runs at base scales, like a KV write
+                if pm is not None:  # before weight_mod.step; _mem_recompute sets the stored chunk's own scales
                     self._pose_mem_before(cid, self.track.latents[c * CHUNK:(c + 1) * CHUNK])
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
@@ -732,7 +732,12 @@ class LingBotSession:
         if cid * CHUNK < pm.sink:  # this rollout's first chunks are still writing the sink
             return
         matches = pm.select(latent_c2ws, cid)
-        ids = tuple(m.entry.cid for m in matches)
+        if matches is None:  # the newest sighting of this view is in the window: keep whatever is installed
+            return
+        slots = pm.slots(len(matches))
+        ropes = [pm.rope_latent(i, s, m.entry, cid, len(matches)) for i, (s, m) in enumerate(zip(slots, matches))]
+        # keyed on the RoPE times too: with time=recent they move with every chunk, so the memory is recomputed
+        ids = tuple((m.entry.cid, r) for m, r in zip(matches, ropes))
         if ids == self._pm_installed:
             return
         if not ids:
@@ -750,8 +755,6 @@ class LingBotSession:
         if len(matches) < cfg.chunks and self._pm_installed != ():  # unused slots hold the original sink
             self._pm_restore()
         self._pm_installed = None  # mid-install: the guard restores if a recompute raises
-        slots = pm.slots(len(matches))
-        ropes = [pm.rope_latent(i, s, m.entry, cid, len(matches)) for i, (s, m) in enumerate(zip(slots, matches))]
         for s, r, m in zip(slots, ropes, matches):
             self._mem_recompute(m.entry, s, r)
         if torch.cuda.is_available():
@@ -770,9 +773,9 @@ class LingBotSession:
         block. Each block gets a dict whose k/v are views of the live cache from latent 0 to slot + CHUNK and whose
         end indices are its own copies, so the forward takes upstream's no-eviction branch, writes only those
         slots, attends the anchor latents (and memory in lower slots) plus itself, and never reads or writes the
-        live global/local end indices. Its RoPE time is rope_lat (current_start)."""
-        import torch  # noqa: PLC0415
-        fs, pipe = self.frame_seqlen, self.pipe
+        live global/local end indices. Its RoPE time is rope_lat (current_start). With --lingbot-weight-mod the
+        forward runs at chunk j's own base scales (as its clean KV write did), then the current ones come back."""
+        fs = self.frame_seqlen
         views = []
         for blk in self.kv:
             g, loc = blk["global_end_index"].clone(), blk["local_end_index"].clone()
@@ -780,16 +783,28 @@ class LingBotSession:
             loc.fill_(slot * fs)
             views.append({"k": blk["k"][:, :(slot + CHUNK) * fs], "v": blk["v"][:, :(slot + CHUNK) * fs],
                           "global_end_index": g, "local_end_index": loc})
+        wm = self.weight_mod
+        saved = (wm.cam_scale, wm.text_scale, wm._regime, wm._base_cam) if wm is not None else None
+        if wm is not None:  # chunk j's base scales, as its own clean KV write had them (end_chunk)
+            wm.step(entry.rel, third_person=self.third_person)
+        try:
+            self._mem_forward(entry, views, rope_lat, slot)
+        finally:
+            if saved is not None:
+                wm.cam_scale, wm.text_scale, wm._regime, wm._base_cam = saved
+        self.cross_init = True  # after update_prompt the call above wrote the new text K/V, as a first forward would
+        self.pm_forwards += 1
+
+    def _mem_forward(self, entry, views, rope_lat: int, slot: int):
+        import torch  # noqa: PLC0415
+        fs, pipe, j = self.frame_seqlen, self.pipe, entry.cid
         with torch.autocast("cuda", enabled=False):
             emb = self._plucker(entry.rel)
-        j = entry.cid
         pipe.model(x=[entry.x0.to(pipe.device)], t=torch.stack([self.timesteps[-1] * 0.0]).to(pipe.device),
                    cross_attn_first_call=not self.cross_init, context=[self.context[0]], seq_len=self.max_seq_len,
                    y=[self.y[:, j * CHUNK:(j + 1) * CHUNK]], dit_cond_dict={"c2ws_plucker_emb": emb.chunk(1, dim=0)},
                    kv_cache=views, crossattn_cache=self.cross, current_start=rope_lat * fs,
                    max_attention_size=(slot + CHUNK) * fs, frame_seqlen=fs)
-        self.cross_init = True  # after update_prompt the call above wrote the new text K/V, as a first forward would
-        self.pm_forwards += 1
 
     def _pose_mem_after(self, cid: int, latent_c2ws, x0, rel_c):
         """Store the chunk just written (x0 on the host) and mark stored views the camera has now left."""

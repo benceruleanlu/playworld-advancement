@@ -134,6 +134,9 @@ def parse(argv: list[str], environ=os.environ) -> tuple[PoseMemoryConfig, list[s
     if v["latents"] % CHUNK:
         raise SystemExit(f"--lingbot-pose-mem-latents must be a multiple of {CHUNK} (whole latent chunks), "
                          f"got {v['latents']}")
+    if v["leave_deg"] >= HFOV:
+        raise SystemExit(f"--lingbot-pose-mem-leave-deg must be below the {HFOV:.1f} degree field of view, got "
+                         f"{v['leave_deg']:g}: at or above it the overlap is 0 and no view ever counts as left")
     if v["leave_deg"] <= v["deg"]:
         raise SystemExit(f"--lingbot-pose-mem-leave-deg ({v['leave_deg']:g}) must exceed --lingbot-pose-mem-deg "
                          f"({v['deg']:g}), or a view never counts as left")
@@ -252,18 +255,23 @@ class PoseMemory:
                     e.left = True
                     break
 
-    def select(self, latent_c2ws, c: int) -> list[Match]:
-        """Up to cfg.chunks matches for chunk c (poses latent_c2ws), most recent first: evicted, left, overlapping."""
+    def select(self, latent_c2ws, c: int) -> list[Match] | None:
+        """Up to cfg.chunks matches for chunk c (poses latent_c2ws), most recent first: evicted, left, overlapping.
+        The newest overlapping non-sink sighting shadows older ones: if it is still in the rolling window or has
+        not been left, the window already holds the view and this returns None (recall nothing, keep the sink)."""
         target = centre(latent_c2ws)
         out = []
         for e in reversed(self.entries):
-            if not e.left or self.in_cache(e.cid, c):
-                continue
             dyaw, dpitch, dpos, o = pose_diff(e.pose, target)
-            if o >= self.cfg.match_overlap and dpos <= self.cfg.trans:
-                out.append(Match(e, dyaw, dpitch, dpos, o))
-                if len(out) == self.cfg.chunks:
-                    break
+            if o < self.cfg.match_overlap or dpos > self.cfg.trans or e.cid * CHUNK < self.sink:
+                continue
+            if self.in_cache(e.cid, c) or not e.left:
+                if not out:
+                    return None
+                continue
+            out.append(Match(e, dyaw, dpitch, dpos, o))
+            if len(out) == self.cfg.chunks:
+                break
         return out
 
     def slots(self, n: int) -> list[int]:
@@ -272,7 +280,8 @@ class PoseMemory:
 
     def rope_latent(self, slot_index: int, slot: int, entry: Entry, c: int, n: int) -> int:
         """RoPE time (latent index) the retrieved chunk is recomputed at. sink: its slot (the position pattern
-        of today's sink); recent: just behind the rolling window, most recent nearest; orig: when it was made."""
+        of today's sink); recent: just behind the rolling window of chunk c, most recent nearest (recomputed every
+        chunk while installed, so it tracks the window); orig: when it was made."""
         if self.cfg.time == "sink":
             return slot
         if self.cfg.time == "orig":

@@ -39,6 +39,43 @@ def test_return_peak_and_no_return():
         RS.similarity_to_first([], fps=16)
 
 
+def _smooth_pano(seed=1):
+    rng = np.random.default_rng(seed)
+    pano = rng.random((120, 960))
+    k = np.ones(25) / 25  # blur along both axes: nearby offsets stay correlated, far ones do not
+    pano = np.apply_along_axis(lambda r: np.convolve(r, k, "same"), 1, pano)
+    pano = np.apply_along_axis(lambda c: np.convolve(c, np.ones(9) / 9, "same"), 0, pano)
+    pano = pano[12:108, 30:930]  # drop the zero-padded borders, which all views would share
+    return (255 * (pano - pano.min()) / np.ptp(pano)).astype(np.uint8)
+
+
+def test_offset_return_beats_other_place_and_static_is_flagged():
+    pano = _smooth_pano()
+    xs = list(np.linspace(0, 600, 40).astype(int)) + list(np.linspace(600, 4, 40).astype(int))  # back, 4 px off
+    frames = [pano[:, x:x + 168] for x in xs]
+    r = RS.similarity_to_first(frames, fps=16, after_s=1.0)
+    other = RS.ncc(RS.to_small_gray(frames[0]), RS.to_small_gray(pano[:, 400:568]))
+    assert r["max_after"] > 0.8 > other and r["return_gain"] > 0.5 and r["left_min"] < 0.3
+    static = RS.similarity_to_first([frames[0]] * 80, fps=16, after_s=1.0)
+    assert static["max_after"] == pytest.approx(1.0) and static["return_gain"] == pytest.approx(0.0)
+
+
+def test_ref_frame_and_chunk_pairs():
+    frames = _pan_video(n=96)
+    r = RS.similarity_to_first(frames, fps=16, after_s=0, ref_frame=10)
+    assert r["similarity"][10] == 1.0 and r["ref_frame"] == 10
+    with pytest.raises(ValueError):
+        RS.similarity_to_first(frames, ref_frame=96)
+    assert list(RS.chunk_frames(0)) == list(range(0, 13)) and list(RS.chunk_frames(2)) == list(range(29, 45))
+    same = frames[:48] + frames[:48]  # chunk 3 (frames 45..60) repeats frames -3..12 -> chunk 0 aligned on ends
+    got = RS.pair_similarity(same, [(4, 1), (2, 0), (9, 0)])
+    assert got[0]["frames"] == 16 and got[0]["mean"] == pytest.approx(1.0, abs=1e-6)
+    assert got[2]["mean"] is None
+    assert RS.parse_pairs("7:3, 10:6") == [(7, 3), (10, 6)]
+    with pytest.raises(ValueError):
+        RS.parse_pairs("7-3")
+
+
 def test_mp4_roundtrip(tmp_path, capsys):
     imageio = pytest.importorskip("imageio.v2")
     pytest.importorskip("imageio_ffmpeg")
