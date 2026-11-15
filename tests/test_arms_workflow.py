@@ -161,3 +161,30 @@ exit 0
     assert "release create run-g-a3" in (tmp_path / "gh.log").read_text()
     notes = (rt / "media" / "g-a3" / "NOTES.md").read_text()
     assert "stage=gen-only and does not score them" in notes and "Unscored rollouts from g-a3." in notes
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.parametrize("claims, rc, started", [(False, 2, False), (True, 1, True), (True, 0, True)])
+def test_warm_generate_reports_started_the_same_way(tmp_path, claims, rc, started):
+    # warm=on runs `python -m pwa.warm run`, which (like modal_app.py) writes the claim file after its guard
+    claim = tmp_path / "claimed.txt"
+    args = tmp_path / "args.txt"
+    _stub(tmp_path / "bin", "python", f'printf "%s\\n" "$@" > "{args}"\n'
+          + ('printf "g-a1\\n" > "$PWA_CLAIM_FILE"\n' if claims else "") + f"exit {rc}\n")
+    _stub(tmp_path / "bin", "modal", "echo modal must not run with warm=on >&2; exit 9\n")
+    out = tmp_path / "out"
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}", "PWA_CLAIM_FILE": str(claim),
+           "GITHUB_OUTPUT": str(out), "WARM": "on", "NUM_SHARDS": "1", "EXP": "g", "ARMS": "base",
+           "ARMS_EXTRA": " --agent-model m", "RUNNER_TEMP": str(tmp_path)}
+    r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", _step("Generate all arms")["run"]], env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == rc, r.stderr
+    assert ("started=true" in (out.read_text() if out.exists() else "")) == started
+    argv = args.read_text().splitlines()
+    assert argv[:3] == ["-m", "pwa.warm", "run"] and "--extra= --agent-model m" in argv
+
+
+def test_warm_generate_gets_the_claim_file_and_run_id():
+    gen = _step("Generate all arms")
+    assert "PWA_CLAIM_FILE:" in gen["env"] and "PWA_RUN_ID:" in gen["env"] and "WARM:" in gen["env"]
+    assert "if" not in gen  # one step for both paths, so fetch, publish and dispatch gate on the same output
