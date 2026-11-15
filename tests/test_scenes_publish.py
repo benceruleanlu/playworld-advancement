@@ -170,3 +170,53 @@ def test_publish_screening_without_official_scenes(tmp_path):
 def test_publish_scored_run_skips_main_check(tmp_path):
     log, published = _publish(tmp_path, new_scored=True, main_manifest=_man(scored=True), fetch_ok=False)
     assert "release create" in log and published
+
+
+def test_scenes_to_main_script_reads_scenes_dir(tmp_path):
+    # arms.yml publishes each arm from its own directory: SCENES_DIR=$RUNNER_TEMP/media/NAME EXP=NAME
+    arm = tmp_path / "rt" / "media" / "g-a1"
+    _write(arm / "g-a1.json", _man("g-a1", scored=False))
+    (arm / ".published").touch()
+    (tmp_path / "bin").mkdir()
+    env = _env(tmp_path, SCENES_DIR=str(arm))
+    env["EXP"] = "g-a1"
+    r = subprocess.run(["bash", str(SCRIPTS / "scenes_to_main.sh")], env=env, cwd=ROOT)
+    assert r.returncode == 0
+    media_dir = tmp_path / "main" / "results" / "media"
+    assert json.loads((media_dir / "g-a1.json").read_text())["exp"] == "g-a1"
+    assert [x["exp"] for x in json.loads((media_dir / "index.json").read_text())["runs"]] == ["g-a1"]
+
+
+def _arm_man(exp, videos):
+    return {"exp": exp, "tasks": [{"task_id": t, "video": f"https://dl.test/{exp}/{t}.mp4" if v else None}
+                                  for t, v in videos.items()]}
+
+
+def test_compare_url_names_up_to_three_slots():
+    assert (media.compare_url("https://s.test/base/", "GC036", ["g-a1", "g-a2"])
+            == "https://s.test/base/?compare=GC036&a=g-a1&b=g-a2#compare-clips")
+    assert media.compare_url("https://s.test", "GC0", ["x", "y", "z", "w"]).endswith("a=x&b=y&c=z#compare-clips")
+
+
+def test_arms_md_links_every_arm_and_compares_against_arm_one():
+    site = "https://benceruleanlu.github.io/playworld-advancement/"
+    mans = [_arm_man("g-a1", {"GC036": True, "GC005": True}), _arm_man("g-a2", {"GC036": True, "GC005": False}),
+            _arm_man("g-a3", {"GC036": True, "GC005": True}), _arm_man("g-a4", {"GC036": True, "GC005": False})]
+    md = media.arms_md(site, mans)
+    gc36 = next(x for x in md.splitlines() if x.startswith("| GC036 |"))
+    assert f"[g-a1]({site}?scenes=g-a1&scene=GC036#scenes)" in gc36 and "[g-a4](" in gc36
+    # three slots: arm 1 is a= in every link, the others fill b= / c=
+    assert f"({site}?compare=GC036&a=g-a1&b=g-a2&c=g-a3#compare-clips)" in gc36
+    assert f"[g-a1 vs g-a4]({site}?compare=GC036&a=g-a1&b=g-a4#compare-clips)" in gc36
+    gc5 = next(x for x in md.splitlines() if x.startswith("| GC005 |"))
+    assert "g-a2" not in gc5 and f"({site}?compare=GC005&a=g-a1&b=g-a3#compare-clips)" in gc5
+    one = media.arms_md(site, [_arm_man("h-a1", {"GC005": True})])
+    assert one.rstrip().endswith(f"| GC005 | [h-a1]({site}?scenes=h-a1&scene=GC005#scenes) | - |")
+
+
+def test_arms_md_cli(tmp_path):
+    a = _write(tmp_path / "a.json", _arm_man("g-a1", {"GC036": True}))
+    b = _write(tmp_path / "b.json", _arm_man("g-a2", {"GC036": True}))
+    r = subprocess.run([sys.executable, "-m", "pwa.media", "arms-md", "https://s.test/", str(a), str(b)],
+                       capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 0 and "https://s.test/?compare=GC036&a=g-a1&b=g-a2#compare-clips" in r.stdout
