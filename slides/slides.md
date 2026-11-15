@@ -14,11 +14,11 @@ drawings:
   enabled: false
 ---
 
-# No leaderboard score: the official judge's noise is as large as the effects we measured, and a yaw servo cut turn overshoot, measured without a judge
+# No leaderboard score: the official judge's noise matched our effects; a yaw servo cut the end-heading error
 
 <div class="dg hnums mt-6">
   <div><span class="n">2.12</span>Genie 3, PlayWorld paper, 171 tasks</div>
-  <div><span class="n">1.64 ± 0.13</span>ours, 24 dev tasks, no method, closed loop</div>
+  <div><span class="n">1.64 ± 0.13</span>ours, 24 dev tasks, no flags, closed loop</div>
   <div><span class="n">about 0.5</span>official judge noise on a six-task family mean (1 to 5 scale)</div>
 </div>
 
@@ -47,7 +47,7 @@ DEMO CUT (8 slides, about two minutes), by title:
 3. "A task is an image, a goal and actions, played out by LingBot-World v2 and scored 1 to 5";
 4. "In the PlayWorld paper Genie 3 scores 2.12; our only official closed-loop dev score is 1.64 on 24 tasks";
 5. "The official judge scored the same video 1.3 apart, and the seed alone changes the video";
-8. "A yaw servo cut the end-heading error on turning GC tasks; no judge has scored it";
+8. "A yaw servo cut the end-heading error on turning GC tasks; it has no official judge score";
 9. "A stack of six flags scored about a point higher on out-of-sight, under the proxy judge only";
 11. "No 171-task run was launched, so there is no leaderboard score".
 Skip in the demo: the flags and adoption rule slide, the attention cache slide, the per-flag results slide, credits.
@@ -225,7 +225,7 @@ The 30 rollouts before the fix are also the "Unverified launches" cost listed ab
   <div class="arr">→</div>
   <div class="box flex-1 fill"><b>Runner</b>LingBot-World v2, flags</div>
   <div class="arr">→</div>
-  <div class="box flex-1"><b>Clip</b>up to about 60 s</div>
+  <div class="box flex-1"><b>Clip</b>up to about 70 s</div>
   <div class="arr">→</div>
   <div class="box flex-1 fill2"><b>Judge</b>1 to 5 per task</div>
   <div class="arr">→</div>
@@ -254,9 +254,9 @@ Benchmark: PlayWorld (Ding et al.), 171 tasks: GC 48, IF 50, insight 30, out-of-
 
 Model: LingBot-World v2 (Robbyant Team). 9 of the 101 logged runs used the 1.3B; the rest used the 14B (results/experiments.csv). The model weights are not changed. Our use is not "unmodified": adapters/lingbot_world2/session.py re-implements LingBot's sampling loop as a persistent session that keeps the attention cache between the player's steps (AGENTS.md "Scenes and attribution").
 
-Clip length: a closed-loop clip is up to 30 chunks, about 60 s ("Run speed"). Fixed-action clips follow the dataset's action length.
+Clip length: a closed-loop clip is up to 30 chunks, about 60 s ("Run speed"). Fixed-action clips follow the dataset's action length, up to 280 latents (1117 frames, about 70 s at 16 fps) on wait-only insight tasks (AGENTS.md "Long steps").
 
-Judge: the official judge (Gemini 3.1 Pro) at upstream settings, 2 or 4 passes. 42 of the 101 runs have an official score; 34 were generated but never scored officially, and later ones have proxy judge scores only, which are not comparable to the paper. When official scoring stopped is on the slide "No 171-task run was launched, so there is no leaderboard score".
+Judge: the official judge (Gemini 3.1 Pro) at upstream settings, 2 or 4 passes. 45 of the 101 runs have an official overall score (42 with status scored, plus 3 rows from before the status column: lb14-session-agent-dev-v1, lb13-stateless-gc005-v1 and lb14-session-agent-gc005-v1); 34 were generated but never scored officially, and later ones have proxy judge scores only, which are not comparable to the paper. When official scoring stopped is on the slide "No 171-task run was launched, so there is no leaderboard score".
 
 Compute: one H100 per shard on Modal, launched from GitHub Actions (experiment and arms workflows). On lb14-session-agent-dev-v1, 142 min wall clock or about 18 min per task on an 8-task shard, including GPU queueing ("Run speed").
 
@@ -276,7 +276,7 @@ Actions. results/experiments.csv on main has 105 rows; 4 are fake_runner pipelin
   <div class="paxis"><span style="left: 0%">1.0</span><span style="left: 33.3%">1.5</span><span style="left: 66.7%">2.0</span><span style="left: 100%">2.5</span></div>
   <div class="small muted" style="margin-left: 270px; margin-top: 4px;">Paper overall score, all 171 tasks (1 to 5)</div>
 </div>
-<div class="box dash mt-5" style="text-align: left; max-width: 700px;"><b style="display:inline">Ours, not on this axis:</b> 1.64 ± 0.13, 24 dev tasks, not comparable. LingBot-World v2 14B, no flags, closed loop, official judge, 2 passes. GC 1.83, IF 1.81, insight 1.58, out-of-sight 1.33.</div>
+<div class="box dash mt-5" style="text-align: left; max-width: 700px;"><b style="display:inline">Ours, not on this axis:</b> 1.64 ± 0.13 on 24 dev tasks, closed loop, official judge. Not comparable.</div>
 </div>
 
 <div class="text-sm mt-4">
@@ -307,7 +307,7 @@ Matrix-Game 3.0: 1.30, 1.25, 1.00, 1.00, 1.14.
 
 LingBot-World v2 is the open model we ran, but the paper scored it through its web demo, not through the released code we run.
 
-Ours: results/experiments.csv row lb14-session-agent-dev-v1 (GC 1.8333, IF 1.8058, insight 1.5833, out-of-sight 1.3333, overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and AGENTS.md "Status against the timeline" ("Best official closed-loop score is unchanged"). It is the only closed-loop dev run scored by the official judge on all 24 tasks; other officially scored rows are fixed-action arms or six-task subsets. The AI player was gpt-4.1-mini, which the plan treats as a diagnostic baseline ("Settled" fixes gpt-6-luna for compared runs), so this is not the plan's starting-model number. 24 of 171 tasks: not comparable to the paper.
+Ours: LingBot-World v2 14B, no flags, closed loop, official judge, 2 passes; by family GC 1.83, IF 1.81, insight 1.58, out-of-sight 1.33. Source: results/experiments.csv row lb14-session-agent-dev-v1 (GC 1.8333, IF 1.8058, insight 1.5833, out-of-sight 1.3333, overall 1.6390, std 0.1258, 2 passes, 24 tasks, 0 missing) and AGENTS.md "Status against the timeline" ("Best official closed-loop score is unchanged"). It is the only closed-loop dev run scored by the official judge on all 24 tasks; other officially scored rows are fixed-action arms or six-task subsets. The AI player was gpt-4.1-mini, which the plan treats as a diagnostic baseline ("Settled" fixes gpt-6-luna for compared runs), so this is not the plan's starting-model number. 24 of 171 tasks: not comparable to the paper.
 
 The heldout 123 tasks are unscored, as the repo rules require until code freeze.
 -->
@@ -419,7 +419,7 @@ Practice, not a written rule: since about 18:35 model-side flags were compared w
   <span style="left: 82.6%">now</span>
 </div>
 <div class="grid grid-cols-2 gap-3 mt-6">
-  <div class="box"><b>Return to the start view</b>it is still in memory</div>
+  <div class="box"><b>Return to the opening view</b>it is still in memory</div>
   <div class="box dash"><b>Return to any other view</b>seen over ~2 s ago: gone</div>
 </div>
 </div>
@@ -449,7 +449,7 @@ Two flags change this window: keep-first 10 (sink 10) and attention window 22. B
 
 ---
 
-# A yaw servo cut the end-heading error on turning GC tasks; no judge has scored it
+# A yaw servo cut the end-heading error on turning GC tasks; it has no official judge score
 
 <div class="grid gap-6 mt-2" style="grid-template-columns: 1fr 400px;">
 <div class="dg">
@@ -464,7 +464,7 @@ Two flags change this window: keep-first 10 (sink 10) and attention window 22. B
 
 <div class="text-sm mt-3">
 
-Each chunk it measures the rendered turn and corrects the next command. One seed, fixed actions, not judge scored.
+Each chunk it measures the rendered turn and corrects the next command. Chart runs: fixed actions, no official judge score.
 
 </div>
 
@@ -477,7 +477,7 @@ Which tasks have an independent check: heading is read with phase correlation, t
 
 The GC036 pair: svgc14-fx-v1 arm 1 (control) and arm 2 (yaw servo), fixed actions, so the only difference is the servo (results/media/svgc14-fx-v1-a1.json and -a2.json). The GC033 pair is in the site's Pairs section. svgc14-fx-v1 is missing some clips (GC035 in all arms; GC002 and GC022 in the servo arms).
 
-Every servo run is one seed and open loop. No official judge score exists for any servo clip; under the proxy judge the same-run servo deltas are noise (-0.10 fixed actions, 6 turning tasks; +0.05 closed loop, 4 turning tasks). Walking-only GC tasks give byte-identical clips with and without the servo. The servo does not support out-of-sight tasks.
+The chart's runs replay fixed actions. Other servo runs: sv14-fx-v1 and sv14-fx-v2 ran at seeds 0 and 1 (generation only), and clstk14-dev-v1-a2 ran the servo with the stack in closed loop (8 of 24 tasks before the GPU workspace was disabled). No official judge score exists for any servo clip; under the proxy judge the same-run servo deltas are noise (-0.10 fixed actions, 6 turning tasks; +0.05 closed loop, 4 turning tasks). Walking-only GC tasks give byte-identical clips with and without the servo. The servo does not support out-of-sight tasks.
 -->
 
 ---
@@ -533,44 +533,43 @@ Clips: OE039 and OE047 at seed 0, results/media/stk14-fx-dev-v1-a1.json and -a2.
 
 ---
 
-# No flag's gain repeated: the largest single moves came once and not again
+# No flag's gain has repeated cleanly; the largest single moves were mixed on a second look
 
 <div class="dg grid grid-cols-4 gap-3 mt-6 tiers">
-  <div class="box fill2"><b>Measured</b><div class="t">geometry, no judge score</div><div class="m">Yaw servo: end heading</div></div>
-  <div class="box fill"><b>Lead, small sample</b><div class="t">proxy judge only</div><div class="m">Stack: out-of-sight about +1, 2 seeds + dev2</div></div>
-  <div class="box"><b>Did not repeat</b><div class="t">large once, small again</div><div class="m">Turn calibration on GC031: +1.95, then +0.35</div><div class="m">Sink 10 + window 22 on OE039: +2.44 at seed 1, 1.75 at seed 0</div><div class="m">Caption prompt: 2 tasks up, 2 down</div></div>
-  <div class="box dash"><b>Dropped</b><div class="t">lowered scores or no gain</div><div class="m">Sink key scale: −0.46 to −0.85</div><div class="m">Conditioning schedule: insight 3.00 → 1.50</div><div class="m">Pose memory: +0.20 (proxy), bar 0.34</div></div>
+  <div class="box fill2"><b>Measured</b><div class="m">Yaw servo: end heading</div></div>
+  <div class="box fill"><b>Lead, small sample</b><div class="m">Stack: out-of-sight about +1, 2 seeds + dev2</div></div>
+  <div class="box"><b>Mixed</b><div class="m">Turn calibration on GC031: +1.95, then +0.35</div><div class="m">Sink 10 + window 22, OE039: +2.44 at seed 1; seed 0 mixed</div><div class="m">Caption prompt: 2 tasks up, 2 down</div></div>
+  <div class="box dash"><b>Dropped</b><div class="m">Sink key scale: −0.46 to −0.85</div><div class="m">Conditioning schedule: insight 3.00 → 1.50</div><div class="m">Pose memory: +0.20 (proxy), bar 0.34</div></div>
 </div>
 
 <div class="text-sm mt-6">
 
-Official judge and one seed unless marked. Each comparison covers nine tasks or fewer. Nothing is adopted.
+Official judge and one seed unless marked. Each comparison covers 15 tasks or fewer.
 
 </div>
 
 <style>
 .tiers .box { text-align: left; display: flex; flex-direction: column; gap: 6px; }
-.tiers .t { font-size: 13px; opacity: 0.8; margin-top: -4px; }
 .tiers .m { font-size: 14px; border-top: 1px solid rgba(128,128,128,0.4); padding-top: 5px; }
 </style>
 
 <!--
 Sources: AGENTS.md "Status against the timeline": the yaw servo and stack bullets under the proxy judge findings, the sks14-fx-v1, dec14-ins-v1, win14-fx-v1 and pose memory bullets, and "What the fixed-action results say so far"; results/experiments.csv for the sink key scale rows.
 
-Measured: the yaw servo's end heading (the slide "A yaw servo cut the end-heading error on turning GC tasks; no judge has scored it").
+Measured: the yaw servo's end heading, geometry with no official judge score (the slide "A yaw servo cut the end-heading error on turning GC tasks; it has no official judge score").
 
 Lead: the stack, about +1 on out-of-sight under the proxy judge (the stack slide).
 
-Did not repeat: turn calibration, the same comparison run twice on GC031, gave +1.95 and +0.35; generation is deterministic, so that spread is a config difference or judge spread. Sink 10 with window 22 (two flags) raised OE039 from 1.00 to 3.44 (+2.44) at seed 1 (win14-fx-v1), but gave 1.75 at seed 0, inside the 1.25 to 2.00 of the plain controls. Caption prompt: 2 tasks up and 2 down by a full point in one run.
+Mixed: turn calibration, the same comparison run twice on GC031, gave +1.95 and then +0.35 (the +0.35 is from fx14-model-dev-v2); generation is deterministic, so that spread is a config difference or judge spread. Sink 10 with window 22 (two flags) raised OE039 from 1.00 to 3.44 (+2.44) at seed 1 (win14-fx-v1). At seed 0 the same flags gave OE039 1.75 in win14-fx-v1, inside the 1.25 to 2.00 of the plain controls, but 3.12 in pm14-fx-v2-a4 (same flags, earlier commit); whether those two clips are the same video is not checked, so seed 0 is mixed. Caption prompt: 2 tasks up and 2 down by a full point, fx14-model-dev-v2 arm 2 to 3.
 
 Dropped: sink key scale lowered out-of-sight (sks14-fx-v1, official judge, one seed, 6 tasks): control 2.10, arms 1.65, 1.33 and 1.25, so -0.46, -0.77 and -0.85 (CSV: 2.1042, 1.6458, 1.3333, 1.2500). The conditioning schedule halved insight, 3.00 to 1.50, on the two tasks it ran, OE001 and OE018 (dec14-ins-v1). Pose memory retrieves as planned after #129 with no geometric gain, +0.20 under the proxy judge against a bar of 0.34. These drops rest on one seed and six tasks or fewer, the same caution as the stack lead in the other direction.
 
-Sample sizes: the sink key scale group is 6 tasks; mem14-fx-v1 and win14-fx-v1 are 9; dec14-ins-v1 is 2; the turn calibration figure is one task.
+Sample sizes: the sink key scale group is 6 tasks; mem14-fx-v1 and win14-fx-v1 are 9; dec14-ins-v1 is 2; the caption prompt comparison is 14 tasks and fx14-model-dev-v2 scored 15 tasks in both turn calibration arms; the turn calibration figure is one task, GC031. Nothing is adopted (the flags slide).
 -->
 
 ---
 
-# No 171-task run was launched, so there is no leaderboard score; every published clip is on the site
+# No 171-task run was launched, so there is no leaderboard score
 
 <div class="dg mt-6">
 <div class="tl">
@@ -582,9 +581,9 @@ Sample sizes: the sink key scale group is 6 tasks; mem14-fx-v1 and win14-fx-v1 a
 </div>
 <div class="small muted" style="margin-top: 30px;">Nov 15, UTC. Before this, the 171-task control run waited on an AI player check that never completed (issue #9).</div>
 <div class="grid grid-cols-3 gap-3 mt-5">
-  <div class="box"><b>Results site</b>benceruleanlu.github.io/<br>playworld-advancement<br><span class="muted">runs, scores, Pairs</span></div>
+  <div class="box"><b>Results site</b>benceruleanlu.github.io/<br>playworld-advancement<br><span class="muted">runs, scores, Pairs;<br>73 of 101 runs have clips</span></div>
   <div class="box"><b>Blind review</b>…/playworld-advancement/review/<br><span class="muted">hides the arms until you finish</span></div>
-  <div class="box"><b>Repo</b>github.com/benceruleanlu/<br>playworld-advancement<br><span class="muted">73 of 101 runs have clips</span></div>
+  <div class="box"><b>Repo</b>github.com/benceruleanlu/<br>playworld-advancement<br><span class="muted">code, results log, reports</span></div>
 </div>
 </div>
 
@@ -607,7 +606,7 @@ Timeline: the official judge's AI Studio prepaid credits ran out about 03:55 UTC
 
 What a trusted score needs (estimate): control and method each on all 171 tasks, closed loop, official judge, 2 or more passes. Scaling the 0.5 six-task spread by the square root of 6/171 gives noise of about 0.1 on the overall mean (an estimate, not a measurement). Generation for one 171-task arm on 8 GPUs: about 3.8 h without queueing, about 6.9 h at the dev baseline's queued 18 minutes per task, over the 350-minute job cap ("Run speed").
 
-Where to look. Results site: benceruleanlu.github.io/playworld-advancement, with every logged run, its scores and a Pairs section that plays control and treatment side by side. Clips: github.com/benceruleanlu/playworld-advancement/releases/download/run-<EXP>/<TASK>.mp4, 480p with a .jpg poster. results/media/index.json lists 73 runs with published clips, all among the 101 real runs in results/experiments.csv; the other 28 have none (mostly cancelled or failed runs; four capped smoke runs that ended scored or generated also have none). Per-run reports with the judge's reasons are in results/reports/ (83 files; not every run has one).
+Where to look. Results site: benceruleanlu.github.io/playworld-advancement, with every logged run, its scores and a Pairs section that plays control and treatment side by side. Clips: github.com/benceruleanlu/playworld-advancement/releases/download/run-<EXP>/<TASK>.mp4, 480p with a .jpg poster. results/media/index.json lists 73 runs with published clips, all among the 101 real runs in results/experiments.csv; the other 28 have none: 15 cancelled, 7 failed, 4 capped smoke runs that ended generated (none of them scored), and 2 one-task scored runs from before the status column (lb13-stateless-gc005-v1, lb14-session-agent-gc005-v1). Per-run reports with the judge's reasons are in results/reports/ (83 files; not every run has one).
 
 Blind review page: benceruleanlu.github.io/playworld-advancement/review/. It hides which clip is control and which is treatment until you finish; it records a preference by eye, not a score. Clips load from release URLs that name the run, so blinding holds only if reviewers do not open developer tools.
 
@@ -634,6 +633,7 @@ Pairs in this deck: GC033, IF002, OE001 and OE039 in lb14-session-agent-dev-v1 (
 .credits table { font-size: 16px; }
 .credits thead { display: none; }
 .credits td:first-child { white-space: nowrap; }
+.credits code { white-space: nowrap; }
 </style>
 
 <!--
