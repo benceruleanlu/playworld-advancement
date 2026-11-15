@@ -79,6 +79,13 @@ of the poses sent to the model, in dataset (`<task>_full`) and chunked calls, se
 turn calibration. The intended track (re-anchor's ReturnDetector, player hint, return stop, measured turn,
 scripted player) keeps the commanded angle. See yaw_gain.py.
 
+Turntable poses (off by default): `--lingbot-turntable-poses` or LINGBOT_TURNTABLE_POSES=1 tracks world-up yaw,
+pitch (clamped +/-85 deg) and position explicitly (`R = _rot_y(yaw) @ _rot_x(pitch)`), removing horizon roll on
+mixed pan/tilt paths; `--lingbot-turntable-walk ground|free` (LINGBOT_TURNTABLE_WALK, default ground) keeps W/S/A/D
+translation horizontal (`ground`) or pitched (`free`); `--lingbot-turntable-rescale` (LINGBOT_TURNTABLE_RESCALE=1,
+requires `--lingbot-turntable-poses` and `--lingbot-turn-cal`) scales dataset-mode `action_frame_unit` when
+frame-budget rescaling compressed active frames below `tokens * action_frame_unit`. See turntable.py.
+
 Scripted player (off by default, closed loop only): `--lingbot-scripted-player` or LINGBOT_SCRIPTED_PLAYER=1
 answers every closed-loop decision from the task's dataset action, cut into chunks (upstream parse_segments;
 poses.CHUNK_UNITS rotation tokens or (chunk_frames - 1) / action_frame_unit translation tokens per chunk, rounded
@@ -200,6 +207,8 @@ Env:
                     --lingbot-sink-scale-after / --lingbot-sink-scale-tasks (1.0 = off / 8 / ".*")
   LINGBOT_POSE_MEMORY  1 = same as --lingbot-pose-memory (knobs LINGBOT_POSE_MEM_DEG / _TRANS / _LEAVE_DEG /
                     _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB)
+  LINGBOT_TURNTABLE_POSES  1 = same as --lingbot-turntable-poses (LINGBOT_TURNTABLE_WALK = ground|free,
+                    LINGBOT_TURNTABLE_RESCALE = 1)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -274,6 +283,7 @@ from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import stg as STGM  # noqa: E402
 from adapters.lingbot_world2 import sink_scale as SK  # noqa: E402
+from adapters.lingbot_world2 import turntable as TT  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 from adapters.lingbot_world2 import yaw_gain as YG  # noqa: E402
@@ -414,6 +424,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["yaw_gain"].enabled and not flags["turn_cal"]:
         raise SystemExit("--lingbot-yaw-gain corrects calibrated turns; it requires --lingbot-turn-cal "
                          "(or --lingbot-turn-step)")
+    flags["turntable"], argv = TT.parse(argv, environ)
+    if flags["turntable"].rescale and not flags["turntable"].enabled:
+        raise SystemExit("--lingbot-turntable-rescale requires --lingbot-turntable-poses")
+    if flags["turntable"].rescale and not flags["turn_cal"]:
+        raise SystemExit("--lingbot-turntable-rescale requires --lingbot-turn-cal")
     flags.update(window)
     flags["sink_scale"], argv = SK.parse(argv, environ)
     if flags["sink_scale"].enabled and (flags["stateless"] or flags["sink"] == 0):
@@ -452,6 +467,8 @@ STG = STGM.StgConfig()  # --lingbot-stg / LINGBOT_STG=1, off by default; session
 SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
 POSE_MEM = PM.PoseMemoryConfig()  # --lingbot-pose-memory / LINGBOT_POSE_MEMORY=1, session only, off by default
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
+TURNTABLE = TT.TurntableConfig()  # --lingbot-turntable-poses / LINGBOT_TURNTABLE_POSES=1, off by default
+_PARSE_SEGMENTS = None  # upstream run_agent.parse_segments, set per main() call
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -577,6 +594,7 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + (f", turn step {P.CHUNK_YAW_DEG:g} deg of yaw per chunk" if P.CHUNK_YAW_DEG else "")
               + (f", {YAW_GAIN.describe()}" if YAW_GAIN.enabled else "")
+              + (f", turntable poses ({TURNTABLE.describe()})" if TURNTABLE.enabled else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + ("" if (LOCAL_ATTN, SINK) == (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -627,7 +645,7 @@ class LingBotWorld2Engine:
         print(f"[lingbot] t5 cache: {root} identity {ident}", flush=True)
         return FS.EmbeddingCache(root, ident)
 
-    def _calibrate(self, name, n_keys):
+    def _calibrate(self, name, n_keys, action=None):
         """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
         if TURN_CAL:
             dataset = S.parse_chunk_name(name) is None
@@ -635,7 +653,22 @@ class LingBotWorld2Engine:
                 print(f"[lingbot] turn step: inactive for {name} (dataset mode keeps {P.UNIT_YAW_DEG:g} degrees "
                       f"per token)", flush=True)
             STATS.turn_step_dataset = STATS.turn_step_dataset or bool(dataset and P.CHUNK_YAW_DEG)
-            P.calibrate(dataset, n_keys, int(getattr(self.args, "action_frame_unit", 20) or 20))
+            nominal_unit = int(getattr(self.args, "action_frame_unit", 20) or 20)
+            unit = nominal_unit
+            if dataset and TURNTABLE.enabled and TURNTABLE.rescale:
+                task = prompts._current.get("task")
+                if task and task.get("task_id") and not str(name or "").startswith(f"{task.get('task_id')}_"):
+                    task = None
+                unit = TT.effective_frame_unit(
+                    task, action, nominal_unit,
+                    tail_frames=int(getattr(self.args, "tail_frames", 50) or 0),
+                    parse_segments=_PARSE_SEGMENTS,
+                )
+                if unit < nominal_unit - 1e-6:
+                    STATS.turntable_rescaled += 1
+                    print(f"[lingbot] turntable: {name} rescaled dataset unit {nominal_unit} -> {unit:.3f} "
+                          f"frames/token", flush=True)
+            P.calibrate(dataset, n_keys, unit)
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
         original_prompt = prompt
@@ -694,7 +727,7 @@ class LingBotWorld2Engine:
         self._last_chunk = None  # stays None if this call fails, so the next one resets
         n = S.chunks_for(num_frames)
         keys = S.fit_keys(P.parse_action(action), S.keys_needed(n, first=not cont))
-        self._calibrate(name, len(keys))
+        self._calibrate(name, len(keys), action)
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
         if not cont:
@@ -721,6 +754,9 @@ class LingBotWorld2Engine:
         if YAW_GAIN.enabled:  # only with the flag, so the no-flag track stays main's
             self.session.track.yaw_gain = YAW_GAIN.pair()
             STATS.yaw_gain_frames += YG.yaw_frames(keys)
+        if TURNTABLE.enabled:  # only with the flag, so the no-flag track stays main's
+            self.session.track.turntable = TURNTABLE
+            STATS.turntable_frames += TT.active_frames(keys)
         if cont and GC_DIRECTOR and name.startswith("GC"):
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
@@ -785,10 +821,16 @@ class LingBotWorld2Engine:
         output_dir = Path(output_dir)
         action_dir = output_dir / f"{name}_action"
         action_dir.mkdir(parents=True, exist_ok=True)
-        self._calibrate(name, P.frame_count(int(num_frames)) - 1)
-        if YAW_GAIN.enabled:
-            c2ws = P.build_poses(action, int(num_frames), yaw_gain=YAW_GAIN.pair())
-            STATS.yaw_gain_frames += YG.yaw_frames(S.fit_keys(P.parse_action(action), len(c2ws) - 1))
+        self._calibrate(name, P.frame_count(int(num_frames)) - 1, action)
+        if YAW_GAIN.enabled or TURNTABLE.enabled:
+            c2ws = P.build_poses(action, int(num_frames),
+                                 yaw_gain=YAW_GAIN.pair() if YAW_GAIN.enabled else None,
+                                 turntable=TURNTABLE if TURNTABLE.enabled else None)
+            fitted = S.fit_keys(P.parse_action(action), len(c2ws) - 1)
+            if YAW_GAIN.enabled:
+                STATS.yaw_gain_frames += YG.yaw_frames(fitted)
+            if TURNTABLE.enabled:
+                STATS.turntable_frames += TT.active_frames(fitted)
         else:
             c2ws = P.build_poses(action, int(num_frames))
         np.save(action_dir / "poses.npy", c2ws)
@@ -823,7 +865,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, TURNTABLE, _PARSE_SEGMENTS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -844,6 +886,7 @@ def main(argv: list[str] | None = None) -> int:
     stg_mode = "off" if not STG.enabled else ("skip" if STATELESS else "on")
     NOISE_MEAN = flags["noise_mean"]
     YAW_GAIN = flags["yaw_gain"]
+    TURNTABLE = flags["turntable"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
@@ -856,7 +899,9 @@ def main(argv: list[str] | None = None) -> int:
                                  kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
                                  sink_scale=SINK_SCALE.enabled, noise_mean=NOISE_MEAN, turn_step=flags["turn_step"],
-                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "", pose_mem=POSE_MEM.enabled)
+                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "", pose_mem=POSE_MEM.enabled,
+                                 turntable=TURNTABLE.walk if TURNTABLE.enabled else "",
+                                 turntable_rescale=TURNTABLE.enabled and TURNTABLE.rescale)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
@@ -871,6 +916,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[lingbot] {YAW_GAIN.describe()}: model yaw only, intended track unchanged", flush=True)
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
+    _PARSE_SEGMENTS = getattr(run_agent, "parse_segments", None)
     run_agent.SanaWMEngine = LingBotWorld2Engine
     prompts.install(run_agent)
     STATS.install(run_agent)

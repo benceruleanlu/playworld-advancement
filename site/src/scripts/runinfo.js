@@ -56,6 +56,9 @@ export const FLAG_NAMES = {
   "--lingbot-yaw-gain": function (v) { return "yaw gain " + v; },
   "--lingbot-yaw-gain-left": function (v) { return "yaw gain left " + v; },
   "--lingbot-yaw-gain-right": function (v) { return "yaw gain right " + v; },
+  "--lingbot-turntable-poses": "turntable poses",
+  "--lingbot-turntable-walk": function (v) { return v + " walk"; },
+  "--lingbot-turntable-rescale": "dataset rescale",
   "--player-reasoning-effort": function (v) { return "player effort " + v; },
   "--player-max-completion-tokens": function (v) { return "player max tokens " + v; },
   "--player-empty-retries": function (v) { return "player retries " + v; }
@@ -67,6 +70,7 @@ var KNOB_OF = {
   "--lingbot-sink-scale-after": "--lingbot-sink-key-scale", "--lingbot-sink-scale-tasks": "--lingbot-sink-key-scale",
   "--lingbot-kv-noise-t": "--lingbot-kv-noise",
   "--lingbot-yaw-gain-left": "--lingbot-yaw-gain", "--lingbot-yaw-gain-right": "--lingbot-yaw-gain",
+  "--lingbot-turntable-walk": "--lingbot-turntable-poses", "--lingbot-turntable-rescale": "--lingbot-turntable-poses",
   "--lingbot-pose-mem-deg": "--lingbot-pose-memory", "--lingbot-pose-mem-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-leave-deg": "--lingbot-pose-memory",
   "--lingbot-pose-mem-leave-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-latents": "--lingbot-pose-memory",
   "--lingbot-pose-mem-anchor": "--lingbot-pose-memory", "--lingbot-pose-mem-time": "--lingbot-pose-memory", "--lingbot-pose-mem-fallback": "--lingbot-pose-memory",

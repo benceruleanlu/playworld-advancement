@@ -34,6 +34,8 @@ const RI = build(rows, index.runs, mans, Date.parse("2026-11-15T06:00:00Z"));
 assert.deepEqual(parseArgs(["--lingbot-stall-abort", "900", "--lingbot-cond-text=1.0", "--lingbot-fast"]),
   [{ flag: "--lingbot-stall-abort", value: "900" }, { flag: "--lingbot-cond-text", value: "1.0" }, { flag: "--lingbot-fast", value: null }]);
 assert.deepEqual(words(["--lingbot-cond-schedule", "--lingbot-cond-text=1.0"]), ["conditioning schedule (text boost off)"]);
+assert.deepEqual(words(["--lingbot-turntable-poses", "--lingbot-turntable-walk=free", "--lingbot-turntable-rescale"]),
+  ["turntable poses (free walk, dataset rescale)"]);
 assert.deepEqual(words(["--lingbot-new-thing=3"]), ["--lingbot-new-thing 3"], "unknown flags show verbatim");
 
 const lab = (e) => RI.get(e) && RI.get(e).armLabel;

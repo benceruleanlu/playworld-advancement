@@ -55,6 +55,7 @@ from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import pose_memory as PM
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import sink_scale as SK
+from adapters.lingbot_world2 import turntable as TT
 from adapters.lingbot_world2 import watchdog as W
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
@@ -187,6 +188,9 @@ class PoseTrack:
     def __init__(self, translation_gain: float = 1.0):
         self.translation_gain = translation_gain
         self.yaw_gain = None         # set per call by run.py with --lingbot-yaw-gain
+        self.turntable = None        # set per call by run.py with --lingbot-turntable-poses
+        self._tt_cur = None
+        self._tt_want = None
         self.last = np.eye(4)        # absolute pose of the latest pixel frame (model track)
         self.intended_last = np.eye(4)  # same, intended track (no yaw gain)
         self.prev_latent = None      # absolute pose of the latest latent frame (model track)
@@ -200,6 +204,32 @@ class PoseTrack:
         scales = (1 - 0.5 * np.cos(2 * np.pi * (np.arange(len(keys)) + 0.5) / len(keys))
                   if ease_turns and is_pure_turn(keys) else None)
         gain = self.yaw_gain
+        if self.turntable is not None and self.turntable.enabled:
+            walk = self.turntable.walk
+            if self._tt_cur is None:
+                self._tt_cur = TT.TurntableState()
+            if gain and self._tt_want is None:
+                self._tt_want = TT.TurntableState(
+                    yaw=self._tt_cur.yaw, pitch=self._tt_cur.pitch,
+                    pos=self._tt_cur.pos.copy(), max_pitch=self._tt_cur.max_pitch,
+                )
+            cur, want = self.last, (self.intended_last if gain else None)
+            lat = [cur] if first else []  # latent 0 is pixel frame 0
+            ilat = [want] if first else []
+            for i, k in enumerate(keys, 1):
+                s = 1.0 if scales is None else float(scales[i - 1])
+                if gain:
+                    want = self._tt_want.step(k, P.YAW, P.PITCH, self.translation_gain, s, walk=walk)
+                    cur = self._tt_cur.step(k, P.YAW, P.PITCH, self.translation_gain, s, yaw_gain=gain, walk=walk)
+                else:
+                    cur = self._tt_cur.step(k, P.YAW, P.PITCH, self.translation_gain, s, walk=walk)
+                if i % 4 == 0:
+                    lat.append(cur)
+                    ilat.append(want)
+            rel = relative_latent_poses(np.stack(lat), self.prev_latent)
+            self.last, self.prev_latent = cur, lat[-1]
+            self.intended_last, self.latents = (want, np.stack(ilat)) if gain else (cur, np.stack(lat))
+            return normalise_translation(rel)
         cur, want = self.last, (self.intended_last if gain else None)
         lat = [cur] if first else []  # latent 0 is pixel frame 0
         ilat = [want] if first else []
