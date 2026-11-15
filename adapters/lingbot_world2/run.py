@@ -133,6 +133,8 @@ Env:
   LINGBOT_YAW_RAD / LINGBOT_PITCH_RAD   per-frame camera rotation for arrow keys (poses.py)
   LINGBOT_TURN_CAL  1 = same as --lingbot-turn-cal (overrides the two rates above)
   LINGBOT_UNIT_YAW_DEG / LINGBOT_UNIT_PITCH_DEG / LINGBOT_CHUNK_UNITS   turn-cal angles (22.5 / 20 / 2)
+  LINGBOT_TURN_STEP_DEG  same as --lingbot-turn-step DEG: yaw degrees one closed-loop LEFT/RIGHT chunk turns
+                         (implies turn-cal; pitch and dataset mode keep the turn-cal values)
   LINGBOT_PROMPT_MODE  goal (default) | caption | auto (= --lingbot-caption-prompt)
   LINGBOT_REANCHOR  1 = same as --lingbot-reanchor
   LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
@@ -256,6 +258,20 @@ def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
     return out, rest
 
 
+def _turn_step(argv: list[str], environ) -> tuple[float, list[str]]:
+    """--lingbot-turn-step DEG (env LINGBOT_TURN_STEP_DEG): yaw degrees one closed-loop LEFT/RIGHT chunk turns.
+    0 = unset. Implies --lingbot-turn-cal; see poses.calibrate."""
+    value, argv = _take_value(argv, "--lingbot-turn-step")
+    value = environ.get("LINGBOT_TURN_STEP_DEG") if value is None else value
+    try:
+        deg = float(value) if value not in (None, "") else 0.0
+    except ValueError:
+        raise SystemExit(f"--lingbot-turn-step needs a number of degrees, got {value!r}") from None
+    if deg and not 10 <= deg <= 120:
+        raise SystemExit(f"--lingbot-turn-step must be between 10 and 120 degrees per chunk, got {deg:g}")
+    return deg, argv
+
+
 def _window(argv: list[str], environ) -> tuple[dict, list[str]]:
     """Attention window sizes: --lingbot-local-attn / --lingbot-sink-size (env LINGBOT_LOCAL_ATTN_SIZE /
     LINGBOT_SINK_SIZE). Defaults are the README causal-fast settings (18 local, 6 sink). Checked here, before
@@ -344,6 +360,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["cond_sched"].enabled and flags["weight_mod"]:
         raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
     window, argv = _window(argv, environ)
+    flags["turn_step"], argv = _turn_step(argv, environ)
+    flags["turn_cal"] = flags["turn_cal"] or bool(flags["turn_step"])  # a step is a calibrated rate
     flags.update(window)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
@@ -479,6 +497,7 @@ class LingBotWorld2Engine:
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
+              + (f", turn step {P.CHUNK_YAW_DEG:g} deg of yaw per chunk" if P.CHUNK_YAW_DEG else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + ("" if (LOCAL_ATTN, SINK) == (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -503,6 +522,7 @@ class LingBotWorld2Engine:
               + (", IF identity cue on" if IF_IDENTITY else "")
               + (", measured turn on" if STATS.measured_turn else "")
               + (f", scripted player on ({SP.units():g} tokens per chunk"
+                 + (f", pitch {SP.units('pitch'):g}" if SP.units() != SP.units("pitch") else "")
                  + ("" if TURN_CAL else ", angles uncalibrated: turn-cal off") + ")" if STATS.scripted else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
@@ -523,8 +543,12 @@ class LingBotWorld2Engine:
     def _calibrate(self, name, n_keys):
         """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
         if TURN_CAL:
-            P.calibrate(S.parse_chunk_name(name) is None, n_keys,
-                        int(getattr(self.args, "action_frame_unit", 20) or 20))
+            dataset = S.parse_chunk_name(name) is None
+            if dataset and P.CHUNK_YAW_DEG and not STATS.turn_step_dataset:
+                print(f"[lingbot] turn step: inactive for {name} (dataset mode keeps {P.UNIT_YAW_DEG:g} degrees "
+                      f"per token)", flush=True)
+            STATS.turn_step_dataset = STATS.turn_step_dataset or bool(dataset and P.CHUNK_YAW_DEG)
+            P.calibrate(dataset, n_keys, int(getattr(self.args, "action_frame_unit", 20) or 20))
 
     def generate(self, image_path, prompt, action, output_dir, name, num_frames, intrinsics_path=None):
         original_prompt = prompt
@@ -702,12 +726,17 @@ def main(argv: list[str] | None = None) -> int:
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
                                  measured_turn=flags["measured_turn"], cond_sched=cs_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
-                                 noise_mean=NOISE_MEAN)
+                                 noise_mean=NOISE_MEAN, turn_step=flags["turn_step"])
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
         print("[lingbot] IF slow translation: on (gain=0.5, session only)", flush=True)
     P.reset()
+    # after reset(): configure() already merged arg and env, so the parsed value is the whole answer; an
+    # explicit `--lingbot-turn-step 0` turns off a step set in the env, and a later arm without it starts clean
+    P.CHUNK_YAW_DEG = flags["turn_step"]
+    if flags["turn_step"]:
+        print(f"[lingbot] turn step: {P.CHUNK_YAW_DEG:g} degrees of yaw per closed-loop chunk", flush=True)
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
     run_agent.SanaWMEngine = LingBotWorld2Engine
@@ -754,7 +783,8 @@ def main(argv: list[str] | None = None) -> int:
                                  ("return stop", RETURN_STOP), ("IF horizon", IF_HORIZON),
                                  ("player history endpoints", flags["history_endpoints"]),
                                  ("measured turn", flags["measured_turn"])) if on]
-        print(f"[lingbot] scripted player: on ({SP.units():g} rotation tokens per chunk, then WAIT tail and END; "
+        print(f"[lingbot] scripted player: on ({SP.units():g} yaw / {SP.units('pitch'):g} pitch tokens per chunk, "
+              f"then WAIT tail and END; "
               f"LLM player not called)" + (f"; not reached: {', '.join(inert)}" if inert else ""), flush=True)
     rc = run_agent.main()
     agent_api.finish(run_agent)
