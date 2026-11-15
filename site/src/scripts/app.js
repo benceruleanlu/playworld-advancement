@@ -288,16 +288,29 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   }
   // starting model against method on all 171 tasks. Hidden until a closed-loop, uncapped, 171-task run with 2+ passes is scored.
   // The starting model is the full run with no method flags; the method is the best other full run.
+  // run configuration that is not a method flag: a second seed of the starting model is still the starting model
+  var NOT_METHOD = /^--seed\b/;
+  var FULL_RUNNER = "lingbot_world2", FULL_PLAYER = "gpt-6-luna";
+  // the AI player a run used, from its manifest or the args in its CSV notes; "" when neither records it
+  function playerOfRun(r) {
+    var m = MANS[r.exp]; if (m && m.player_model) return m.player_model;
+    var args = m && Array.isArray(m.runner_args) ? m.runner_args.join(" ") : (r.notes || "");
+    var x = /--agent-model[= ]([^\s\]]+)/.exec(args);
+    return x ? x[1] : "";
+  }
   function fullRuns() {
     var rows = realRows().filter(function (r) { return isFull(r) && isClosed(r) && !isCapped(r) && r.overall !== null && r.passes !== null && r.passes >= 2; });
-    // a run whose flags are not recorded is neither: it is counted and named in the note, never shown as starting model or method
-    var start = null, method = null, unknown = [];
+    // Only the agreed protocol is compared: the 14B runner, and gpt-6-luna as the player where the player is recorded.
+    // A run on another model or player, or with flags not recorded, is named in the note and never shown as starting model or method.
+    var start = null, method = null, unknown = [], other = [];
     rows.forEach(function (r) {
-      var ri = RI.get(r.exp), w = ri && ri.words;
-      if (!w) { unknown.push(r.exp); return; }
-      if (w.length === 0) { if (!start || r.t > start.t) start = r; } else if (!method || r.overall > method.overall) method = r;
+      var ri = RI.get(r.exp), keys = ri && ri.keys, player = playerOfRun(r);
+      if (r.runner !== FULL_RUNNER || (player && player !== FULL_PLAYER)) { other.push(r.exp); return; }
+      if (!keys) { unknown.push(r.exp); return; }
+      var methodKeys = keys.filter(function (k) { return !NOT_METHOD.test(String(k)); });
+      if (methodKeys.length === 0) { if (!start || r.t > start.t) start = r; } else if (!method || r.overall > method.overall) method = r;
     });
-    return { start: start, method: method, unknown: unknown, any: rows.length > 0 };
+    return { start: start, method: method, unknown: unknown, other: other, any: rows.length > 0 };
   }
   // tasks left out of a run's mean: clips never generated (counted as 1.0 by the report) and results the verifier could not use (dropped)
   function leftOut(r) { return (r.n_missing || 0) + (r.n_dropped || 0);
@@ -333,7 +346,10 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       note.push(x[0] + " " + r.exp + ": " + fmt(r.overall) + (typeof r.overall_std === "number" ? " ± " + fmt(r.overall_std) : "") + ", " + r.passes + " passes" + (r.n_missing ? ", " + r.n_missing + " clips missing and counted as 1.0" : "") +
         (r.n_dropped ? ", " + r.n_dropped + " tasks dropped from the mean" : "") + ".");
     });
+    var players = [f.start, f.method].filter(Boolean).map(playerOfRun);
+    note.push(players.every(Boolean) ? "Both use the 14B model and the " + FULL_PLAYER + " player." : "14B model. The AI player is not recorded for " + (players.some(Boolean) ? "one of these runs" : "these runs") + ".");
     if (f.unknown.length) note.push("Not shown, flags not recorded: " + f.unknown.join(", ") + ".");
+    if (f.other.length) note.push("Not shown, another model or player: " + f.other.join(", ") + ".");
     if (!complete) note.push("A run with tasks left out is not comparable with the paper rows.");
     if (f.start && f.method) {
       var d2 = f.method.overall - f.start.overall, sd = Math.max(f.start.overall_std || FALLBACK_STD, f.method.overall_std || FALLBACK_STD);
