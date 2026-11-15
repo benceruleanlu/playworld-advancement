@@ -192,7 +192,8 @@
       s.appendChild(el("option", { value: "", text: "none" }));
       clips[task].forEach(function (c) {
         var tags = [];
-        if (!runScored(c.man)) tags.push(screeningJudge(c.man) ? "screening only" : "not scored");
+        var cr = csvRow(c.exp);
+        if (!runScored(c.man) && !(cr && cr.overall !== null)) tags.push(screeningJudge(c.man) ? "screening only" : "not scored");
         if (capOf(c.man, csvRow(c.exp))) tags.push("capped");
         var o = el("option", { value: c.exp, text: c.exp + (tags.length ? " (" + tags.join(", ") + ")" : "") });
         if (slots.indexOf(c.exp) >= 0 && slots[i] !== c.exp) o.disabled = true;
@@ -232,6 +233,7 @@
       score = api.fmt(t.mean);
       judge = "official judge (Gemini 3.1 Pro)" + (row && row.passes ? ", mean of " + row.passes + " passes" : "");
     } else if (runScored(m)) { score = "no score"; judge = "official judge, no usable score for this task"; }
+    else if (row && row.overall !== null) { score = "no score"; judge = "scored by the official judge (run mean " + api.fmt(row.overall) + "), but this clip's manifest has no per-task score"; }
     else if (sj) { score = "no score"; judge = "screening judge " + sj + " only; screening scores are not shown"; }
     else { score = "no score"; judge = "no judge has scored this run"; }
 
@@ -240,7 +242,7 @@
     var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
     if (st.length && !(st.length === 1 && st[0] === "not scored")) badge(ok ? "ok" : "warn", st.join(", "), "Verifier status for this task");
     if (cap) badge("warn", cap > 0 ? "capped smoke, " + cap + " chunks" : "capped smoke", "Each rollout stopped early. A behaviour check, never comparable to a real score.");
-    if (!runScored(m)) badge("warn", sj ? "screening judge only" : "not scored", "No official verifier score for this run.");
+    if (!runScored(m) && !(row && row.overall !== null)) badge("warn", sj ? "screening judge only" : "not scored", "No official verifier score for this run.");
     var branch = (m && m.branch) || (row && row.branch) || "";
     if (branch && branch !== "main") badge("warn", "code not merged", "Run from branch " + branch + ". The code behind it is not merged into main yet.");
     var src = (m && m.action_source) || (row && row.action_source) || "";
