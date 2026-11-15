@@ -52,6 +52,7 @@ jobs:
           mkdir -p public
           cp ../results/experiments.csv public/experiments.csv
           node src/scripts/runinfo.check.mjs
+          node src/scripts/pairs.check.mjs
           node src/scripts/review.check.mjs
           npm run build
           test -s dist/index.html

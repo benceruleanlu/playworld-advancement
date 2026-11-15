@@ -1,6 +1,8 @@
 // Blind review page, pure parts: pair list, seeded sides and order, sign test, Cohen's kappa, export rows.
 // No DOM here, so review.check.mjs can test it under node. review.js renders.
 
+import { clipMap } from "./clips.js";
+
 export const PAGE_VERSION = "review-2";
 
 // Pair sets. Within a set, control and treatment share seed and fixed moves, except closed-loop sets, where the
@@ -73,11 +75,6 @@ export function shuffled(items, seedKey) {
 }
 
 /* ---------- pairs from the manifests ---------- */
-function clipMap(man) {
-  const m = {};
-  ((man && man.tasks) || []).forEach((t) => { if (t && t.task_id && t.video) m[t.task_id] = t; });
-  return m;
-}
 // mans: {exp: manifest}. Returns {pairs, dropped: [{set, why}]}. A pair needs both clips; a set needs both manifests.
 export function buildPairs(mans) {
   const pairs = [], dropped = [];
