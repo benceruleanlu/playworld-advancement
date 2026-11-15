@@ -116,6 +116,37 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-gc-completion-hint", "--lingbot-weight-mod")
 
 
+def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
+    """`--name V` / `--name=V` out of argv: the last value given, and argv without the flag."""
+    out, rest, i = None, [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a == name and i + 1 < len(argv):
+            out, i = argv[i + 1], i + 2
+        elif a.startswith(name + "="):
+            out, i = a.split("=", 1)[1], i + 1
+        else:
+            rest.append(a)
+            i += 1
+    return out, rest
+
+
+def _window(argv: list[str], environ) -> tuple[dict, list[str]]:
+    """Attention window sizes: --lingbot-local-attn / --lingbot-sink-size (env LINGBOT_LOCAL_ATTN_SIZE /
+    LINGBOT_SINK_SIZE). Defaults are the README causal-fast settings (18 local, 6 sink)."""
+    local_v, argv = _take_value(argv, "--lingbot-local-attn")
+    sink_v, argv = _take_value(argv, "--lingbot-sink-size")
+    local_v = environ.get("LINGBOT_LOCAL_ATTN_SIZE") if local_v is None else local_v
+    sink_v = environ.get("LINGBOT_SINK_SIZE") if sink_v is None else sink_v
+    try:
+        local, sink = (18 if local_v is None else int(local_v)), (6 if sink_v is None else int(sink_v))
+    except ValueError:
+        raise SystemExit(f"window sizes must be integers, got local={local_v!r} sink={sink_v!r}") from None
+    if sink < 0 or local == 0 or local < -1:
+        raise SystemExit(f"window sizes must be sink >= 0 and local >= 1 (or -1 for full), got local={local} sink={sink}")
+    return {"local_attn": local, "sink": sink}, argv
+
+
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     """The --lingbot-* flags (or their env vars) in argv, and argv without them. Read once per main() call,
     so a process that runs several arms (pwa gen-arms) sees each arm's own flags."""
@@ -134,6 +165,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "fast": FS.parse_flags(argv, environ),
     }
     flags["stall"], argv = W.parse(argv, environ)
+    window, argv = _window(argv, environ)
+    flags.update(window)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
@@ -376,8 +409,11 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, WEIGHT_MOD, STATS, FAST
-    global CPU_THREADS, STALL
+    global CPU_THREADS, STALL, LOCAL_ATTN, SINK
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
+    LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
+    if (LOCAL_ATTN, SINK) != (18, 6):
+        print(f"[lingbot] window: local_attn={LOCAL_ATTN} sink={SINK}", flush=True)
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
