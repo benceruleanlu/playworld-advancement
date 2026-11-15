@@ -892,7 +892,15 @@
     var q = new URLSearchParams(); q.set("scenes", exp); if (task) q.set("scene", task);
     return location.pathname + "?" + q.toString() + "#scenes";
   }
+  // ?media=DIR/ (same origin only, like ?csv=) reads index.json and the manifests from DIR instead of main
+  function mediaOverride() {
+    var q = new URLSearchParams(location.search).get("media");
+    if (!q) return null;
+    try { var u = new URL(q.replace(/\/?$/, "/"), location.href); return u.origin === location.origin ? u.href : null; } catch (e) { return null; }
+  }
   function getJson(name) {
+    var ov = mediaOverride();
+    if (ov) return get(ov + name, 6000).then(JSON.parse);
     return get(MEDIA_RAW + name, 6000).then(JSON.parse).catch(function () { return get("media/" + name, 6000).then(JSON.parse); });
   }
   function sceneCard(t, open) {
@@ -1118,5 +1126,11 @@
   wire(); wireScenes(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); });
+    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); shareData(); });
+  // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
+  function shareData() {
+    window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
+      isCapped: isCapped, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
+    document.dispatchEvent(new CustomEvent("pwa:data"));
+  }
 })();
