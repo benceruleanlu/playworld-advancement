@@ -28,6 +28,11 @@ less than `deg`) finds the previous, in-window chunk first and recalls nothing. 
 `--lingbot-pose-mem-yaw-scale S` (1.0) multiplies the commanded yaw (unwrapped over the rollout) before any yaw
 comparison: the rendered image turned about 1.19x the commanded angle on GC031 (one measurement).
 
+`--lingbot-pose-mem-rel stored|still|current` (`stored`, default) picks the relative poses [CHUNK, 4, 4] passed to
+`session._mem_recompute` (`_plucker` and `weight_mod.step`): `stored` uses `entry.rel` (the motion when the chunk was
+generated), `still` passes identity poses (a stationary view), and `current` passes the upcoming chunk's `rel_c`
+(recomputing an installed view when `rel_c` changes, e.g. stopping on a revisited view).
+
 Storage is option (b) of the feasibility study: only the clean latents x0 (16 x 4 x lat_h x lat_w fp32, about
 1.5 MB per chunk at 480p), on the host, capped by `max_mb` (oldest entries evicted first). Option (a), the
 per-block K/V of each stored latent, is 1.2 GB per latent on 14B and is not implemented.
@@ -56,9 +61,10 @@ TIMES = ("sink", "recent", "orig")
 FALLBACKS = ("start", "keep")
 RULES = ("coverage", "legacy")
 PICKS = ("auto", "best", "latest")
+RELS = ("stored", "still", "current")
 DEFAULTS = {"deg": 32.0, "trans": 4.0, "leave_deg": 40.0, "leave_trans": 8.0, "latents": 4, "anchor": 2,
             "time": "recent", "fallback": "start", "tasks": "GC|OE", "max_mb": 512.0, "rule": "coverage",
-            "pick": "auto", "yaw_scale": 1.0}
+            "pick": "auto", "yaw_scale": 1.0, "rel": "stored"}
 # The first version's behaviour (pm14-fx-v1): pass these to get it back.
 LEGACY_ARGS = ("--lingbot-pose-mem-rule", "legacy", "--lingbot-pose-mem-time", "sink",
                "--lingbot-pose-mem-leave-deg", "59")
@@ -77,6 +83,7 @@ _ARGS = {  # flag -> (field, env var)
     "--lingbot-pose-mem-rule": ("rule", "LINGBOT_POSE_MEM_RULE"),
     "--lingbot-pose-mem-pick": ("pick", "LINGBOT_POSE_MEM_PICK"),
     "--lingbot-pose-mem-yaw-scale": ("yaw_scale", "LINGBOT_POSE_MEM_YAW_SCALE"),
+    "--lingbot-pose-mem-rel": ("rel", "LINGBOT_POSE_MEM_REL"),
 }
 
 
@@ -96,6 +103,7 @@ class PoseMemoryConfig:
     rule: str = DEFAULTS["rule"]
     pick: str = DEFAULTS["pick"]
     yaw_scale: float = DEFAULTS["yaw_scale"]
+    rel: str = DEFAULTS["rel"]
 
     @property
     def chunks(self) -> int:
@@ -124,7 +132,8 @@ class PoseMemoryConfig:
         return (f"pose memory {self.latents} latents after {self.anchor} anchor, match {self.deg:g} deg / "
                 f"{self.trans:g} units, leave {self.leave_deg:g} deg / {self.leave_trans:g} units, rope {self.time}, "
                 f"fallback {self.fallback}, cap {self.max_mb:g} MB, tasks {self.tasks!r}, rule {self.rule}, "
-                f"pick {self.pick}, yaw scale {self.yaw_scale:g}")
+                f"pick {self.pick}, yaw scale {self.yaw_scale:g}"
+                + (f", rel {self.rel}" if self.rel != "stored" else ""))
 
 
 def _take(argv: list[str]) -> tuple[dict, list[str]]:
@@ -179,7 +188,7 @@ def parse(argv: list[str], environ=os.environ) -> tuple[PoseMemoryConfig, list[s
     if v["leave_deg"] <= v["deg"]:
         raise SystemExit(f"--lingbot-pose-mem-leave-deg ({v['leave_deg']:g}) must exceed --lingbot-pose-mem-deg "
                          f"({v['deg']:g}), or a view never counts as left")
-    for f, allowed in (("time", TIMES), ("fallback", FALLBACKS), ("rule", RULES), ("pick", PICKS)):
+    for f, allowed in (("time", TIMES), ("fallback", FALLBACKS), ("rule", RULES), ("pick", PICKS), ("rel", RELS)):
         if raw[f] is not None:
             if raw[f] not in allowed:
                 raise SystemExit(f"{names[f]} must be one of {allowed}, got {raw[f]!r}")
@@ -255,6 +264,11 @@ def centre(latent_c2ws) -> np.ndarray:
     return lat[min(2, len(lat) - 1)]
 
 
+def rel_motion(rel) -> str:
+    """Label a [CHUNK, 4, 4] relative-pose slice as 'still' or 'move' (same 1e-5 threshold as weight_mod)."""
+    return "still" if rel is not None and np.allclose(rel, np.eye(4), atol=1e-5) else "move"
+
+
 # ------------------------------------------------------------------ the bank
 
 @dataclass
@@ -299,13 +313,14 @@ class Plan:
 class Decision:
     """What the session does before chunk c: warmup (sink still being written), keep (leave whatever is installed,
     possibly nothing), restore (copy the original sink back), install (a new selection) or retime (the same
-    chunks recomputed at a new RoPE time, coverage rule with time recent)."""
+    chunks recomputed for a new RoPE time or rel=current motion)."""
     kind: str
     plan: Plan | None = None
     matches: list = field(default_factory=list)
     slots: list = field(default_factory=list)
     ropes: list = field(default_factory=list)
     ids: tuple = ()
+    rels: list = field(default_factory=list)
 
 
 @dataclass
@@ -474,31 +489,52 @@ class PoseMemory:
                 break
         return out
 
-    def decide(self, latent_c2ws, c: int, installed: tuple) -> Decision:
-        """What to do before chunk c given the (chunk id, rope latent) pairs installed now. The session acts on it;
+    def mem_rel(self, entry: Entry, rel_c=None) -> np.ndarray | None:
+        """Relative poses [CHUNK, 4, 4] for _mem_recompute (_plucker and weight_mod.step)."""
+        if self.cfg.rel == "still":
+            dt = entry.rel.dtype if entry.rel is not None else np.float64
+            return np.repeat(np.eye(4, dtype=dt)[None], CHUNK, axis=0)
+        if self.cfg.rel == "current" and rel_c is not None:
+            return np.asarray(rel_c)
+        return entry.rel
+
+    def _rel_key(self, rel_c) -> tuple:
+        if self.cfg.rel == "current" and rel_c is not None:
+            return ((np.round(np.asarray(rel_c, dtype=np.float64), 7) + 0.0).tobytes(),)
+        return ()
+
+    def decide(self, latent_c2ws, c: int, installed: tuple, rel_c=None) -> Decision:
+        """What to do before chunk c given the installed ids (and rel_c for rel=current). The session acts on it;
         the planner replays it. Neither changes `current` here: the caller sets it after acting."""
         if c * CHUNK < self.sink:  # this rollout's first chunks are still writing the sink
             return Decision("warmup")
         plan = self.plan(latent_c2ws, c)
         matches = plan.matches
         retime = False
+        rkey = self._rel_key(rel_c)
         if matches is None:  # the window holds the view: keep what is installed
-            if self.cfg.rule == "legacy" or self.cfg.time != "recent" or not self.current:
+            refresh_rel = bool(rkey and self.current and installed
+                               and any(it[2:] != rkey for it in installed))
+            if not refresh_rel and (self.cfg.rule == "legacy" or self.cfg.time != "recent" or not self.current):
                 return Decision("keep", plan)
-            # ...re-timed, so it stays just behind the window, while it still covers the view (else restore)
-            matches, retime = [m for m in self.current if self.covers(m.entry, plan.target)], True
+            # ...re-timed (or re-conditioned when rel=current changed), while it still covers the view (else restore)
+            matches = (list(self.current) if self.cfg.rule == "legacy"
+                       else [m for m in self.current if self.covers(m.entry, plan.target)])
+            retime = True
         if self.cfg.time != "sink":  # oldest chunk in the first slot, so the slot order matches the RoPE order
             matches = sorted(matches, key=lambda m: m.entry.cid)
         slots = self.slots(len(matches))
         ropes = [self.rope_latent(i, sl, m.entry, c, len(matches)) for i, (sl, m) in enumerate(zip(slots, matches))]
-        # keyed on the RoPE times too: with time=recent they move with every chunk, so the memory is recomputed
-        ids = tuple((m.entry.cid, r) for m, r in zip(matches, ropes))
+        rels = [self.mem_rel(m.entry, rel_c) for m in matches]
+        # keyed on the RoPE times (and rel_c with rel=current): recomputed whenever time or current motion moves
+        ids = tuple((m.entry.cid, r, *rkey) for m, r in zip(matches, ropes))
         if ids == installed:
-            return Decision("keep", plan, matches, slots, ropes, ids)
+            return Decision("keep", plan, matches, slots, ropes, ids, rels)
         if not ids:
             return Decision("restore" if self.cfg.fallback == "start" else "keep", plan)
-        same = self.cfg.rule != "legacy" and tuple(i for i, _ in ids) == tuple(i for i, _ in installed)
-        return Decision("retime" if retime or same else "install", plan, matches, slots, ropes, ids)
+        same = tuple(i for i, *_ in ids) == tuple(i for i, *_ in installed)
+        return Decision("retime" if retime or (same and (self.cfg.rule != "legacy" or bool(rkey))) else "install",
+                        plan, matches, slots, ropes, ids, rels)
 
     def covers(self, e: Entry, target) -> bool:
         """Whether a stored chunk's best latent still overlaps the target view by match_overlap (coverage rule)."""
