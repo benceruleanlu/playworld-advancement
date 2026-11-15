@@ -38,6 +38,7 @@ import time
 
 import numpy as np
 
+from adapters.lingbot_world2 import backlash_cal as BC
 from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import poses as P
 
@@ -137,23 +138,26 @@ class PoseTrack:
     """Absolute camera track across steps. advance(keys) -> normalised relative
     poses for the new latent frames (one per 4 pixel frames)."""
 
-    def __init__(self, translation_gain: float = 1.0):
+    def __init__(self, translation_gain: float = 1.0, backlash=None):
         self.translation_gain = translation_gain
+        self.backlash = backlash
         self.last = np.eye(4)        # absolute pose of the latest pixel frame
         self.prev_latent = None      # absolute pose of the latest latent frame
         self.latents = None          # absolute poses of the last advance()'s latents (one per rel)
 
-    def advance(self, keys: list[str], ease_turns: bool = False) -> np.ndarray:
+    def advance(self, keys: list[str], ease_turns: bool = False, backlash=None) -> np.ndarray:
         first = self.prev_latent is None
         if (len(keys) + (4 if first else 0)) % FRAMES_PER_CHUNK:
             raise ValueError(f"{len(keys)} keys do not fill whole chunks (first={first})")
         # Raised-cosine speed: half speed at edges, 1.5x mid-chunk; sum preserves total angle.
         scales = (1 - 0.5 * np.cos(2 * np.pi * (np.arange(len(keys)) + 0.5) / len(keys))
                   if ease_turns and is_pure_turn(keys) else None)
+        bl = self.backlash if backlash is None else backlash
         cur = self.last
         lat = [cur] if first else []  # latent 0 is pixel frame 0
         for i, k in enumerate(keys, 1):
-            cur = cur @ P.key_delta(k, self.translation_gain, 1.0 if scales is None else float(scales[i - 1]))
+            es = 1.0 if scales is None else float(scales[i - 1])
+            cur = cur @ (P.key_delta(k, self.translation_gain, es) if bl is None else bl.delta(k, self.translation_gain, es))
             if i % 4 == 0:
                 lat.append(cur)
         rel = relative_latent_poses(np.stack(lat), self.prev_latent)
@@ -247,7 +251,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None):
+                 cond_sched=None, backlash=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -264,6 +268,7 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        self.backlash, self.backlash_reversals, self.backlash_frames = backlash, 0, 0
         self._free()
 
     def _free(self):
@@ -336,7 +341,7 @@ class LingBotSession:
 
         self.gen = torch.Generator(device=dev)
         self.gen.manual_seed(int(seed))
-        self.track = PoseTrack()
+        self.track = PoseTrack(backlash=BC.BacklashTracker(self.backlash) if self.backlash and self.backlash.enabled else None)
         self.detector = ReturnDetector() if reanchor else None
         self.third_person = bool(third_person)
         if self.weight_mod is not None:
@@ -460,7 +465,12 @@ class LingBotSession:
             raise RuntimeError("LingBotSession.step() before reset()")
         pipe = self.pipe
         first = self.chunk_id == 0
+        bl = getattr(self.track, "backlash", None)
+        r0, f0 = (bl.reversals, bl.boosted_frames) if bl is not None else (0, 0)
         rel = self.track.advance(keys, ease_turns=ease_turns)
+        if bl is not None:
+            self.backlash_reversals += bl.reversals - r0
+            self.backlash_frames += bl.boosted_frames - f0
         n_chunks = len(rel) // CHUNK
         end_lat = (self.chunk_id + n_chunks) * CHUNK
         if end_lat > ROPE_LATENTS:

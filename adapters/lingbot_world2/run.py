@@ -210,6 +210,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import backlash_cal as BC  # noqa: E402
 from adapters.lingbot_world2 import cond_schedule as CS  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
@@ -338,6 +339,9 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-if-identity-cue requires auto caption prompting (scene plus IF goal)")
     flags["stall"], argv = W.parse(argv, environ)
     flags["cond_sched"], argv = CS.parse(argv, environ)
+    flags["backlash"], argv = BC.parse(argv, environ)
+    if flags["backlash"].enabled and flags["stateless"]:
+        raise SystemExit("--lingbot-backlash-cal requires session mode")
     if flags["cond_sched"].enabled and flags["weight_mod"]:
         raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
     window, argv = _window(argv, environ)
@@ -360,6 +364,7 @@ FAST = FS.FastFlags()
 CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
 STALL = W.Limits()
 COND_SCHED = CS.ScheduleConfig()
+BACKLASH = BC.BacklashConfig()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -470,7 +475,8 @@ class LingBotWorld2Engine:
                                             horizon_frames=int(getattr(args, "max_total_frames", 961) or 961),
                                             stream_encode=FAST.fast_y, t5_cache=self.t5_cache,
                                             weight_mod=self.weight_mod,
-                                            **({"cond_sched": sched} if sched is not None else {}))
+                                            **({"cond_sched": sched} if sched is not None else {}),
+                                            **({"backlash": BACKLASH} if BACKLASH.enabled else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -494,6 +500,7 @@ class LingBotWorld2Engine:
               + (", IF slow translation on (gain 0.5)" if STATS.if_slow else "")
               + (", GC chunk director on" if GC_DIRECTOR else "")
               + (", GC ease turns on" if GC_EASE_TURNS else "")
+              + (f", {BACKLASH.describe()}" if BACKLASH.enabled else "")
               + (", IF subject director on" if IF_SUBJECT else "")
               + (", IF identity cue on" if IF_IDENTITY else "")
               + (", measured turn on" if STATS.measured_turn else "")
@@ -600,12 +607,15 @@ class LingBotWorld2Engine:
         modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks) if self.weight_mod is not None else None
         cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
         cs_calls = getattr(self.session, "cond_sched_calls", 0)
+        bl_rev, bl_frm = getattr(self.session, "backlash_reversals", 0), getattr(self.session, "backlash_frames", 0)
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
         STATS.reanchored(self.session.reanchor_events - anchored)
         STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
                              getattr(self.session, "cond_sched_calls", 0) - cs_calls)
+        STATS.backlash_step(getattr(self.session, "backlash_reversals", 0) - bl_rev,
+                            getattr(self.session, "backlash_frames", 0) - bl_frm)
         if self.weight_mod is not None:
             STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
@@ -669,7 +679,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED
+    global IF_IDENTITY, COND_SCHED, BACKLASH
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -680,7 +690,7 @@ def main(argv: list[str] | None = None) -> int:
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
-    COND_SCHED = flags["cond_sched"]
+    COND_SCHED, BACKLASH = flags["cond_sched"], flags["backlash"]
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
@@ -691,7 +701,8 @@ def main(argv: list[str] | None = None) -> int:
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
                                  measured_turn=flags["measured_turn"], cond_sched=cs_mode,
-                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"])
+                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
+                                 backlash_cal=BACKLASH.enabled)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

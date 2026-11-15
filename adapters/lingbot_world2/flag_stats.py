@@ -74,7 +74,9 @@ class FlagStats:
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
-                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False):
+                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off",
+                 scripted: bool = False, backlash_cal: bool = False):
+        self.backlash_cal = bool(backlash_cal)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.measured_turn = bool(measured_turn)
@@ -103,7 +105,8 @@ class FlagStats:
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
                        "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
-                       "scripted_chunks": 0, "scripted_ends": 0}
+                       "scripted_chunks": 0, "scripted_ends": 0,
+                       "backlash_reversals": 0, "backlash_frames": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -121,6 +124,7 @@ class FlagStats:
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
+        self.backlash_reversals = self.backlash_frames = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -186,6 +190,10 @@ class FlagStats:
     def cond_scheduled(self, chunks: int = 0, calls: int = 0):
         self.cond_sched_chunks += int(chunks)
         self.cond_sched_calls += int(calls)
+
+    def backlash_step(self, reversals: int = 0, frames: int = 0):
+        self.backlash_reversals += int(reversals)
+        self.backlash_frames += int(frames)
 
     def completion_summary(self, counts) -> dict:
         if not self.gc_completion:
@@ -269,6 +277,8 @@ class FlagStats:
         if self.scripted:
             s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
+        if self.backlash_cal:
+            s.update(backlash_cal="on", backlash_reversals=self.backlash_reversals, backlash_frames=self.backlash_frames)
         return s
 
     @staticmethod
@@ -299,7 +309,9 @@ class FlagStats:
                 + (f" window={self.window}" if self.window else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
-                   if self.scripted else ""))
+                   if self.scripted else "")
+                + (f" backlash_cal=on backlash_reversals={t['backlash_reversals']}"
+                   f" backlash_frames={t['backlash_frames']}" if self.backlash_cal else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -330,6 +342,8 @@ class FlagStats:
         t["if_horizon_ends"] += self.if_horizon_ends
         t["cond_sched_chunks"] += self.cond_sched_chunks
         t["cond_sched_calls"] += self.cond_sched_calls
+        t["backlash_reversals"] += self.backlash_reversals
+        t["backlash_frames"] += self.backlash_frames
         print(self.line(s), flush=True)
         return s
 
