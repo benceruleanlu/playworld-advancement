@@ -129,6 +129,17 @@ def test_unreadable_or_flat_chunks_are_counted_unreliable_and_not_reported(capsy
     assert "could not read gone.mp4" in capsys.readouterr().out
 
 
+def test_one_unreliable_chunk_silences_the_sentence_but_not_the_counters():
+    # a good 16 degree RIGHT then an unmeasurable LEFT: "net 16 right against 0 commanded" would be false
+    clips = {"c1.mp4": clip(yaw_rate=2.0), "c2.mp4": [np.zeros((H_, W_, 3), dtype=np.float32)] * 5}
+    decide, seen, events, _ = _wrapped(clips)
+    task = {"task_id": "GC033", "prompt": "goal"}
+    assert decide(task, None, ["RIGHT", "LEFT"], 2, 30, ARGS, chunk_video_paths=list(clips)) == "RIGHT"
+    assert seen == ["goal"]
+    assert events[-1]["chunks"] == 2 and events[-1]["unreliable"] == 1
+    assert events[-1]["measured_yaw"] == pytest.approx(16.0, rel=0.1)
+
+
 def test_flag_line_only_grows_when_the_flag_is_on():
     off = F.FlagStats(False, "goal", False, False)
     assert "measured" not in F.FlagStats.line(off.summary("GC033"))

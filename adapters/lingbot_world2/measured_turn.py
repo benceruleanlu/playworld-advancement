@@ -15,7 +15,8 @@ against 45 with turn calibration and 54 to 69 against 48 to 55 without (smk14-ar
 one sentence with both totals to the goal the player reads. It never changes or replaces an
 action. Chunks driven by move keys or WAIT are not measured (walking and strafing shift the image
 without a rotation). The number is an image-motion estimate: moving subjects, scene changes and
-strong parallax add error, and a chunk with a weak correlation peak is reported as unreliable.
+strong parallax add error. A chunk with a weak correlation peak is reported as unreliable, and
+while any turn chunk of the rollout is unreliable the player is told nothing (the log still is).
 numpy only; frames are read with imageio, which the engine already uses.
 """
 from __future__ import annotations
@@ -120,7 +121,7 @@ def wrap(decide_action, to_key, session: bool, turn_cal: bool, on_event=None, re
             tot["measured_tilt"] += pitch
         if on_event is not None:
             on_event(tot)
-        if tot["unreliable"] < tot["chunks"]:
+        if tot["unreliable"] == 0:  # a total that skips a chunk is not the net rotation: say nothing then
             text = (f"Measured from the video so far (image motion, approximate): your turn actions rotated the view "
                     f"a net {_side(tot['measured_yaw'], 'left', 'right')} and tilted it "
                     f"{_side(tot['measured_tilt'], 'down', 'up')}. The commands sent add up to "
