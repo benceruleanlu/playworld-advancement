@@ -39,6 +39,8 @@ assert.deepEqual(words(["--lingbot-turntable-poses", "--lingbot-turntable-walk=f
 assert.deepEqual(words(["--lingbot-new-thing=3"]), ["--lingbot-new-thing 3"], "unknown flags show verbatim");
 assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-k=0.5"]),
   ["turn calibration", "yaw servo (error share 0.5)"]);
+assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-tasks=^[GO][CE]\\d"]),
+  ["turn calibration", "yaw servo (yaw servo tasks ^[GO][CE]\\d)"]);
 
 const lab = (e) => RI.get(e) && RI.get(e).armLabel;
 const expect = {

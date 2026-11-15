@@ -81,7 +81,7 @@ chunk's gain within 0.5 to 2.0. Knobs: --lingbot-yaw-servo-k (LINGBOT_YAW_SERVO_
 --lingbot-yaw-servo-beta (LINGBOT_YAW_SERVO_BETA, 0.6), read per main() call. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
 and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
 them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). GC call names
-only unless LINGBOT_YAW_SERVO_TASKS (a regex) says otherwise. Refused with
+only unless --lingbot-yaw-servo-tasks REGEX (LINGBOT_YAW_SERVO_TASKS) says otherwise. Refused with
 --lingbot-yaw-gain (both set the model-track gain), --lingbot-gc-ease-turns, --lingbot-reanchor (per-chunk
 steps change which latent a return spanning chunks anchors) and LINGBOT_STREAM_DECODE=0 (quadratic re-decode). Weight mod, cond schedule, STG, KV noise, sink
 scale, noise-mean coupling and pose memory act per latent chunk inside session.step, so per-chunk steps leave
@@ -637,7 +637,8 @@ class LingBotWorld2Engine:
               + (f", turn step {P.CHUNK_YAW_DEG:g} deg of yaw per chunk" if P.CHUNK_YAW_DEG else "")
               + (f", {YAW_GAIN.describe()}" if YAW_GAIN.enabled else "")
               + ((", yaw servo on" + ("" if (self.yaw_servo.k, self.yaw_servo.beta) == (YSV.K_DEFAULT, YSV.BETA_DEFAULT)
-                                         else f" (k {self.yaw_servo.k:g}, beta {self.yaw_servo.beta:g})"))
+                                         else f" (k {self.yaw_servo.k:g}, beta {self.yaw_servo.beta:g})")
+                  + ("" if YAW_SERVO_CFG.tasks == YSV.TASKS_DEFAULT else f" (tasks {YAW_SERVO_CFG.tasks})"))
                  if self.yaw_servo is not None else "")
               + (f", turntable poses ({TURNTABLE.describe()})" if TURNTABLE.enabled else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
@@ -819,7 +820,7 @@ class LingBotWorld2Engine:
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
         pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
-        servo_split = self.yaw_servo is not None and YSV.applies(name) and any(YSV.yaw_part(k) for k in keys)
+        servo_split = self.yaw_servo is not None and YSV.applies(name, pattern=YAW_SERVO_CFG.tasks) and any(YSV.yaw_part(k) for k in keys)
         if servo_split:
             # chunk by chunk, each chunk's pose gain set from the yaw the earlier chunks rendered
             before = (self.yaw_servo.chunks, self.yaw_servo.untrusted)
