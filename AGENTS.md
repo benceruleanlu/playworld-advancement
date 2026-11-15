@@ -66,7 +66,7 @@ Typical loop: run one family of dev tasks per arm (`experiment` workflow, `tasks
 
 ### Adapters
 
-`adapters/<name>/run.py` imports upstream `run_agent`, applies `adapters/common/agent_api.patch` (sets auth by `PLAYER_API_PROVIDER`), swaps `SanaWMEngine` for our engine, and calls `main()`. Wrappers compose around `generate()`, e.g. `AnchorMemory(base_engine)`. `matrix_game3/run.py` is a stub and stays one: the Matrix-Game 3.0 line was dropped (issue #4 closed). `sana_wm` ran a one-task smoke test and SANA-WM work is stopped.
+`adapters/<name>/run.py` imports upstream `run_agent`, applies `adapters/common/agent_api.patch` (sets auth by `PLAYER_API_PROVIDER`), swaps `SanaWMEngine` for our engine, and calls `main()`. Wrappers compose around `generate()`, e.g. `AnchorMemory(base_engine)`. `matrix_game3/run.py` is a stub and stays one: the Matrix-Game 3.0 line was dropped (issue #4 closed). `sana_wm` ran a one-task smoke test and SANA-WM work is stopped. `sana_stream` is an optional SANA-WM runner that no workflow selects (`--runner sana_stream -- --chunk-frames 25 --num-chunks 40`): it keeps one chunk-causal SANA-WM streaming session per task and feeds it one 24-frame block per agent decision, the SANA-WM counterpart of the LingBot persistent session, with no method on top; it also swaps the turn and strafe keys, which current Sana exchanged after the upstream harness was written (`SANA_KEYMAP`). Its docstring has the env vars and what was measured.
 
 `lingbot_world2` (14B) and `lingbot_world2_1p3b` (1.3B) run LingBot-World v2 causal-fast (PlayWorld paper: 1.82 overall via its web demo). Notes:
 
