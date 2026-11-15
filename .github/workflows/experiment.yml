@@ -129,27 +129,32 @@ jobs:
         run: |
           [[ "$PLAYER_MODEL" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "player_model must match [A-Za-z0-9._:-]+" >&2; exit 2; }
           timeout 30s python -m adapters.common.agent_api
-      - name: Install FFmpeg
-        # Every stage needs it: the verifier, and pwa media for the scenes. On a Modal gen-only run only the scenes
-        # need it, and a failure there must not fail the job.
-        continue-on-error: ${{ inputs.backend == 'modal' && inputs.stage == 'gen-only' }}
-        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
-      - name: Install dataset client
-        run: pip install -q huggingface_hub
-      - name: Install Modal CLI
-        if: inputs.backend == 'modal'
-        run: pip install -q modal
-      - name: Install local rollout and verifier dependencies
-        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
+      - name: Install Python dependencies
         run: |
-          pip install -q -e third_party/PlayWorld
-          pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
-          pip install -q -e .
+          pip install -q huggingface_hub ${{ inputs.backend == 'modal' && 'modal' || '' }}
+          if [[ "${{ inputs.backend }}" != "modal" || "${{ inputs.stage }}" != "gen-only" ]]; then
+            pip install -q -e third_party/PlayWorld
+            pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
+            pip install -q -e .
+          fi
       - name: Install pwa for scenes
         # Modal gen-only: the scenes step runs pwa media here (stdlib only, no verifier dependencies).
         if: inputs.backend == 'modal' && inputs.stage == 'gen-only'
         continue-on-error: true
         run: pip install -q -e .
+      - name: Set up FFmpeg
+        # The ubuntu-latest image does not ship ffmpeg. Scoring (upstream frame sampling: fps/scale/pad, JPEG) and pwa media
+        # (libx264, thumbnail, +faststart) use the pinned static build from imageio-ffmpeg, as ci.yml does, instead of apt.
+        # Every stage needs it: the verifier, and pwa media for the scenes. On a Modal gen-only run only the scenes
+        # need it, and a failure there must not fail the job.
+        continue-on-error: ${{ inputs.backend == 'modal' && inputs.stage == 'gen-only' }}
+        run: |
+          pip install -q --only-binary=:all: imageio-ffmpeg==0.6.0
+          mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
+          ln -sf "$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -version
+          "$RUNNER_TEMP/ffmpeg-bin/ffmpeg" -hide_banner -encoders | grep ' libx264 ' >/dev/null ||{ echo "ffmpeg lacks libx264" >&2; exit 1; }
+          echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
       - uses: actions/cache@v4
         with:
           path: data
