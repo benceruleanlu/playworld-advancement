@@ -84,7 +84,7 @@ Timings: AGENTS.md "Run speed", measured on lb14-session-agent-dev-v1: model loa
   <div class="arr">→</div>
   <div class="box"><b>Clip</b>about 60 s</div>
   <div class="arr">→</div>
-  <div class="box fill2 flex flex-col justify-center" style="grid-row: span 2;"><b>Judge</b>Gemini 3.1 Pro<br>2 or 4 passes<br><span class="small">42 runs scored<br>34 generated, never scored</span></div>
+  <div class="box fill2 flex flex-col justify-center" style="grid-row: span 2;"><b>Judge</b>Gemini 3.1 Pro<br>2 or 4 passes<br><span class="small">42 runs scored<br>34 generated, no Gemini score<br>(some have Luna proxy scores)</span></div>
   <div class="flex flex-col justify-center"><b style="font-size:16px">Closed loop</b><span class="small muted">35 runs</span></div>
   <div class="box"><b>AI player</b>picks each chunk's action from the frames so far</div>
   <div class="arr">⇄</div>
@@ -152,14 +152,14 @@ Clips load from GitHub Releases (run-lb14-session-agent-dev-v1) and do not autop
 
 <div class="dg mt-4">
 <div class="grid items-center gap-x-2 gap-y-3" style="grid-template-columns: 1.1fr 24px 1fr 24px 0.9fr 24px 1fr;">
-  <div class="box" style="grid-row: span 2;"><b>Same inputs</b>same task image<br>same seed<br>same actions</div>
+  <div class="box" style="grid-row: span 2;"><b>Same inputs</b>same task image<br>same seed<br>same dataset actions</div>
   <div class="arr" style="grid-row: span 2;">⇉</div>
   <div class="box"><b>Control arm</b>flags off</div>
   <div class="arr" style="grid-row: span 2;">⇉</div>
   <div class="box fill2" style="grid-row: span 2;"><b>Judge</b>same judge<br>2 or 4 passes</div>
   <div class="arr" style="grid-row: span 2;">→</div>
   <div class="box" style="grid-row: span 2;"><b>One comparison</b>treatment minus control,<br>per task and family</div>
-  <div class="box fill"><b>Treatment arm</b>one flag differs</div>
+  <div class="box fill"><b>Treatment arm</b>flags differ (one, or a stack)</div>
 </div>
 <div class="grid grid-cols-3 gap-3 mt-6">
   <div class="box dash"><b>Delta over twice the pass spread</b>smaller is noise</div>
@@ -333,7 +333,7 @@ Right: a six-task family mean moves about 0.5 on the same videos, drawn as the b
 
 Luna (openai:gpt-6-luna, proxy judge): byte-identical clips give 0.50 per task on average and 0.62 on a five-task mean. It lets 97% of gate checks pass, where Gemini failed a gate on 23% of tasks. Rank correlation with Gemini: 0.62 on 21 clips (0.41 on out-of-sight). Luna's identical-clip numbers come from walking-only GC tasks, where the servo arm and the control are the same file.
 
-We used Luna after the Gemini credits ran out at about 03:40 UTC on Nov 15. Luna's scores are not reported numbers and are not comparable to the leaderboard.
+We used Luna after Gemini scoring stopped working on Nov 15 (AGENTS.md records the credits running out at about 03:40 UTC, but Gemini-scored rows land in results/experiments.csv until 05:43 and the first failed scoring is at 06:14). Luna's scores are not reported numbers and are not comparable to the leaderboard.
 
 The practical bar: about 0.5 for a six-task family mean under Gemini, about 0.6 under Luna. Any flag effect smaller than that cannot be seen in our dev comparisons. The next slide shows how much a clip changes when only the seed changes.
 -->
@@ -353,7 +353,7 @@ Both arms are the no-flag arms of stk14-fx-dev-v1: arm 1 at the default seed 0, 
 
 Use "Play both from start" to run them together. Nothing but the seed differs, so the difference between the clips is what a second seed adds on top of the judge noise on the previous slide. This is why the adoption rule asks for a gain that repeats on both seeds (slide 5).
 
-These clips have no official score: stk14-fx-dev-v1 was generated after the Gemini credits ran out and has Luna proxy scores only. No claim about scores is made here, only that the clips differ.
+These clips have no official score: stk14-fx-dev-v1 was generated after the Gemini credits ran out and has Luna proxy scores only. No claim about scores is made here, only that the two arms differ in seed.
 
 The pair is also in the site's Pairs section.
 -->
@@ -367,7 +367,7 @@ The pair is also in the site's Pairs section.
   <div class="box fill2 flex flex-col justify-center" style="flex: 6"><b>6 sink latents</b>opening view, kept forever</div>
   <div class="box dash flex flex-col justify-center" style="flex: 5"><b>evicted</b>older views</div>
   <div class="box fill flex flex-col justify-center" style="flex: 8"><b>8 recent latents</b>about 2 s</div>
-  <div class="box grey flex flex-col justify-center" style="flex: 4"><b>4 generating</b>next chunk</div>
+  <div class="box grey flex flex-col justify-center" style="flex: 4"><b>4 generating</b>next 4 latents (1 s)</div>
 </div>
 <div class="taxis">
   <span style="left: 0%">0 s</span>
@@ -414,15 +414,18 @@ Two flags change this window: keep-first 10 and attention window 22. They are pa
 
 <div class="grid grid-cols-[0.8fr_1.2fr] gap-8 mt-4">
 <div class="dg">
-<div class="grid grid-cols-2 gap-x-3 gap-y-2 items-center text-center" style="grid-template-rows: auto 26px auto;">
+<div class="grid gap-x-1 gap-y-2 items-center text-center" style="grid-template-columns: 1fr 24px 1fr; grid-template-rows: auto 26px auto;">
   <div class="box"><b>1. Command</b>a turn</div>
+  <div class="arr">→</div>
   <div class="box fill"><b>2. Render</b>one chunk</div>
   <div class="arr">↑</div>
+  <div></div>
   <div class="arr">↓</div>
   <div class="box"><b>4. Correct</b>the next command</div>
+  <div class="arr">←</div>
   <div class="box fill2"><b>3. Measure</b>rendered rotation (phase correlation)</div>
 </div>
-<div class="small muted mt-3 text-center">2 → 3 and 4 → 1 run each chunk; 3 → 4 feeds the error back.</div>
+<div class="small muted mt-3 text-center">Each chunk: 1 → 2 → 3 → 4 → 1.</div>
 </div>
 <div class="dg">
 <HeadingChart />
@@ -526,14 +529,14 @@ Clips: OE039 and OE047 at seed 0, results/media/stk14-fx-dev-v1-a1.json and -a2.
 
 <div class="dg grid grid-cols-4 gap-3 mt-6 tiers">
   <div class="box fill2"><b>Measured</b><div class="t">geometry, no score</div><div class="m">Yaw servo: end heading</div></div>
-  <div class="box fill"><b>Lead from a small sample</b><div class="t">up or down</div><div class="m">Stack: out-of-sight +1 (Luna)</div><div class="m">Sink key scale: down</div><div class="m">Conditioning schedule: insight 3.00 → 1.50</div></div>
-  <div class="box"><b>Did not repeat</b><div class="t">or inside the noise</div><div class="m">Turn calibration: +1.95 then +0.35</div><div class="m">Sink 10 + window 22: OE039 3.44, then 1.75</div><div class="m">Caption prompt: 2 up, 2 down</div></div>
-  <div class="box dash"><b>Dropped</b><div class="t">no gain</div><div class="m">Pose memory: +0.20 (Luna), bar 0.34</div></div>
+  <div class="box fill"><b>Lead from a small sample</b><div class="t">upward</div><div class="m">Stack: out-of-sight +1 (Luna, 2 seeds + dev2)</div></div>
+  <div class="box"><b>Did not repeat</b><div class="t">or inside the noise</div><div class="m">Turn calibration: +1.95 then +0.35</div><div class="m">Sink 10 + window 22: OE039 3.44 (seed 1), 1.75 (seed 0)</div><div class="m">Caption prompt: 2 up, 2 down</div></div>
+  <div class="box dash"><b>Dropped</b><div class="t">lowered scores or no gain</div><div class="m">Sink key scale: −0.45 to −0.85</div><div class="m">Conditioning schedule: insight 3.00 → 1.50</div><div class="m">Pose memory: +0.20 (Luna), bar 0.34</div></div>
 </div>
 
 <div class="text-sm mt-6">
 
-Gemini 3.1 Pro and one seed unless marked. Nothing is adopted.
+Gemini 3.1 Pro and one seed unless marked; the servo has no judge score. Nothing is adopted.
 
 </div>
 
@@ -548,7 +551,7 @@ Each method sits in one tier. Sources: AGENTS.md "Status against the timeline": 
 
 Measured: the yaw servo's end heading (slides 11 and 12); no judge score change.
 
-Leads from small samples: the stack, about +1 on out-of-sight under Luna (slide 13). Sink key scale lowered out-of-sight: control 2.10; scaled arms 1.65, 1.33 and 1.25 (sks14-fx-v1, Gemini, one seed). Scale 0.7 (-0.45) is inside the six-task noise from the judge slide (slide 8); scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight, 3.00 to 1.50, on the two tasks it ran, OE001 and OE018 (dec14-ins-v1). These are drops on small samples, the same caution as the stack lead in the other direction.
+Leads from small samples: the stack, about +1 on out-of-sight under Luna (slide 13). Dropped as harmful or null (AGENTS.md, each on one seed and six tasks or fewer): sink key scale lowered out-of-sight: control 2.10; scaled arms 1.65, 1.33 and 1.25 (sks14-fx-v1, Gemini, one seed). Scale 0.7 (-0.45) is inside the six-task noise from the judge slide (slide 8); scale 0.4 and 0.7 from chunk 4 are below it. The conditioning schedule halved insight, 3.00 to 1.50, on the two tasks it ran, OE001 and OE018 (dec14-ins-v1). Both sit in the "Dropped" tier with their numbers; they are drops on small samples, the same caution as the stack lead in the other direction.
 
 Did not repeat or inside the noise: turn calibration, the same comparison run twice on GC031, gave +1.95 and +0.35. Generation is deterministic, so that spread is a config difference or judge spread, not rollout noise. Caption prompt: 2 tasks up and 2 down by a full point in one run. Sink 10 with window 22 raised OE039 1.00 to 3.44 at seed 1, but 1.75 at seed 0, inside the controls (win14-fx-v1).
 
@@ -561,8 +564,8 @@ Dropped: pose memory retrieves as planned after #129, with no geometric gain, +0
 
 <div class="dg mt-8">
 <div class="tl">
-  <div class="tlband" style="left: 30.6%; right: 0;"><span>Luna proxy scores only</span></div>
-  <div class="tlev" style="left: 30.6%"><b>about 03:40</b>Gemini AI Studio<br>credits run out</div>
+  <div class="tlband" style="left: 51.9%; right: 0;"><span>Luna proxy scores only</span></div>
+  <div class="tlev" style="left: 51.9%"><b>06:14</b>Gemini scoring fails<br>(last Gemini row 05:43)</div>
   <div class="tlev" style="left: 75.1%"><b>09:01</b>GPU workspace disabled<br>during <code>clstk14-dev-v1</code></div>
   <div class="tlaxis"><span style="left:0%">00:00</span><span style="left:25%">03:00</span><span style="left:50%">06:00</span><span style="left:75%">09:00</span><span style="left:100%">12:00 UTC</span></div>
 </div>
@@ -595,7 +598,7 @@ No closed-loop comparison of stack plus servo exists.
 <!--
 Sources: AGENTS.md "Status against the timeline" (credits, the clstk14-dev-v1 bullet, the noise estimate) and "Run speed" for the 171-task budget at 8 shards.
 
-About 03:40 UTC Nov 15: Gemini AI Studio prepaid credits ran out (402 RESOURCE_EXHAUSTED). Later runs have Luna scores only.
+AGENTS.md records the Gemini AI Studio prepaid credits running out (402 RESOURCE_EXHAUSTED) at about 03:40 UTC Nov 15, but results/experiments.csv has Gemini-scored rows (dec14, sks14, pm14-fx-v1/v2, ins14-fx-v2, win14-fx-v1) up to 05:43, and scoring failed at 06:14. The band starts at 06:14. Later runs have Luna scores only.
 
 09:01 UTC Nov 15: the GPU provider workspace was disabled during clstk14-dev-v1, a 24-task dev run and the only closed-loop test of stack plus servo. Base 23 of 24 tasks, stack plus servo 8 of 24, the third arm (stack plus servo without IF slow translation) never started.
 
