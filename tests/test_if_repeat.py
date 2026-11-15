@@ -33,9 +33,9 @@ def test_actual_player_can_continue_after_check(monkeypatch):
     monkeypatch.setattr(ra, "request_agent_action", lambda a, p, images: sent.append(p) or "W")
     stats = FlagStats(False, "goal", False, False, if_repeat=True)
     decide = C.wrap(ra.decide_action, stats.if_repeat_hint)
-    assert decide({"task_id": "IF002", "prompt": "Keep walking."}, None, ["W"] * 4,
+    assert decide({"task_id": "IF002", "prompt": "Keep walking forward into the bench."}, None, ["W"] * 4,
                   4, 30, SimpleNamespace()) == "W"
-    assert C.REMINDER in sent[0]
+    assert C.REMINDER in sent[0] and "Keep walking forward into the bench." in sent[0]
     assert stats.finish_task("IF002")["if_repeat_checks"] == 1
     stats.new_task()
     assert stats.if_repeat_checks == 0 and "if_repeat_checks=1" in stats.total_line()

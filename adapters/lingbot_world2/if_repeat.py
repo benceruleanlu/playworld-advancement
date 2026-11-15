@@ -6,7 +6,9 @@ REMINDER = (
     "frames: did the subject actually advance toward the goal, make the intended contact, or "
     "move the intended object? Repetition alone does not prove progress or failure. Continue "
     "the same action if it is visibly working; if blocked or repeating an ineffective gesture, "
-    "reconsider the next control from the scene evidence while preserving the original goal."
+    "reconsider the next control from the scene evidence while preserving the original goal. "
+    "If the goal calls for continuing forward or attempting contact with an obstacle, keep that "
+    "attempt; do not evade the obstacle just to create visible movement."
 )
 
 
