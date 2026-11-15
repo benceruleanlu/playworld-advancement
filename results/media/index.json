@@ -1,6 +1,28 @@
 {
  "runs": [
   {
+   "exp": "stksv14-cl-gc-v1-a2",
+   "generated": "2026-11-15T07:29:02Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stksv14-cl-gc-v1-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "arm 2/2 of stksv14-cl-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-sink-size 10 --lingbot-local-attn 22 --lingbot-yaw-servo"
+   ]
+  },
+  {
+   "exp": "stksv14-cl-gc-v1-a1",
+   "generated": "2026-11-15T07:28:48Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-stksv14-cl-gc-v1-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "arm 1/2 of stksv14-cl-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --agent-model gpt-6-luna --lingbot-turn-cal --lingbot-caption-prompt --lingbot-sink-size 10 --lingbot-local-attn 22"
+   ]
+  },
+  {
    "exp": "stksv14-fx-gc-v1-a2",
    "generated": "2026-11-15T07:16:02Z",
    "n_tasks": 12,
