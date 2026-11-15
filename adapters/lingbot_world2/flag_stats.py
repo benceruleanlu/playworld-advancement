@@ -102,8 +102,9 @@ class FlagStats:
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
-                 pose_mem: bool = False):
+                 pose_mem: bool = False, cond_gc_guard: bool = False):
         self.pose_mem = bool(pose_mem)
+        self.cond_gc_guard = bool(cond_gc_guard)
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
@@ -140,7 +141,8 @@ class FlagStats:
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
                        "scripted_chunks": 0, "scripted_ends": 0,
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
-                       "yaw_gain_frames": 0, **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS}}
+                       "yaw_gain_frames": 0, "gc_cond_guard_calls": 0,
+                       **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS}}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -159,6 +161,7 @@ class FlagStats:
         self.turn_step_dataset = False  # a `<task>_full` call ran: the step does not apply there
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
+        self.gc_cond_guard_calls = 0
         self.sink_scale_armed, self.sink_scaled_chunks = False, 0
         self.pose_mem_on, self.pose_mem_counts, self.pose_mem_bytes = False, dict.fromkeys(POSE_MEM_FIELDS, 0), 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
@@ -334,6 +337,8 @@ class FlagStats:
         if self.cond_sched != "off":
             s.update(cond_sched=self.cond_sched, cond_sched_chunks=self.cond_sched_chunks,
                      cond_sched_calls=self.cond_sched_calls)
+        if self.cond_gc_guard:
+            s.update(cond_gc_guard="on", gc_cond_guard_calls=self.gc_cond_guard_calls)
         if self.kv_noise != "off":
             s.update(kv_noise=self.kv_noise, kv_noise_t=f"{self.kv_noise_t:g}", kv_noise_chunks=self.kv_noise_chunks)
         if self.stg != "off":
@@ -378,6 +383,7 @@ class FlagStats:
                 + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
                 + (f" cond_sched={self.cond_sched} cond_sched_chunks={t['cond_sched_chunks']}"
                    f" cond_sched_calls={t['cond_sched_calls']}" if self.cond_sched != "off" else "")
+                + (f" cond_gc_guard=on gc_cond_guard_calls={t['gc_cond_guard_calls']}" if self.cond_gc_guard else "")
                 + (f" kv_noise={self.kv_noise} kv_noise_t={self.kv_noise_t:g} kv_noise_chunks={t['kv_noise_chunks']}"
                    if self.kv_noise != "off" else "")
                 + (f" stg={self.stg} stg_chunks={t['stg_chunks']} stg_calls={t['stg_calls']}"
@@ -424,6 +430,7 @@ class FlagStats:
         t["if_horizon_ends"] += self.if_horizon_ends
         t["cond_sched_chunks"] += self.cond_sched_chunks
         t["cond_sched_calls"] += self.cond_sched_calls
+        t["gc_cond_guard_calls"] += self.gc_cond_guard_calls
         t["kv_noise_chunks"] += self.kv_noise_chunks
         t["stg_chunks"] += self.stg_chunks
         t["stg_calls"] += self.stg_calls

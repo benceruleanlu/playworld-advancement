@@ -90,6 +90,8 @@ agent or refined. See scripted_player.py.
 Conditioning schedule (off by default, session only): `--lingbot-cond-schedule` or LINGBOT_COND_SCHEDULE=1
 scales DiT camera FiLM and cross-attention output on early denoising steps of stationary and third-person
 chunks, restoring (1, 1) on late steps and the t=0 KV write (--lingbot-cond-early/cam/3p/text; cond_schedule.py).
+`--lingbot-cond-gc-guard` (LINGBOT_COND_GC_GUARD=1) preserves (1, 1) throughout first-person GC,
+including WAIT tails; requires the schedule and session mode. Counts gc_cond_guard_calls per task/total.
 Refused together with --lingbot-weight-mod: both wrap the same layers.
 
 Noisy KV writes (off by default, session only): `--lingbot-kv-noise` or LINGBOT_KV_NOISE=1 writes each
@@ -403,6 +405,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-if-identity-cue requires auto caption prompting (scene plus IF goal)")
     flags["stall"], argv = W.parse(argv, environ)
     flags["cond_sched"], argv = CS.parse(argv, environ)
+    if flags["cond_sched"].gc_guard and (not flags["cond_sched"].enabled or flags["stateless"]):
+        raise SystemExit("--lingbot-cond-gc-guard requires --lingbot-cond-schedule and session mode")
     if flags["cond_sched"].enabled and flags["weight_mod"]:
         raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
     flags["kv_noise"], argv = KVN.parse(argv, environ)
@@ -707,6 +711,8 @@ class LingBotWorld2Engine:
                                reanchor=reanchor,
                                noise_mean=bool(NOISE_MEAN and parsed and parsed[0].startswith(("GC", "IF"))), **mod)
             self.session.third_person = CS.is_third_person(prompts._current.get("task"), name)
+            if COND_SCHED.gc_guard:
+                self.session.cond_sched.set_task(name, self.session.third_person)
             if reanchor:
                 STATS.armed()
             if SINK_SCALE.enabled:  # only with the flag, so the no-flag reset path stays main's
@@ -730,6 +736,7 @@ class LingBotWorld2Engine:
         modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks) if self.weight_mod is not None else None
         cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
         cs_calls = getattr(self.session, "cond_sched_calls", 0)
+        guarded = self.session.cond_sched.guard_calls if COND_SCHED.gc_guard else 0
         kvn_chunks = getattr(self.session, "kv_noise_chunks", 0)
         stg_chunks, stg_calls = getattr(self.session, "stg_chunks", 0), getattr(self.session, "stg_calls", 0)
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
@@ -741,6 +748,8 @@ class LingBotWorld2Engine:
         STATS.reanchored(self.session.reanchor_events - anchored)
         STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
                              getattr(self.session, "cond_sched_calls", 0) - cs_calls)
+        if COND_SCHED.gc_guard:
+            STATS.gc_cond_guard_calls += self.session.cond_sched.guard_calls - guarded
         if KV_NOISE.enabled:
             STATS.kv_noised(getattr(self.session, "kv_noise_chunks", 0) - kvn_chunks)
         if STG.enabled:
@@ -852,7 +861,7 @@ def main(argv: list[str] | None = None) -> int:
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
-                                 measured_turn=flags["measured_turn"], cond_sched=cs_mode,
+                                 measured_turn=flags["measured_turn"], cond_sched=cs_mode, cond_gc_guard=COND_SCHED.gc_guard,
                                  kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
                                  sink_scale=SINK_SCALE.enabled, noise_mean=NOISE_MEAN, turn_step=flags["turn_step"],
