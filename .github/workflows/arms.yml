@@ -36,6 +36,9 @@ on:
         type: choice
         options: [H100, A100-80GB, L40S]
         default: H100
+      cpu:
+        description: "CPU cores requested per Modal GPU container (empty = Modal's default). CPU-side load and T5 work scale with it; see --lingbot-cpu-threads"
+        default: ""
       num_shards:
         description: GPU containers; each runs every arm on its share of the tasks
         default: "1"
@@ -78,6 +81,7 @@ env:
   MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
   MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
   PWA_MODAL_GPU: ${{ inputs.gpu }}
+  PWA_MODAL_CPU: ${{ inputs.cpu }}
   PWA_RUNNER: ${{ inputs.runner }}
 
 jobs:

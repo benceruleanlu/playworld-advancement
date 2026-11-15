@@ -53,6 +53,12 @@ reset and first step of every rollout, always on. Opt-in, all off by default:
   --lingbot-fast-y     (LINGBOT_FAST_Y=1)    session mode: stream-encode `y` as the rollout advances
   --lingbot-fast       (LINGBOT_FAST=1)      all three
   --lingbot-t5-gpu     T5 on the GPU (same as LINGBOT_T5_CPU=0; changes embeddings at bf16 rounding level)
+  --lingbot-fast-dit   (LINGBOT_FAST_DIT=1)  DiT built on meta, tensors copied to the GPU and cast there
+                       (LINGBOT_DIT_LOAD_THREADS shards at a time, default 4); same values, not in --lingbot-fast
+  --lingbot-cpu-threads[=N]  (LINGBOT_CPU_THREADS=N|auto)  torch CPU threads (auto: usable CPUs); may change
+                       CPU T5 bits, so not in --lingbot-fast. A `[lingbot] cpu {...}` line is always printed.
+  --lingbot-dit-checksum  (LINGBOT_DIT_CHECKSUM=1)  log a DiT parameter checksum after the load (and, with
+                       fast-dit, compare sampled tensors with a CPU cast)
 
 In-process use (pwa gen-arms): main(argv) can be called several times in one process. Each call re-reads
 the flags and env, resets poses' turn rates, the flag counters and prompts' current task, and imports a
@@ -113,6 +119,31 @@ DEFAULT_PROMPT = "A photo-realistic scene with rich details."
 _PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
 
 
+def _print_cpu():
+    """Always-on diagnostic: what decides torch's CPU thread count in this container."""
+    try:
+        print(f"[lingbot] cpu {FS.cpu_report()}", flush=True)
+    except ImportError:  # no torch (tests)
+        pass
+
+
+def _cuda0():
+    import torch  # noqa: PLC0415
+    return torch.device("cuda", 0) if torch.cuda.is_available() else None
+
+
+def _check_dit(model):
+    """--lingbot-dit-checksum: parameter checksum, plus a sample compared with a CPU cast (fast-dit only)."""
+    t0 = time.time()
+    digest, n = FS.dit_checksum(model)
+    print(f"[lingbot] dit checksum {digest} ({n} tensors, {time.time() - t0:.1f}s)", flush=True)
+    info = getattr(model, "_lingbot_fast_dit", None)
+    if info:
+        same, checked = FS.verify_dit_sample(model, info["shards"], info["dtype"])
+        print(f"[lingbot] dit verify {same}/{checked} sampled tensors bit-identical to the CPU cast "
+              f"({'ok' if same == checked else 'MISMATCH'})", flush=True)
+
+
 class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
@@ -142,7 +173,10 @@ class LingBotWorld2Engine:
         key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
         if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
             print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
-            with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load) as timer:
+            _print_cpu()
+            dit_dev = _cuda0() if FAST.fast_dit else None
+            with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load, fast_dit_device=dit_dev,
+                                    dit_threads=int(os.environ.get("LINGBOT_DIT_LOAD_THREADS", "4"))) as timer:
                 if FAST.fast_load:
                     FS.read_ahead(FS.checkpoint_files(self.cfg, ckpt, assets, include_t5=not FAST.t5_cache),
                                   threads=int(os.environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
@@ -153,6 +187,8 @@ class LingBotWorld2Engine:
                     assets_dir=str(assets) if assets else None)
                 timer.rest(time.time() - t0)
             print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+            if FAST.dit_checksum:
+                _check_dit(_PIPES[key].model)
         else:
             print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
                   f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
@@ -286,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
+    FS.apply_cpu_threads(FAST.cpu_threads)  # before the engine: the T5 cache identity records the count
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
     P.reset()
     prompts.reset()
