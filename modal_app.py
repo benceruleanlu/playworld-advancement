@@ -3,7 +3,8 @@
     modal run modal_app.py --exp sana-base-dev --split dev --runner sana --action-source dataset --num-shards 4
     modal volume get pwa-runs /sana-base-dev runs/      # then: pwa score / pwa report locally
 
-GPU type: PWA_MODAL_GPU (default H100). Secrets: Modal secret `pwa` holding the
+GPU type: PWA_MODAL_GPU (default H100). CPU request for the generation containers: PWA_MODAL_CPU
+(cores, e.g. 8; empty = Modal's default, unchanged). Secrets: Modal secret `pwa` holding the
 config/env.sh keys (PLAYER_API_*, HF_TOKEN). Weights cache in the `pwa-weights` Volume.
 
 SANA install mirrors upstream environment_setup.sh at the pinned commit.
@@ -18,6 +19,23 @@ import modal
 
 ROOT = Path(__file__).resolve().parent
 GPU = os.environ.get("PWA_MODAL_GPU", "H100")
+
+
+def cpu_request(value: str | None) -> float | None:
+    """PWA_MODAL_CPU as Modal's `cpu=` (physical cores); empty means Modal's default (no request)."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        cores = float(value)
+    except ValueError:
+        raise SystemExit(f"PWA_MODAL_CPU must be a number of cores, got {value!r}") from None
+    if cores <= 0:
+        raise SystemExit(f"PWA_MODAL_CPU must be positive, got {value!r}")
+    return cores
+
+
+CPU = cpu_request(os.environ.get("PWA_MODAL_CPU"))
 SANA_REF = os.environ.get("PWA_SANA_REF", "27303b8de8e3f02f5dc96acf14705a0e04fca355")  # pinned 2026-11-14
 
 app = modal.App("playworld-advancement")
@@ -80,7 +98,7 @@ def cap_argv(max_chunks: int) -> list[str]:
     return [f"--max-chunks={max_chunks}"] if max_chunks else []
 
 
-@app.function(image=image, gpu=GPU, timeout=6 * 3600,
+@app.function(image=image, gpu=GPU, cpu=CPU, timeout=6 * 3600,
               volumes={"/runs": runs_vol, "/weights": weights_vol},
               secrets=[modal.Secret.from_name("pwa")])
 def gen_shard(argv: list[str], shard: int, num_shards: int, prov: dict[str, str]) -> int:
@@ -93,7 +111,7 @@ def gen_shard(argv: list[str], shard: int, num_shards: int, prov: dict[str, str]
         weights_vol.commit()
 
 
-@app.function(image=image, gpu=GPU, timeout=6 * 3600,
+@app.function(image=image, gpu=GPU, cpu=CPU, timeout=6 * 3600,
               volumes={"/runs": runs_vol, "/weights": weights_vol},
               secrets=[modal.Secret.from_name("pwa")])
 def gen_arms_shard(argv: list[str], shard: int, num_shards: int, prov: dict[str, str]) -> int:

@@ -16,10 +16,27 @@ Opt-in flags (runner args, stripped from argv before run_agent parses it, or env
   --lingbot-fast-y     LINGBOT_FAST_Y=1     session mode: encode the image conditioning `y` only as
                        far as the rollout has got, streaming the VAE encoder's causal cache,
                        instead of the full horizon (~1000 frames for 961) on every reset.
-  --lingbot-fast       LINGBOT_FAST=1       all three above.
+  --lingbot-fast       LINGBOT_FAST=1       all three above plus --lingbot-fast-dit.
   --lingbot-t5-gpu     LINGBOT_T5_CPU=0     run T5 on the GPU (upstream's default) instead of the
                        CPU. Embeddings differ from the CPU ones at bf16 rounding level, so this one
                        changes outputs; not part of --lingbot-fast.
+  --lingbot-fast-dit   LINGBOT_FAST_DIT=1   DiT built with its parameters on the meta device and each
+                       safetensors tensor copied to the GPU in its file dtype, then cast there
+                       (fast_dit_loader), instead of upstream's cast on the CPU. Same values (see
+                       fast_dit_loader; a 14B GPU run checked it bit-identical). Part of
+                       --lingbot-fast. Falls back to the upstream loader on any error.
+  --lingbot-cpu-threads[=N]  LINGBOT_CPU_THREADS=N|auto   torch.set_num_threads(N) for the process
+                       (auto: the CPUs the container may use, usable_cpus()). Upstream leaves torch's
+                       default, which was 1 on Modal. CPU T5 reductions may split differently, so
+                       this can change embedding bits; the T5 cache identity includes the count and
+                       in-memory embeddings are dropped when it changes (partition_t5_memory).
+                       Not part of --lingbot-fast.
+  --lingbot-dit-checksum  LINGBOT_DIT_CHECKSUM=1  after the load, log a checksum of every DiT parameter's
+                       bits (dit_checksum), and with --lingbot-fast-dit compare sampled tensors with
+                       a CPU cast from the file (verify_dit_sample). Diagnostics only.
+
+Always on: one `[lingbot] cpu ...` line (cpu_report) with the CPU count, affinity, cgroup quota,
+OMP/MKL env and torch's thread counts.
 
 Everything here is torch-free at import time; torch and wan are imported inside functions.
 """
@@ -27,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import threading
 import time
@@ -34,7 +52,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-FLAG_ARGS = ("--lingbot-fast", "--lingbot-fast-t5", "--lingbot-fast-load", "--lingbot-fast-y", "--lingbot-t5-gpu")
+FLAG_ARGS = ("--lingbot-fast", "--lingbot-fast-t5", "--lingbot-fast-load", "--lingbot-fast-y", "--lingbot-t5-gpu",
+             "--lingbot-fast-dit", "--lingbot-dit-checksum", "--lingbot-cpu-threads")
+THREADS_ARG = "--lingbot-cpu-threads"
 
 
 @dataclass(frozen=True)
@@ -43,10 +63,16 @@ class FastFlags:
     fast_load: bool = False  # parallel read-ahead + meta/mmap T5 construction
     fast_y: bool = False     # streamed y encode
     t5_gpu: bool = False     # T5 on GPU (changes outputs)
+    fast_dit: bool = False   # meta build + GPU-side cast of the DiT
+    dit_checksum: bool = False  # log parameter checksum (+ sample verify with fast_dit)
+    cpu_threads: str = ""    # "" = leave torch's default; "auto" or a count
 
     def describe(self) -> str:
         on = [n for n, v in (("t5-cache", self.t5_cache), ("fast-load", self.fast_load),
-                             ("fast-y", self.fast_y), ("t5-gpu", self.t5_gpu)) if v]
+                             ("fast-y", self.fast_y), ("t5-gpu", self.t5_gpu), ("fast-dit", self.fast_dit),
+                             ("dit-checksum", self.dit_checksum)) if v]
+        if self.cpu_threads:
+            on.append(f"cpu-threads={self.cpu_threads}")
         return ",".join(on) or "off"
 
 
@@ -55,16 +81,29 @@ def parse_flags(argv, environ) -> FastFlags:
     def on(arg, var):
         return arg in argv or environ.get(var, "0") == "1"
     umbrella = on("--lingbot-fast", "LINGBOT_FAST")
+    threads = environ.get("LINGBOT_CPU_THREADS", "").strip()
+    for a in argv:
+        if a == THREADS_ARG:
+            threads = "auto"
+        elif a.startswith(THREADS_ARG + "="):
+            threads = a.split("=", 1)[1].strip()
+    if threads in ("0", "off"):
+        threads = ""
+    if threads and threads != "auto" and not (threads.isdigit() and int(threads) > 0):
+        raise SystemExit(f"--lingbot-cpu-threads / LINGBOT_CPU_THREADS must be auto or a positive count, got {threads!r}")
     return FastFlags(
         t5_cache=umbrella or on("--lingbot-fast-t5", "LINGBOT_FAST_T5"),
         fast_load=umbrella or on("--lingbot-fast-load", "LINGBOT_FAST_LOAD"),
         fast_y=umbrella or on("--lingbot-fast-y", "LINGBOT_FAST_Y"),
         t5_gpu="--lingbot-t5-gpu" in argv,
+        fast_dit=umbrella or on("--lingbot-fast-dit", "LINGBOT_FAST_DIT"),
+        dit_checksum=on("--lingbot-dit-checksum", "LINGBOT_DIT_CHECKSUM"),
+        cpu_threads=threads,
     )
 
 
 def strip_flags(argv) -> list:
-    return [a for a in argv if a not in FLAG_ARGS]
+    return [a for a in argv if a not in FLAG_ARGS and not a.startswith(THREADS_ARG + "=")]
 
 
 def log(part: str, seconds: float, extra: str = "") -> None:
@@ -197,13 +236,16 @@ _LOADER_NAMES = ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model")
 
 
 @contextmanager
-def patched_loaders(i2v, lazy_t5: bool, fast_load: bool):
-    """For one WanI2VCausal(...) load: install the T5 replacements (install_t5) and the timed
-    wrappers (LoadTimer), yield the timer, then restore wan.image2video's original names, so a
-    process that loads more than once (pwa gen-arms) never stacks wrappers."""
+def patched_loaders(i2v, lazy_t5: bool, fast_load: bool, fast_dit_device=None, dit_threads: int = 4):
+    """For one WanI2VCausal(...) load: install the T5 replacements (install_t5), the fast DiT loader
+    when fast_dit_device is set (fast_dit_loader), and the timed wrappers (LoadTimer); yield the
+    timer, then restore wan.image2video's original names, so a process that loads more than once
+    (pwa gen-arms) never stacks wrappers."""
     saved = {n: getattr(i2v, n) for n in _LOADER_NAMES}
     try:
         install_t5(i2v, lazy=lazy_t5, fast=fast_load)
+        if fast_dit_device is not None:
+            i2v.load_dit_model = fast_dit_loader(i2v, i2v.load_dit_model, fast_dit_device, threads=dit_threads)
         yield LoadTimer(i2v)
     finally:
         for n, v in saved.items():
@@ -408,3 +450,285 @@ def resolve_context(prompt: str, mem: dict, compute, disk: EmbeddingCache | None
         disk.put(prompt, ctx)
     mem[k] = ctx
     return ctx, "computed"
+
+
+# ------------------------------------------------------------ CPU threads
+
+_DEFAULT_THREADS: list = []  # torch's thread count before the first apply_cpu_threads, for later arms
+
+
+def _cgroup_cpus(root: str = "/sys/fs/cgroup") -> float | None:
+    """CPU quota of this container in CPUs (cgroup v2 cpu.max or v1 cfs files), None if unlimited."""
+    try:
+        quota, period = Path(root, "cpu.max").read_text().split()[:2]
+        return None if quota == "max" else int(quota) / int(period)
+    except (OSError, ValueError):
+        pass
+    try:
+        quota = int(Path(root, "cpu", "cpu.cfs_quota_us").read_text())
+        period = int(Path(root, "cpu", "cpu.cfs_period_us").read_text())
+        return None if quota <= 0 else quota / period
+    except (OSError, ValueError):
+        return None
+
+
+def _affinity() -> int | None:
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return None
+
+
+def usable_cpus(cpu_count=None, affinity=None, quota=None) -> int:
+    """CPUs this process may run on: affinity (else cpu_count), capped by the cgroup quota (rounded up)."""
+    n = affinity or cpu_count or 1
+    if quota:
+        n = min(n, max(1, math.ceil(quota)))
+    return max(1, n)
+
+
+def cpu_report(environ=os.environ) -> dict:
+    """What decides the CPU thread count; printed once per load as `[lingbot] cpu ...`."""
+    import torch  # noqa: PLC0415
+    cpus, aff, quota = os.cpu_count(), _affinity(), _cgroup_cpus()
+    rep = {"cpu_count": cpus, "affinity": aff, "cgroup_cpus": quota, "usable": usable_cpus(cpus, aff, quota),
+           "torch_threads": torch.get_num_threads(), "torch_interop_threads": torch.get_num_interop_threads()}
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        if var in environ:
+            rep[var] = environ[var]
+    return rep
+
+
+def apply_cpu_threads(spec: str, set_threads=None, get_threads=None, usable=None) -> int:
+    """--lingbot-cpu-threads: set torch's intra-op thread count ("auto" = usable_cpus(), or a count).
+    With spec "" restore the count the process started with, so an arm without the flag after one
+    with it (pwa gen-arms) runs as upstream. Returns the count now in effect (None when the flag
+    is off and was never on: nothing touched, torch not imported)."""
+    if not spec and not _DEFAULT_THREADS:
+        return None
+    if set_threads is None or get_threads is None:
+        import torch  # noqa: PLC0415
+        set_threads, get_threads = torch.set_num_threads, torch.get_num_threads
+    if not _DEFAULT_THREADS:
+        _DEFAULT_THREADS.append(get_threads())
+    if not spec:
+        if get_threads() != _DEFAULT_THREADS[0]:
+            set_threads(_DEFAULT_THREADS[0])
+        return get_threads()
+    if spec == "auto":
+        n = usable() if usable else usable_cpus(os.cpu_count(), _affinity(), _cgroup_cpus())
+    else:
+        n = int(spec)
+    before = get_threads()
+    set_threads(n)
+    print(f"[lingbot] cpu threads: {before} -> {get_threads()} ({spec})", flush=True)
+    return get_threads()
+
+
+def thread_tag(applied):
+    """The CPU thread setting T5 embeddings are computed under, from apply_cpu_threads' return value:
+    None for torch's own default (never changed, or restored to it), else the count."""
+    if applied is None or (_DEFAULT_THREADS and applied == _DEFAULT_THREADS[0]):
+        return None
+    return applied
+
+
+def partition_t5_memory(pipe, tag) -> bool:
+    """Keep upstream's in-memory prompt embeddings (pipe._t5_cache, keyed by prompt only) from crossing
+    CPU thread settings: when `tag` differs from the one the entries were computed under, clear them, so
+    an arm of pwa gen-arms with another --lingbot-cpu-threads (or back to the default) encodes at its own
+    count. Returns True when entries were dropped."""
+    mem = getattr(pipe, "_t5_cache", None)
+    prev = getattr(pipe, "_lingbot_t5_tag", None)
+    dropped = bool(mem) and prev != tag
+    if dropped:
+        print(f"[lingbot] t5 memory: dropped {len(mem)} embedding(s) computed under cpu threads {prev}; "
+              f"now {tag}", flush=True)
+        mem.clear()
+    try:
+        pipe._lingbot_t5_tag = tag
+    except AttributeError:
+        pass
+    return dropped
+
+
+# ------------------------------------------------------------ fast DiT load
+
+def dit_shards(dit_dir, has_config: bool) -> list:
+    """The safetensors files the upstream path reads from dit_dir: diffusers' file names when
+    config.json is there (from_pretrained), else wan's _load_safetensors_state_dict names. Shards
+    of an index are its weight_map values, sorted."""
+    d = Path(dit_dir)
+    bases = ["diffusion_pytorch_model"] if has_config else ["model", "diffusion_pytorch_model"]
+    for b in bases:
+        idx = d / f"{b}.safetensors.index.json"
+        if idx.is_file():
+            return [str(d / s) for s in sorted(set(json.loads(idx.read_text())["weight_map"].values()))]
+    for b in bases:
+        single = d / f"{b}.safetensors"
+        if single.is_file():
+            return [str(single)]
+    raise FileNotFoundError(f"no safetensors weights in {d}")
+
+
+@contextmanager
+def _default_dtype(dtype):
+    import torch  # noqa: PLC0415
+    prev = torch.get_default_dtype()
+    torch.set_default_dtype(dtype)
+    try:
+        yield
+    finally:
+        torch.set_default_dtype(prev)
+
+
+def fast_load_dit(i2v, model_cls, checkpoint_dir, subfolder, config, torch_dtype, extra=None, *,
+                  device, threads: int = 4):
+    """wan's load_dit_model(...) with the same result, built faster:
+
+    1. The module is constructed with every parameter on the meta device (accelerate's
+       init_empty_weights, which diffusers' from_pretrained also uses), so no random init and no
+       host allocation. Plain tensor attributes (e.g. `freqs`) are still built for real, as upstream.
+       With config.json the default dtype is torch_dtype during construction, as in from_pretrained.
+    2. Each shard is opened with safetensors; every tensor is copied to `device` in its file dtype
+       and floating tensors are cast to torch_dtype there (`threads` shards at a time). Upstream
+       casts the same tensor on the CPU, with torch's CPU thread count (1 on Modal).
+    3. load_state_dict(assign=True); every parameter must come from the files (upstream's
+       non-config path tolerates missing keys and keeps random init for them; here that raises,
+       so the caller falls back to upstream).
+
+    Values: fp32 -> bf16 is round-to-nearest-even on both CPU and CUDA (c10::BFloat16), so every
+    finite value is the same bits; a bf16 file is not cast at all. Unexpected keys are ignored, as
+    upstream does. Returns the module on `device`, eval mode, same class and config."""
+    import accelerate  # noqa: PLC0415
+    import torch  # noqa: PLC0415
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from safetensors import safe_open  # noqa: PLC0415
+
+    extra = extra or {}
+    dit_dir = i2v._resolve_dit_dir(checkpoint_dir, subfolder)
+    has_config = os.path.isfile(os.path.join(dit_dir, "config.json"))
+    shards = dit_shards(dit_dir, has_config)
+    t0 = time.time()
+    with accelerate.init_empty_weights(include_buffers=False):
+        if has_config:
+            with _default_dtype(torch_dtype):
+                model = model_cls.from_config(model_cls.load_config(dit_dir), **extra)
+        else:
+            model = model_cls(**i2v._dit_kwargs_from_config(config, extra))
+    want = model.state_dict()  # meta parameters (and any real buffers): names, shapes, dtypes
+    t1 = time.time()
+
+    def load_shard(path):
+        out, nbytes, skipped = {}, 0, 0
+        with safe_open(path, framework="pt", device="cpu") as f:
+            for k in f.keys():
+                if k not in want:
+                    skipped += 1
+                    continue
+                t = f.get_tensor(k)
+                if tuple(t.shape) != tuple(want[k].shape):
+                    raise ValueError(f"{k}: file shape {tuple(t.shape)} != model {tuple(want[k].shape)}")
+                nbytes += t.numel() * t.element_size()
+                t = t.to(device)
+                out[k] = t.to(torch_dtype) if t.is_floating_point() else t.to(want[k].dtype)
+        return out, nbytes, skipped
+
+    state, total, skipped = {}, 0, 0
+    with ThreadPoolExecutor(max_workers=max(1, min(threads, len(shards)))) as ex:
+        for out, nbytes, sk in ex.map(load_shard, shards):
+            state.update(out)
+            total += nbytes
+            skipped += sk
+    if str(device).startswith("cuda"):
+        torch.cuda.synchronize(device)
+    t2 = time.time()
+    missing = [n for n, _ in model.named_parameters() if n not in state]
+    if missing:
+        raise KeyError(f"{len(missing)} parameters not in the checkpoint, e.g. {missing[:3]}")
+    model.load_state_dict(state, strict=False, assign=True)
+    del state
+    left = [n for n, p in list(model.named_parameters()) + list(model.named_buffers()) if p.is_meta]
+    if left:
+        raise RuntimeError(f"{len(left)} tensors still on meta, e.g. {left[:3]}")
+    if has_config:
+        model.register_to_config(_name_or_path=dit_dir)
+        model.eval()
+    else:
+        model = model.to(dtype=torch_dtype)  # upstream's last step on this path (buffers, if any)
+    t3 = time.time()
+    log("load.dit_fast_build", t1 - t0, "(parameters on meta)")
+    log("load.dit_fast_tensors", t2 - t1, f"({total / 1e9:.1f} GB in {len(shards)} files to {device}, "
+                                          f"{total / 1e6 / max(t2 - t1, 1e-9):.0f} MB/s, cast there, {threads} threads"
+                                          + (f", {skipped} unexpected keys skipped)" if skipped else ")"))
+    log("load.dit_fast_assign", t3 - t2)
+    model._lingbot_fast_dit = {"shards": shards, "dtype": torch_dtype}
+    return model
+
+
+def fast_dit_loader(i2v, upstream, device, threads: int = 4):
+    """A load_dit_model replacement: fast_load_dit, or upstream's loader if anything goes wrong."""
+    def load(model_cls, checkpoint_dir, subfolder, config, torch_dtype, extra=None):
+        try:
+            return fast_load_dit(i2v, model_cls, checkpoint_dir, subfolder, config, torch_dtype, extra,
+                                 device=device, threads=threads)
+        except Exception as e:  # noqa: BLE001
+            print(f"[lingbot] fast DiT load failed ({type(e).__name__}: {e}); using upstream loader", flush=True)
+            import gc  # noqa: PLC0415
+            gc.collect()
+            try:
+                import torch  # noqa: PLC0415
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001
+                pass
+            return upstream(model_cls, checkpoint_dir, subfolder, config, torch_dtype, extra)
+    load.__wrapped__ = upstream
+    return load
+
+
+# ------------------------------------------------------------ DiT checks (--lingbot-dit-checksum)
+
+def _int_dtype(element_size: int):
+    import torch  # noqa: PLC0415
+    return {1: torch.uint8, 2: torch.int16, 4: torch.int32, 8: torch.int64}[element_size]
+
+
+def dit_checksum(model) -> tuple[str, int]:
+    """sha256 over (name, shape, dtype, sum of the raw bit patterns, position-weighted sum) of every
+    parameter, computed where the parameters live. Equal for bit-identical parameters; compare the
+    line from a run with and one without --lingbot-fast-dit. Returns (hex, tensor count)."""
+    import torch  # noqa: PLC0415
+    h = hashlib.sha256()
+    n = 0
+    for name, p in sorted(model.named_parameters(), key=lambda kv: kv[0]):
+        bits = p.detach().contiguous().reshape(-1).view(_int_dtype(p.element_size())).to(torch.int64)
+        w = torch.arange(bits.numel(), device=bits.device, dtype=torch.int64) % 65521 + 1
+        s1, s2 = int(bits.sum()), int((bits * w).sum())
+        h.update(f"{name}|{tuple(p.shape)}|{p.dtype}|{s1}|{s2}\n".encode())
+        n += 1
+    return h.hexdigest(), n
+
+
+def verify_dit_sample(model, shards, dtype, per_shard: int = 2) -> tuple[int, int]:
+    """Compare up to `per_shard` tensors of each shard (its first and its largest) with the same
+    tensor read from the file and cast on the CPU, as upstream does. Returns (bit-identical, checked)."""
+    import torch  # noqa: PLC0415
+    from safetensors import safe_open  # noqa: PLC0415
+    params = dict(model.named_parameters())
+    same = checked = 0
+    for path in shards:
+        with safe_open(path, framework="pt", device="cpu") as f:
+            keys = [k for k in f.keys() if k in params]
+            if not keys:
+                continue
+            size = {k: math.prod(f.get_slice(k).get_shape()) for k in keys}
+            for k in list(dict.fromkeys([keys[0], max(keys, key=size.get)]))[:per_shard]:
+                ref = f.get_tensor(k)
+                ref = ref.to(dtype) if ref.is_floating_point() else ref
+                got = params[k].detach().to("cpu")
+                checked += 1
+                same += int(ref.dtype == got.dtype and ref.shape == got.shape and torch.equal(
+                    ref.reshape(-1).view(_int_dtype(ref.element_size())),
+                    got.reshape(-1).view(_int_dtype(got.element_size()))))
+    return same, checked

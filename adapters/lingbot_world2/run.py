@@ -66,8 +66,16 @@ reset and first step of every rollout, always on. Opt-in, all off by default:
   --lingbot-fast-load  (LINGBOT_FAST_LOAD=1) parallel read-ahead of the checkpoint files during the
                        load (LINGBOT_READ_AHEAD_THREADS, default 8); T5 built on meta + mmap state dict
   --lingbot-fast-y     (LINGBOT_FAST_Y=1)    session mode: stream-encode `y` as the rollout advances
-  --lingbot-fast       (LINGBOT_FAST=1)      all three
+  --lingbot-fast       (LINGBOT_FAST=1)      all three plus --lingbot-fast-dit
   --lingbot-t5-gpu     T5 on the GPU (same as LINGBOT_T5_CPU=0; changes embeddings at bf16 rounding level)
+  --lingbot-fast-dit   (LINGBOT_FAST_DIT=1)  DiT built on meta, tensors copied to the GPU and cast there
+                       (LINGBOT_DIT_LOAD_THREADS shards at a time, default 4); bit-identical weights on 14B
+                       (checksum and sample verify on an H100); any error falls back to the upstream loader
+  --lingbot-cpu-threads[=N]  (LINGBOT_CPU_THREADS=N|auto)  torch CPU threads (auto: usable CPUs); may change
+                       CPU T5 bits, so not in --lingbot-fast. A `[lingbot] cpu {...}` line is always printed.
+                       In-memory prompt embeddings are dropped when the count differs from the previous call's.
+  --lingbot-dit-checksum  (LINGBOT_DIT_CHECKSUM=1)  log a DiT parameter checksum after the load (and, with
+                       fast-dit, compare sampled tensors with a CPU cast)
 
 In-process use (pwa gen-arms): main(argv) can be called several times in one process. Each call re-reads
 the flags and env, resets poses' turn rates, the flag counters and prompts' current task, and imports a
@@ -128,12 +136,38 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
+CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
 DEFAULT_PROMPT = "A photo-realistic scene with rich details."
 _PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
+
+
+def _print_cpu():
+    """Always-on diagnostic: what decides torch's CPU thread count in this container."""
+    try:
+        print(f"[lingbot] cpu {FS.cpu_report()}", flush=True)
+    except ImportError:  # no torch (tests)
+        pass
+
+
+def _cuda0():
+    import torch  # noqa: PLC0415
+    return torch.device("cuda", 0) if torch.cuda.is_available() else None
+
+
+def _check_dit(model):
+    """--lingbot-dit-checksum: parameter checksum, plus a sample compared with a CPU cast (fast-dit only)."""
+    t0 = time.time()
+    digest, n = FS.dit_checksum(model)
+    print(f"[lingbot] dit checksum {digest} ({n} tensors, {time.time() - t0:.1f}s)", flush=True)
+    info = getattr(model, "_lingbot_fast_dit", None)
+    if info:
+        same, checked = FS.verify_dit_sample(model, info["shards"], info["dtype"])
+        print(f"[lingbot] dit verify {same}/{checked} sampled tensors bit-identical to the CPU cast "
+              f"({'ok' if same == checked else 'MISMATCH'})", flush=True)
 
 
 def load_pipe(environ=os.environ):
@@ -165,7 +199,10 @@ def load_pipe(environ=os.environ):
     key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
     if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
         print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
-        with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load) as timer:
+        _print_cpu()
+        dit_dev = _cuda0() if FAST.fast_dit else None
+        with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load, fast_dit_device=dit_dev,
+                                dit_threads=int(environ.get("LINGBOT_DIT_LOAD_THREADS", "4"))) as timer:
             if FAST.fast_load:
                 FS.read_ahead(FS.checkpoint_files(cfg, ckpt, assets, include_t5=not FAST.t5_cache),
                               threads=int(environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
@@ -176,6 +213,8 @@ def load_pipe(environ=os.environ):
                 assets_dir=str(assets) if assets else None)
             timer.rest(time.time() - t0)
         print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        if FAST.dit_checksum:
+            _check_dit(_PIPES[key].model)
     else:
         print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
               f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
@@ -188,6 +227,8 @@ class LingBotWorld2Engine:
     def __init__(self, args):
         self.args = args
         self.cfg, self.pipe, weights, t5_cpu = load_pipe()
+        # upstream's in-memory embeddings are keyed by prompt only: drop them when the CPU T5 thread count changed
+        FS.partition_t5_memory(self.pipe, CPU_THREADS if t5_cpu else "gpu")
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         self.session = None
         if not STATELESS:
@@ -316,10 +357,13 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
+    global CPU_THREADS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION = flags["return_stop"], flags["gc_completion"]
+    # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
+    CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
                                  history_endpoints=flags["history_endpoints"])
     P.reset()
