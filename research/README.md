@@ -9,3 +9,4 @@ Working notes behind the plan. Each note says where its numbers come from and ma
 | [autoresearch-loop.md](autoresearch-loop.md) | How the autoresearch loop works, why its first four ideas had no evaluations, measured run speed, and the changes adopted. |
 | [out-of-sight-evolution.md](out-of-sight-evolution.md) | Why LingBot-World v2 scores low on out-of-sight, the literature, and the out-of-sight proposals. Parked for the event after the baseline. |
 | [memory-for-world-models.md](memory-for-world-models.md) | Earlier survey of memory methods for world models and how they might apply to PlayWorld. |
+| [camera-response.md](camera-response.md) | Controlled turn scripts on the 14B with no player: how far the view really rotates per direction and scene, why "turn out and back" misses the start view, and a servo that corrects it from the video's own motion. |
