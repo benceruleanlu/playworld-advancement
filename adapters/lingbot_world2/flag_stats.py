@@ -15,6 +15,10 @@ Values:
   player_hint    off | on
   player_hints   decide_action calls that got the hint appended
 
+Only with --lingbot-return-stop the line also ends with (so lines without the flag are unchanged):
+  return_stop    on (the goal armed the stop) | skip (no single final return in the goal, or no player)
+  return_stops   decisions answered by the stop (WAIT or END) instead of the player
+
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
 """
@@ -25,10 +29,13 @@ from pathlib import Path
 
 
 class FlagStats:
-    def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool):
+    def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
+                 return_stop: bool = False):
+        self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
-        self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0}
+        self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
+                       "return_stops": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -37,6 +44,8 @@ class FlagStats:
         self.reanchor_armed = False
         self.reanchor_events = 0
         self.player_hints = 0
+        self.return_stop_armed = False
+        self.return_stops = 0
 
     def caption(self, used: bool):
         if used:
@@ -53,6 +62,13 @@ class FlagStats:
     def hint(self):
         self.player_hints += 1
 
+    def return_stop_event(self, kind: str):
+        """return_stop.wrap on_event: "armed" or "stop"."""
+        if kind == "armed":
+            self.return_stop_armed = True
+        elif kind == "stop":
+            self.return_stops += 1
+
     # -- output ----------------------------------------------------------------
     def summary(self, task_id) -> dict:
         if self.prompt_mode == "goal":
@@ -62,9 +78,12 @@ class FlagStats:
         else:
             caption = "used" if self.caption_used else "none"
         reanchor = "off" if not self.reanchor else ("on" if self.reanchor_armed else "skip")
-        return {"task": task_id, "turn_cal": int(self.turn_cal), "caption": caption,
-                "reanchor": reanchor, "reanchor_events": self.reanchor_events,
-                "player_hint": "on" if self.player_hint else "off", "player_hints": self.player_hints}
+        s = {"task": task_id, "turn_cal": int(self.turn_cal), "caption": caption,
+             "reanchor": reanchor, "reanchor_events": self.reanchor_events,
+             "player_hint": "on" if self.player_hint else "off", "player_hints": self.player_hints}
+        if self.return_stop:
+            s.update(return_stop="on" if self.return_stop_armed else "skip", return_stops=self.return_stops)
+        return s
 
     @staticmethod
     def line(summary: dict) -> str:
@@ -74,7 +93,8 @@ class FlagStats:
         t = self.totals
         return (f"[lingbot] flags total tasks={t['tasks']} turn_cal={int(self.turn_cal)} "
                 f"caption_used={t['caption_used']} caption_fallback={t['caption_fallback']} "
-                f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}")
+                f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}"
+                + (f" return_stops={t['return_stops']}" if self.return_stop else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -84,6 +104,7 @@ class FlagStats:
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
         t["player_hints"] += self.player_hints
+        t["return_stops"] += self.return_stops
         print(self.line(s), flush=True)
         return s
 

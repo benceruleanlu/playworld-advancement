@@ -28,6 +28,10 @@ Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 t
 closed-loop player how far one action turns the camera and where the commanded camera
 is relative to the start; see player_hint.py. The world model's inputs do not change.
 
+Return stop (off by default): `--lingbot-return-stop` or LINGBOT_RETURN_STOP=1 ends a closed-loop
+rollout (WAIT for LINGBOT_RETURN_STOP_HOLD chunks, then END) once the commanded camera has left
+and come back to the start, on goals that end with a return; see return_stop.py.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
@@ -41,6 +45,8 @@ Env:
   LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
   LINGBOT_REANCHOR_DEG / LINGBOT_REANCHOR_TRANS   return tolerance: degrees / key units (6 / 2)
   LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
+  LINGBOT_RETURN_STOP  1 = same as --lingbot-return-stop
+  LINGBOT_RETURN_STOP_HOLD / LINGBOT_RETURN_STOP_FRAC   WAIT chunks before END (2) / share of the goal's angle or steps that counts as having left (0.75)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -59,6 +65,7 @@ from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
+from adapters.lingbot_world2 import return_stop as R  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
 run_agent = import_run_agent()
@@ -70,9 +77,11 @@ if PROMPT_MODE not in prompts.MODES:
     raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {PROMPT_MODE!r}")
 REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR", "0") == "1"
 PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
+RETURN_STOP = "--lingbot-return-stop" in sys.argv or os.environ.get("LINGBOT_RETURN_STOP", "0") == "1"
 sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
                                               "--lingbot-reanchor", "--lingbot-player-hint")]
-STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
+sys.argv = [a for a in sys.argv if a != "--lingbot-return-stop"]
+STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -118,7 +127,8 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
-              + (", player hint on" if PLAYER_HINT else ""),
+              + (", player hint on" if PLAYER_HINT else "")
+              + (", return stop on" if RETURN_STOP else ""),
               flush=True)
 
     def _calibrate(self, name, n_keys):
@@ -221,6 +231,10 @@ if PLAYER_HINT:
     run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
                                      session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
     print("[lingbot] player hint: on", flush=True)
+if RETURN_STOP:  # outermost: a stopped step never reaches the player (or the hint)
+    run_agent.decide_action = R.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                     turn_cal=TURN_CAL, on_event=STATS.return_stop_event)
+    print("[lingbot] return stop: on", flush=True)
 _rc = run_agent.main()
 print(STATS.total_line(), flush=True)
 raise SystemExit(_rc)
