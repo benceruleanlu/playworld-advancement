@@ -298,6 +298,47 @@ class Workspace:
                     "script": [[k, a] for k, a in segments]})
         return frames, out
 
+    def servo_trial(self, task, segments, rate_deg: float = CP.RATE_DEG, adapt: bool = True, prior=(1.0, 1.0),
+                    prompt: str = "caption", seed: int = 42, **servo_kw) -> tuple[np.ndarray, dict]:
+        """The same script as turn_trial, generated one latent chunk at a time with camera_probe.Servo choosing
+        each chunk's pose gain from the rotation measured so far. adapt=False is the open-loop control in the
+        same chunking (it must reproduce turn_trial's frames). The readout adds the servo's per-chunk log."""
+        import math  # noqa: PLC0415
+        rec = task.get("record", {})
+        text = {"caption": rec.get("image_caption") or DEFAULT_PROMPT, "goal": task.get("prompt") or DEFAULT_PROMPT}.get(prompt, prompt)
+        servo = CP.Servo(segments, rate_deg, prior=prior, adapt=adapt, **servo_kw)
+        old = P.YAW
+        P.YAW = math.radians(rate_deg)
+        parts, used = [], []
+        try:
+            self.session.reset(task["image"], text, int(seed),
+                               horizon_frames=S.frames_returned(servo.n_chunks, first=True))
+            last = None
+            while not servo.done:
+                keys, gain = servo.next_chunk()
+                self.session.track.yaw_gain = gain if adapt else None
+                out = self.session.step(keys)          # first step: input frame + 12; later: previous last + 16
+                chunk = out if last is None else out   # either way frame 0 of `out` is the frame before the chunk
+                rendered, trusted = CP.measure_chunk(chunk, keys)
+                servo.observe(rendered, trusted)
+                parts.append(out if last is None else out[1:])
+                used += keys
+                last = out[-1]
+        finally:
+            P.YAW = old
+        frames = np.concatenate(parts)
+        self.probes += 1
+        spans = CP.build(segments, rate_deg)[1]
+        out = CP.summarize(frames, spans)
+        out.update({"task": task.get("task_id"), "rate_deg": rate_deg, "prompt": prompt if prompt in ("caption", "goal") else "custom",
+                    "seed": int(seed), "chunks": servo.n_chunks, "script": [[k, a] for k, a in segments],
+                    "servo": {"adapt": adapt, "prior": list(prior), "k": servo.k, "beta": servo.beta, "tol": servo.tol,
+                              "trim": servo.trim, "est": {k: round(v, 3) for k, v in servo.est.items()},
+                              "final_heading": round(servo.heading, 2), "final_target": round(servo.target[-1], 2),
+                              "final_error": round(servo.target[-1] - servo.heading, 2), "log": servo.log,
+                              "keys_used": "".join({"j": "L", "l": "R"}.get(k, ".") for k in used)}})
+        return frames, out
+
     # -- editing -----------------------------------------------------------
     def edit(self, name: str, notes: str = "") -> WE.WeightEdit:
         """A new, empty edit. Add ops (dense / lowrank / sparse), then ws.apply() it."""

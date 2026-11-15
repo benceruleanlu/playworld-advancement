@@ -156,3 +156,130 @@ def gains_from(trials: list[dict]) -> dict:
     return {f"{'right' if k == 'l' else 'left'}_{phase}": {"mean": round(float(np.mean(v)), 3),
                                                              "sd": round(float(np.std(v)), 3), "n": len(v)}
             for (k, phase), v in sorted(acc.items())}
+
+
+# ------------------------------------------------------------------ servo
+
+GAIN_RANGE = (0.5, 2.0)   # the same limits as --lingbot-yaw-gain
+
+
+class Servo:
+    """Self-correcting yaw: follow a scripted heading using the rotation the video actually showed.
+
+    The script gives a target heading for every frame. Before each latent chunk the servo plans that chunk's
+    keys and a (left, right) pose gain; after the chunk it is told how far the frames really turned. It keeps
+    one estimate per direction of rendered / commanded (`est`), divides it out of the next command, and adds
+    back a share `k` of the heading error so far. When the script is waiting and the heading is off by more
+    than `tol` degrees it spends some of the wait on a trim turn. Pure Python: the kernel supplies the
+    measurements (workspace.servo_trial); tests drive it with a simulated camera.
+
+    Open loop is the same class with adapt=False: it replays the script at gain 1, in the same chunks."""
+
+    def __init__(self, segments, rate_deg: float = RATE_DEG, prior: tuple[float, float] = (1.0, 1.0),
+                 adapt: bool = True, k: float = 1.0, beta: float = 0.6, tol: float = 2.0, trim: bool = True,
+                 min_frames: int = 4):
+        self.keys, self.spans, self.n_chunks = build(segments, rate_deg)
+        self.rate, self.adapt, self.k, self.beta, self.tol, self.trim = rate_deg, adapt, k, beta, tol, trim
+        self.min_frames = min_frames
+        self.est = {"j": float(prior[0]), "l": float(prior[1])}   # rendered / commanded, per direction
+        self.target = [0.0]                                        # scripted heading after each frame
+        for key in self.keys:
+            self.target.append(self.target[-1] + SIGN.get(key, 0.0) * rate_deg)
+        self.frame = 0            # frames generated so far
+        self.heading = 0.0        # rendered heading so far (degrees, right positive)
+        self.log: list[dict] = []
+        self._plan = None
+
+    @property
+    def done(self) -> bool:
+        return self.frame >= len(self.keys)
+
+    def error(self) -> float:
+        """Scripted heading minus rendered heading, now (positive: the view should be further right)."""
+        return self.target[self.frame] - self.heading
+
+    def next_chunk(self) -> tuple[list[str], tuple[float, float]]:
+        """(keys, (left gain, right gain)) for the next latent chunk: 12 frames on the first, 16 after."""
+        n = S.keys_needed(1, first=self.frame == 0)
+        script = self.keys[self.frame:self.frame + n]
+        want = {"j": 0.0, "l": 0.0}                    # degrees of rendered turn wanted in this chunk, per direction
+        for key in script:
+            if key in SIGN:
+                want[key] += self.rate
+        keys = list(script)
+        err = self.error() if self.adapt else 0.0
+        if self.adapt and abs(err) > 1e-9:
+            turning = [k for k in ("j", "l") if want[k] > 0]
+            if turning:
+                # fold the correction into the direction that reduces it, if the chunk turns that way; else the other
+                helps = "l" if err > 0 else "j"
+                if helps in turning:
+                    want[helps] += self.k * abs(err)
+                else:
+                    other = turning[0]
+                    want[other] = max(0.0, want[other] - self.k * abs(err))
+            elif self.trim and abs(err) > self.tol:
+                helps = "l" if err > 0 else "j"
+                per_frame = self.rate * self.est[helps]                       # rendered degrees per frame at gain 1
+                n_t = min(n, max(self.min_frames, math.ceil(abs(err) / max(per_frame, 1e-6))))
+                keys = [helps] * n_t + ["none"] * (n - n_t)
+                want[helps] = self.k * abs(err)
+        gain = {}
+        for k in ("j", "l"):
+            frames = keys.count(k)
+            g = want[k] / (frames * self.rate * self.est[k]) if frames and self.adapt else 1.0
+            gain[k] = min(GAIN_RANGE[1], max(GAIN_RANGE[0], g))
+        self._plan = {"chunk": len(self.log), "first": self.frame, "keys": keys, "gain": (gain["j"], gain["l"]),
+                      "target_before": self.target[self.frame], "heading_before": self.heading, "error_before": err,
+                      "est_before": dict(self.est)}
+        return keys, (gain["j"], gain["l"])
+
+    def observe(self, rendered: dict, trusted: dict | None = None) -> dict:
+        """Tell the servo what the chunk it planned showed: rendered = {"j": degrees, "l": degrees, "none": degrees}
+        (signed, right positive) summed over that key's frames. Updates the heading and the per-direction estimates."""
+        p = self._plan
+        if p is None:
+            raise RuntimeError("observe() before next_chunk()")
+        trusted = trusted or {}
+        for k, idx in (("j", 0), ("l", 1)):
+            frames = p["keys"].count(k)
+            commanded = frames * self.rate * p["gain"][idx]                   # degrees the poses asked for
+            if self.adapt and frames >= self.min_frames and commanded > 0 and trusted.get(k, True):
+                ratio = abs(rendered.get(k, 0.0)) / commanded
+                if 0.2 <= ratio <= 5.0:                                       # ignore a wild chunk rather than chase it
+                    self.est[k] = (1 - self.beta) * self.est[k] + self.beta * ratio
+        self.heading += sum(float(v) for v in rendered.values())
+        self.frame += len(p["keys"])
+        row = {**p, "keys": "".join({"j": "L", "l": "R"}.get(k, ".") for k in p["keys"]),
+               "rendered": {k: round(float(v), 2) for k, v in rendered.items()},
+               "heading_after": round(self.heading, 2), "target_after": round(self.target[min(self.frame, len(self.target) - 1)], 2),
+               "est_after": {k: round(v, 3) for k, v in self.est.items()}}
+        row.update({"gain": [round(g, 3) for g in p["gain"]], "error_before": round(p["error_before"], 2),
+                    "heading_before": round(p["heading_before"], 2), "target_before": round(p["target_before"], 2),
+                    "est_before": {k: round(v, 3) for k, v in p["est_before"].items()}})
+        self.log.append(row)
+        self._plan = None
+        return row
+
+
+def split_by_key(keys: list[str]) -> list[tuple[str, int, int]]:
+    """Runs of equal keys in a chunk: [(key, first, last)] with frame offsets inside the chunk (last exclusive)."""
+    runs, start = [], 0
+    for i in range(1, len(keys) + 1):
+        if i == len(keys) or keys[i] != keys[start]:
+            runs.append((keys[start], start, i))
+            start = i
+    return runs
+
+
+def measure_chunk(frames, keys: list[str]) -> tuple[dict, dict]:
+    """(rendered, trusted) per key for one chunk. `frames` holds the frame before the chunk followed by the
+    chunk's own frames, so frames[a..b] spans the motion of keys[a:b]."""
+    rendered = {"j": 0.0, "l": 0.0, "none": 0.0}
+    trusted = {"j": True, "l": True, "none": True}
+    for key, a, b in split_by_key(keys):
+        yaw, _pitch, peak = MT.chunk_turn(frames[a:b + 1])
+        k = key if key in rendered else "none"
+        rendered[k] += yaw
+        trusted[k] = trusted[k] and peak >= MT.MIN_PEAK
+    return rendered, trusted
