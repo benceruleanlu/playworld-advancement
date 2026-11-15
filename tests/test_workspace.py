@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 from adapters.lingbot_world2 import session as S
-from adapters.lingbot_world2 import weight_edit as WE
 from adapters.lingbot_world2 import workspace as W
 from pwa import kernel as K
 from pwa.core import PwaError
@@ -81,45 +80,21 @@ def _workspace(tmp_path):
     model = torch.nn.Sequential(torch.nn.Linear(8, 16), torch.nn.SiLU(), torch.nn.Linear(16, 4)).requires_grad_(False)
     pipe = SimpleNamespace(model=model)
     commits = []
-    ws = W.Workspace(pipe, SimpleNamespace(sample_shift=5.0), "1.3b", edits_dir=tmp_path / "edits",
-                     repo=_repo(tmp_path), commit=lambda: commits.append(1))
+    ws = W.Workspace(pipe, SimpleNamespace(sample_shift=5.0), "1.3b", repo=_repo(tmp_path),
+                     commit=lambda: commits.append(1))
     return ws, model, torch, commits
 
 
-def test_workspace_edit_cycle(tmp_path):
-    ws, model, torch, commits = _workspace(tmp_path)
-    stock = model[0].weight.clone()
+def test_workspace_reads_parameters_and_status(tmp_path):
+    ws, model, torch, _ = _workspace(tmp_path)
     assert ws.params(r"0\.")[0][:2] == ("0.weight", (16, 8)) and len(ws.params()) == 4
     assert ws.modules("^0$") == ["0"]
     with pytest.raises(KeyError, match="similar"):
         ws.W("1.weight")
-
-    e = ws.edit("gain-v1", notes="why").lowrank("0.weight", torch.ones(16, 1), torch.full((1, 8), 0.25))
-    with pytest.raises(WE.EditError, match="apply"):
-        ws.save(e)                                    # untested edits are not saved
-    stats = ws.apply(e)
-    assert stats["changed"] == 128 and ws.applied == ["gain-v1"]
-    torch.testing.assert_close(ws.W("0.weight"), stock + 0.25)
-
-    e2 = ws.edit("bias-v1").sparse("2.bias", [0], [1.0])
-    ws.apply(e2)
-    assert e2.parents == ["gain-v1"] and ws.applied == ["gain-v1", "bias-v1"]
-
-    saved = ws.save(e)
-    assert saved["name"] == "gain-v1" and len(saved["sha256"]) == 64 and commits == [1]
-    assert ws.load("gain-v1").extra == {"passes_at_save": 0, "probes_at_save": 0}
-    with pytest.raises(WE.EditError, match="immutable"):
-        ws.save(e)
-    with pytest.raises(WE.EditError, match="immutable"):
-        ws.edit("gain-v1")
-
-    assert ws.revert() == 2 and ws.applied == []
-    assert torch.equal(model[0].weight, stock)
-    fresh = torch.nn.Sequential(torch.nn.Linear(8, 16), torch.nn.SiLU(), torch.nn.Linear(16, 4))
-    fresh.load_state_dict(model.state_dict())
-    WE.apply_spec(fresh, "gain-v1", tmp_path / "edits", "1.3b")   # the runner path reads what the kernel saved
-    torch.testing.assert_close(fresh[0].weight, stock + 0.25)
-    assert ws.status()["saved_edits"] == ["gain-v1"] and ws.status()["dit_params"] == 8 * 16 + 16 + 16 * 4 + 4
+    assert ws.W("0.weight") is dict(model.named_parameters())["0.weight"]
+    st = ws.status()
+    assert st["dit_params"] == 8 * 16 + 16 + 16 * 4 + 4 and st["variant"] == "1.3b" and st["passes"] == 0
+    assert set(ws.namespace()) == {"ws", "pipe", "model", "torch", "np", "P", "S", "CP", "MT"}
 
 
 def test_workspace_counts_passes_and_captures(tmp_path):
@@ -170,9 +145,9 @@ def test_workspace_show_and_drain(tmp_path):
 def test_kernel_namespace_runs_cells(tmp_path):
     ws, model, torch, _ = _workspace(tmp_path)
     ns = ws.namespace()
-    r = W.execute(ns, "e = ws.edit('c1').sparse('2.bias', [0], [1.0])\nWE.summary(ws.apply(e))")
-    assert r["ok"] and "changed 1 of" in r["stdout"]
-    assert W.execute(ns, "ws.applied")["stdout"] == "['c1']\n"
+    r = W.execute(ns, "x = model(torch.ones(1, 8)).shape\nws.passes, tuple(x)")
+    assert r["ok"] and r["stdout"] == "(1, (1, 4))\n"
+    assert W.execute(ns, "CP.build([('l', 90), ('j', 90)])[2]")["stdout"] == "11\n"
 
 
 # ---------------------------------------------------------- local client
@@ -193,7 +168,7 @@ class _FakeKernel:
 def test_client_saves_images_and_logs(tmp_path):
     res = {"ok": True, "stdout": "42\n", "error": None, "seconds": 0.5,
            "artifacts": [{"name": "../../etc/passwd", "data": b"x"}, {"name": "probe 0.jpg", "data": b"\xff\xd8"}],
-           "status": {"passes": 10, "probes": 2, "applied": ["c1"]}}
+           "status": {"passes": 10, "probes": 2}}
     k = _FakeKernel(res)
     out = K.run_cell(k, "40 + 2", tmp_path / "editor", datetime(2026, 11, 14, 21, 0, 0, tzinfo=timezone.utc))
     assert k.calls == ["40 + 2"]
@@ -201,9 +176,9 @@ def test_client_saves_images_and_logs(tmp_path):
     assert names == ["20261114T210000000_00_passwd", "20261114T210000000_01_probe_0.jpg", "log.jsonl"]
     assert all(str(tmp_path / "editor") in p for p in out["artifacts"])
     log = json.loads((tmp_path / "editor" / "log.jsonl").read_text())
-    assert log["code"] == "40 + 2" and log["at"] == "2026-11-14T21:00:00Z" and log["status"]["applied"] == ["c1"]
+    assert log["code"] == "40 + 2" and log["at"] == "2026-11-14T21:00:00Z" and log["status"]["probes"] == 2
     text = K.render(out)
-    assert text.startswith("42\n[image] ") and "ok in 0.5s; passes 10, probes 2, applied ['c1']" in text
+    assert text.startswith("42\n[image] ") and "ok in 0.5s; passes 10, probes 2" in text
     K.run_cell(k, "1", tmp_path / "editor")
     assert len((tmp_path / "editor" / "log.jsonl").read_text().splitlines()) == 2
 

@@ -1,25 +1,22 @@
-"""Live LingBot kernel for weight editing: the model stays loaded on a Modal GPU and
-the editing model, running on your machine, sends it Python cells.
+"""Live LingBot kernel: the model stays loaded on a Modal GPU and takes Python cells from another machine.
 
-    modal run prefetch_lingbot.py --variant 1.3b   # once: weights into the pwa-weights Volume
-    modal deploy editor_app.py                     # once, and again after changing adapters/, pwa/ or this file
-    pwa kernel status                              # first call cold-starts the GPU (about 2 min); later calls are warm
-    pwa kernel exec cell.py                        # or: -c "ws.params('cam_scale')", or a cell on stdin
-    pwa kernel reset                               # stock weights, fresh namespace
-    modal app stop pwa-editor                      # remove the deployment (it also scales to zero by itself)
+Built for measuring the model directly (scripted camera trials, activations) without the player or the judge:
+adapters/lingbot_world2/workspace.py lists what a cell can use, camera_probe.py the camera measurements.
 
-What a cell can use: adapters/lingbot_world2/workspace.py.
+    modal run prefetch_lingbot.py --variant 14b      # once: weights into the pwa-weights Volume
+    PWA_EDITOR_VARIANT=14b modal deploy editor_app.py  # once, and again after changing adapters/, pwa/ or this file
+    python -m pwa.kernel status                      # first call cold-starts the GPU; later calls are warm
+    python -m pwa.kernel exec cell.py                # or: -c "ws.status()", or a cell on stdin
+    python -m pwa.kernel reset                       # fresh namespace
+    modal app stop pwa-editor                        # remove the deployment (it also scales to zero by itself)
 
-At most one container, so every cell sees the same state. It scales to zero
-after PWA_EDITOR_IDLE seconds without a call (default 900) and the GPU is billed
-until then. The Python namespace is lost when it does; saved edits are not (they
-live in the pwa-weights Volume under /weights/edits, where `--lingbot-edit NAME`
-finds them). Redeploying also starts a fresh kernel.
+It runs in whichever Modal workspace this machine is logged in to, never through Actions, and mounts no secrets.
+The GPU is billed while a container is up: it scales to zero after PWA_EDITOR_IDLE seconds without a call
+(default 900), and the Python namespace is lost when it does. Redeploying also starts a fresh kernel.
 
-Set at deploy time: PWA_MODAL_GPU (default H100; the 1.3B model peaks near 27 GiB, the 14B near 66),
-PWA_EDITOR_VARIANT (1.3b default, or 14b), PWA_EDITOR_IDLE. No secrets are mounted. The pipe is loaded by
-the runner's own load_pipe (adapters/lingbot_world2/run.py), so the kernel edits the model the runs use.
-It runs in whichever Modal workspace this machine is logged in to.
+Set at deploy time: PWA_EDITOR_VARIANT (1.3b default, or 14b), PWA_MODAL_GPU (H100; the 14B peaks near 64 GiB,
+the 1.3B near 27), PWA_EDITOR_IDLE, PWA_EDITOR_CPU (8), PWA_EDITOR_MAX_CONTAINERS (1). The pipe is loaded by the
+runner's own load_pipe (adapters/lingbot_world2/run.py), so the kernel measures the model the runs use.
 """
 from __future__ import annotations
 
@@ -79,7 +76,6 @@ class Kernel:  # the name is pwa.kernel.CLS
 
     @modal.method()
     def reset(self) -> dict:
-        self.ws.revert()
         self.ws.drain()
         self.ns = self.ws.namespace()
         return self.ws.status()

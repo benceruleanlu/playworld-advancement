@@ -1,28 +1,24 @@
-"""GPU-side tools for the weight-editing kernel (editor_app.py).
+"""GPU-side tools for the live LingBot kernel (editor_app.py).
 
-The kernel keeps LingBot loaded on a Modal GPU and runs Python cells sent from
-the editor's machine (`pwa kernel exec`). State lives between cells. Each cell sees:
+The kernel keeps LingBot loaded on a Modal GPU and runs Python cells sent from another machine
+(`python -m pwa.kernel exec`). State lives between cells. Each cell sees:
 
-  ws      this Workspace: probes, activation capture, edits, images to send back
+  ws      this Workspace: tasks, scripted camera trials, activation capture, images to send back
   pipe    the loaded wan.WanI2VCausal;  model = pipe.model (the DiT)
-  torch, np, P (poses), S (session), WE (weight_edit)
+  torch, np, P (poses), S (session), CP (camera_probe), MT (measured_turn)
 
 A typical sequence of cells:
 
-    t = ws.task("GC005")                          # dev tasks only
-    base = ws.probe(t, "w-28,j-32")               # short fixed-action rollout, seed 42
-    ws.show(base)                                 # contact sheet comes back to the laptop
-    e = ws.edit("cam-yaw-gain-v1", notes="why this should help")
-    e.lowrank("blocks.3.cam_scale_layer.weight", a, b)
-    print(WE.summary(ws.apply(e)))                # what really landed (weights are bfloat16)
-    ws.show(ws.probe(t, "w-28,j-32"))
-    ws.revert()        # or: ws.save(e), then  pwa run EXP ... -- --lingbot-edit cam-yaw-gain-v1
+    t = ws.task("GC033")                                       # dev tasks only
+    frames, out = ws.turn_trial(t, [("j", 90), ("l", 90)])     # left 90, right 90, no player
+    out["segments"], out["closure"]                            # rendered turn per leg, end view against frame 0
+    frames, out = ws.servo_trial(t, [("j", 90), ("l", 90)])    # the same script under the yaw servo
+    ws.show(frames)                                            # contact sheet comes back to the laptop
 
-Probes are for finding and testing ideas. A claim that an edit helps still needs
-`pwa run` on dev against the stock baseline and the 2x pass-std rule (AGENTS.md).
+Trials are measurements of the model, not benchmark scores. A claim about a score still needs a run scored by
+the official judge under the adoption rule (AGENTS.md).
 
-Everything above the Workspace class is torch-free and unit-tested
-(tests/test_workspace.py).
+Everything above the Workspace class is torch-free and unit-tested (tests/test_workspace.py).
 """
 from __future__ import annotations
 
@@ -43,7 +39,6 @@ from adapters.lingbot_world2 import camera_probe as CP
 from adapters.lingbot_world2 import measured_turn as MT
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import session as S
-from adapters.lingbot_world2 import weight_edit as WE
 
 MAX_STDOUT = 20_000            # characters of cell output sent back
 MAX_ARTIFACT_BYTES = 24 << 20  # per cell
@@ -140,19 +135,16 @@ def dev_ids(repo) -> set[str]:
 # ------------------------------------------------------------------ on GPU
 
 class Workspace:
-    def __init__(self, pipe, cfg, variant: str, *, edits_dir=WE.EDITS_DIR, repo="/repo",
+    def __init__(self, pipe, cfg, variant: str, *, repo="/repo",
                  data_dir="/weights/playworld-bench", commit=None, max_area: int = MAX_AREA):
         self.pipe, self.cfg, self.variant = pipe, cfg, variant
         self.model = pipe.model
-        self.edits_dir = Path(edits_dir)
         self.repo = Path(repo)
         self.data_dir = Path(data_dir)
-        self._commit = commit or (lambda: None)  # persists the weights volume after a save
+        self._commit = commit or (lambda: None)  # persists the volume (dataset copy, trial files)
         self.session = S.LingBotSession(pipe, max_area, cfg.sample_shift)
         self.passes = 0      # DiT forward passes since the kernel started: the probe budget spent
         self.probes = 0
-        self.applied: list[str] = []   # edits applied in memory, in order
-        self._backup: dict = {}        # parameter -> stock tensor, for revert()
         self._artifacts: list[dict] = []
         self._started = time.time()
         self.n_params = sum(p.numel() for p in self.model.parameters())
@@ -164,15 +156,13 @@ class Workspace:
     def namespace(self) -> dict:
         import torch  # noqa: PLC0415
         return {"ws": self, "pipe": self.pipe, "model": self.model, "torch": torch, "np": np,
-                "P": P, "S": S, "WE": WE, "CP": CP, "MT": MT}
+                "P": P, "S": S, "CP": CP, "MT": MT}
 
     def status(self) -> dict:
         import torch  # noqa: PLC0415
         vram = torch.cuda.max_memory_allocated() / 2 ** 30 if torch.cuda.is_available() else 0.0
-        saved = sorted(f.stem for f in self.edits_dir.glob("*.npz")) if self.edits_dir.is_dir() else []
         return {"variant": self.variant, "uptime_s": round(time.time() - self._started), "passes": self.passes,
-                "probes": self.probes, "applied": list(self.applied), "saved_edits": saved,
-                "dit_params": self.n_params, "peak_vram_gib": round(vram, 1)}
+                "probes": self.probes, "dit_params": self.n_params, "peak_vram_gib": round(vram, 1)}
 
     # -- looking -----------------------------------------------------------
     def params(self, pattern: str = "") -> list[tuple]:
@@ -186,7 +176,7 @@ class Workspace:
         return [n for n, _ in self.model.named_modules() if n and rx.search(n)]
 
     def W(self, name: str):  # noqa: N802 - reads like the maths
-        """The live parameter tensor (bfloat16 on the GPU). Edit through ws.edit(), not in place."""
+        """The live parameter tensor (bfloat16 on the GPU). Read it; do not write to it."""
         params = dict(self.model.named_parameters())
         if name not in params:
             near = [n for n in params if name.split(".")[-1] in n][:8]
@@ -338,43 +328,6 @@ class Workspace:
                               "final_error": round(servo.target[-1] - servo.heading, 2), "log": servo.log,
                               "keys_used": "".join({"j": "L", "l": "R"}.get(k, ".") for k in used)}})
         return frames, out
-
-    # -- editing -----------------------------------------------------------
-    def edit(self, name: str, notes: str = "") -> WE.WeightEdit:
-        """A new, empty edit. Add ops (dense / lowrank / sparse), then ws.apply() it."""
-        if (self.edits_dir / f"{WE.check_name(name)}.npz").exists():
-            raise WE.EditError(f"an edit named {name} is already saved; saved edits are immutable, pick a new name")
-        return WE.WeightEdit(name, variant=self.variant, notes=notes, parents=self.applied)
-
-    def apply(self, edit: WE.WeightEdit) -> dict:
-        """Add the edit to the live model (on top of whatever is applied) and return what landed."""
-        if not edit.base:
-            edit.parents = list(self.applied)
-        stats = WE.apply(self.model, edit, variant=self.variant, backup=self._backup)
-        self.applied.append(edit.name)
-        return stats
-
-    def revert(self) -> int:
-        """Back to stock weights. Returns how many parameters were restored."""
-        self.applied = []
-        return WE.revert(self.model, self._backup)
-
-    def load(self, name: str) -> WE.WeightEdit:
-        return WE.WeightEdit.load(WE.resolve(name, self.edits_dir))
-
-    def save(self, edit: WE.WeightEdit) -> dict:
-        """Persist an applied edit to the weights volume so `--lingbot-edit NAME` can use it."""
-        missing = [n for n in edit.params() if n not in edit.base]
-        if missing or not edit.ops:
-            raise WE.EditError(f"apply (and probe) edit {edit.name} before saving it")
-        path = self.edits_dir / f"{edit.name}.npz"
-        if path.exists():
-            raise WE.EditError(f"{path} exists; saved edits are immutable, pick a new name")
-        edit.extra.setdefault("passes_at_save", self.passes)
-        edit.extra.setdefault("probes_at_save", self.probes)
-        sha = edit.save(path)
-        self._commit()
-        return {"name": edit.name, "path": str(path), "sha256": sha, "parents": edit.parents}
 
     # -- sending images back -----------------------------------------------
     def show(self, obj, name: str | None = None, video: bool = False) -> None:

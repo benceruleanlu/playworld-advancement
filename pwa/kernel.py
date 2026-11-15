@@ -1,9 +1,9 @@
-"""pwa kernel: drive the live weight-editing kernel on Modal (editor_app.py) from this machine.
+"""Drive the live LingBot kernel on Modal (editor_app.py) from this machine: `python -m pwa.kernel ...`.
 
-The editing model runs here; LingBot stays loaded on a Modal GPU. `exec` sends
+The agent or person asking the questions runs here; LingBot stays loaded on a Modal GPU. `exec` sends
 one Python cell, prints its output, saves any images the cell sent back under
 outputs/editor/, and appends the cell and its result to outputs/editor/log.jsonl
-(the record of how an edit was found). Stdlib only; `modal` is imported on use.
+(the record of what was asked and seen). Stdlib only; `modal` is imported on use.
 """
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ def render(res: dict) -> str:
     parts += [f"[image] {p}" for p in res.get("artifacts", [])]
     st = res.get("status") or {}
     parts.append(f"[kernel] {'ok' if res.get('ok') else 'ERROR'} in {res.get('seconds')}s; "
-                 f"passes {st.get('passes')}, probes {st.get('probes')}, applied {st.get('applied') or 'none'}")
+                 f"passes {st.get('passes')}, probes {st.get('probes')}")
     return "\n".join(p.rstrip("\n") for p in parts if p)
 
 
