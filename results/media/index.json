@@ -1,6 +1,27 @@
 {
  "runs": [
   {
+   "exp": "lb14-session-agent-dev-v1",
+   "generated": "2026-11-15T01:56:15Z",
+   "n_tasks": 24,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-lb14-session-agent-dev-v1",
+   "scored": false,
+   "labels": [
+    "not scored by the official judge; screened by openai:gpt-6-luna (screening scores are not shown here)"
+   ]
+  },
+  {
+   "exp": "smk14-gc-fastdit-ctl-c10-v1",
+   "generated": "2026-11-15T01:46:45Z",
+   "n_tasks": 1,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk14-gc-fastdit-ctl-c10-v1",
+   "scored": false,
+   "labels": [
+    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+    "not scored"
+   ]
+  },
+  {
    "exp": "smk14-gc-fastdit-c10-v1",
    "generated": "2026-11-15T01:43:27Z",
    "n_tasks": 3,
