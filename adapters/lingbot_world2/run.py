@@ -324,6 +324,7 @@ from adapters.lingbot_world2 import turntable as TT  # noqa: E402
 from adapters.lingbot_world2 import warp_reanchor as WR  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
+from adapters.lingbot_world2 import yarn_q as YQ  # noqa: E402
 from adapters.lingbot_world2 import yaw_gain as YG  # noqa: E402
 from adapters.lingbot_world2 import yaw_servo as YSV  # noqa: E402
 
@@ -462,6 +463,9 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-if-settle requires session mode")
     if flags["if_settle"].enabled and flags["if_horizon"]:
         raise SystemExit("--lingbot-if-settle and --lingbot-if-horizon both bound IF duration; use one")
+    flags["yarn_q"], argv = YQ.parse(argv, environ)
+    if flags["yarn_q"].enabled and flags["stateless"]:
+        raise SystemExit("--lingbot-yarn-q requires session mode")
     window, argv = _window(argv, environ)
     flags["turn_step"], argv = _turn_step(argv, environ)
     flags["turn_cal"] = flags["turn_cal"] or bool(flags["turn_step"])  # a step is a calibrated rate
@@ -556,6 +560,7 @@ YAW_SERVO = False  # --lingbot-yaw-servo / LINGBOT_YAW_SERVO=1, off by default; 
 YAW_SERVO_CFG = YSV.ServoConfig()  # its knobs (--lingbot-yaw-servo-k / -beta, or env)
 TURNTABLE = TT.TurntableConfig()  # --lingbot-turntable-poses / LINGBOT_TURNTABLE_POSES=1, off by default
 _PARSE_SEGMENTS = None  # upstream run_agent.parse_segments, set per main() call
+YARN_Q = YQ.YarnQConfig()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -657,8 +662,11 @@ class LingBotWorld2Engine:
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         CS.detach_model(getattr(self.pipe, "model", None))
         WM.detach_model(getattr(self.pipe, "model", None))  # an earlier arm's modulator in this process
+        YQ.detach_model(getattr(self.pipe, "model", None))
         sched = (CS.CondScheduler(self.pipe.model, COND_SCHED)
                  if COND_SCHED.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
+        yarn = (YQ.YarnQScaler(self.pipe.model, YARN_Q)
+                if YARN_Q.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
         self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
         stg = (STGM.SkipGuidance(self.pipe.model, STG)
                if STG.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
@@ -681,7 +689,8 @@ class LingBotWorld2Engine:
                                             **({"sink_scale": SINK_SCALE} if SINK_SCALE.enabled else {}),
                                             **({"pose_mem": POSE_MEM} if POSE_MEM.enabled else {}),
                                             **({"split_sink": SPLIT_SINK} if SPLIT_SINK.enabled else {}),
-                                            **({"warp_reanchor": WARP_REANCHOR} if WARP_REANCHOR.enabled else {}))
+                                            **({"warp_reanchor": WARP_REANCHOR} if WARP_REANCHOR.enabled else {}),
+                                            **({"yarn_q": yarn} if yarn is not None else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -709,6 +718,7 @@ class LingBotWorld2Engine:
               + (f", {POSE_MEM.describe()}" if POSE_MEM.enabled else "")
               + (f", {SPLIT_SINK.describe()}" if SPLIT_SINK.enabled else "")
               + (f", {WARP_REANCHOR.describe()}" if WARP_REANCHOR.enabled else "")
+              + (f", {YARN_Q.describe()}" if YARN_Q.enabled else "")
               + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
                  else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
@@ -887,6 +897,7 @@ class LingBotWorld2Engine:
         ss_before = (self.session.split_sink_chunks, self.session.split_sink_fg_tokens) if SPLIT_SINK.enabled else None
         pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
         wr_before = (self.session.warp_events, self.session.warp_patches) if WARP_REANCHOR.enabled else None
+        yq_chunks = getattr(self.session, "yarn_q_chunks", 0)
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         servo_split = self.yaw_servo is not None and YSV.applies(name, pattern=YAW_SERVO_CFG.tasks) and any(YSV.yaw_part(k) for k in keys)
         if servo_split:
@@ -920,6 +931,7 @@ class LingBotWorld2Engine:
         if wr_before is not None:
             STATS.warp_reanchored(self.session.warp_events - wr_before[0],
                                   self.session.warp_patches - wr_before[1])
+        STATS.yarn_q_chunks += getattr(self.session, "yarn_q_chunks", 0) - yq_chunks
         if self.weight_mod is not None:
             steps = self.session.weight_mod_steps - modded[0]
             # the servo splits one call into per-chunk session steps: count the call once, as without it
@@ -1001,7 +1013,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG, SPLIT_SINK, IF_SETTLE, SETTLE
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, POSE_MEM, YAW_SERVO, YAW_SERVO_CFG, SPLIT_SINK, IF_SETTLE, SETTLE, YARN_Q
     global WARP_REANCHOR
     global TURNTABLE, _PARSE_SEGMENTS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
@@ -1014,7 +1026,7 @@ def main(argv: list[str] | None = None) -> int:
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
-    COND_SCHED = flags["cond_sched"]
+    COND_SCHED, YARN_Q = flags["cond_sched"], flags["yarn_q"]
     SINK_SCALE = flags["sink_scale"]
     POSE_MEM = flags["pose_mem"]
     SPLIT_SINK = flags["split_sink"]
@@ -1044,7 +1056,8 @@ def main(argv: list[str] | None = None) -> int:
                                  yaw_servo=YAW_SERVO, warp_reanchor=WARP_REANCHOR.enabled,
                                  turntable=TURNTABLE.walk if TURNTABLE.enabled else "",
                                  turntable_rescale=TURNTABLE.enabled and TURNTABLE.rescale,
-                                 split_sink=SPLIT_SINK.enabled, if_settle=IF_SETTLE.enabled)
+                                 split_sink=SPLIT_SINK.enabled, if_settle=IF_SETTLE.enabled,
+                                 yarn_q=YARN_Q.enabled)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

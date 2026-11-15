@@ -353,7 +353,7 @@ class LingBotSession:
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
                  cond_sched=None, kv_noise=None, stg=None, sink_scale=None, pose_mem=None, split_sink=None,
-                 warp_reanchor=None):
+                 warp_reanchor=None, yarn_q=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -387,6 +387,7 @@ class LingBotSession:
         # --lingbot-warp-reanchor: config (None = off), per-task match flag, and lifetime event/patch counters
         self.warp_reanchor, self.warp_reanchor_on = warp_reanchor, False
         self.warp_events = self.warp_patches = 0
+        self.yarn_q, self.yarn_q_chunks = yarn_q, 0
         self._free()
 
     def _free(self):
@@ -484,6 +485,8 @@ class LingBotSession:
             self.cond_sched.reset()
         if self.kv_noise is not None:
             self.kv_noise.reset(pipe.scheduler, seed, dev)
+        if self.yarn_q is not None:
+            self.yarn_q.reset()
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -680,7 +683,8 @@ class LingBotSession:
         new, modulated = [], False
         pm = self._pose_memory()  # None unless --lingbot-pose-memory is on for this rollout
         with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
-                contextlib.ExitStack() as sink, torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad(), \
+                (self.yarn_q or contextlib.nullcontext()), contextlib.ExitStack() as sink, \
+                torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad(), \
                 (self._pose_mem_guard() if pm is not None else contextlib.nullcontext()):
             for c in range(n_chunks):
                 cid, chunk_hit, stg_hit = self.chunk_id, False, False
@@ -690,6 +694,8 @@ class LingBotSession:
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
                     self.weight_mod_chunks += 1
+                if self.yarn_q is not None and self.yarn_q.step(cid, getattr(pipe, "local_attn_size", 18), self.frame_seqlen):
+                    self.yarn_q_chunks += 1
                 with torch.autocast("cuda", enabled=False):
                     emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
@@ -762,6 +768,8 @@ class LingBotSession:
                     # write clean keys/values for this chunk into the KV cache
                     t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
                     pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
+                if self.yarn_q is not None:
+                    self.yarn_q.reset()  # before pose memory, whose recompute forwards run unscaled
                 if pm is not None:
                     self._pose_mem_after(cid, self.track.latents[c * CHUNK:(c + 1) * CHUNK], x0, rel_c)
                 if self.split_sink is not None and self.split_sink_on:

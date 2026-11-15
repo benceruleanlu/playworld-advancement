@@ -115,7 +115,7 @@ class FlagStats:
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
                  pose_mem: bool = False, yaw_servo: bool = False, warp_reanchor: bool = False,
                  turntable: str = "", turntable_rescale: bool = False, split_sink: bool = False,
-                 if_settle: bool = False):
+                 if_settle: bool = False, yarn_q: bool = False):
         self.split_sink = bool(split_sink)
         self.warp_reanchor = bool(warp_reanchor)
         self.pose_mem = bool(pose_mem)
@@ -125,6 +125,7 @@ class FlagStats:
         self.if_settle = bool(if_settle)
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
+        self.yarn_q = bool(yarn_q)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.kv_noise, self.kv_noise_t = kv_noise, kv_noise_t
@@ -160,7 +161,7 @@ class FlagStats:
                        "scripted_chunks": 0, "scripted_ends": 0,
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
                        "split_sink_chunks": 0, "split_sink_fg_tokens": 0,
-                       "yaw_gain_frames": 0, "yaw_servo_chunks": 0, "yaw_servo_untrusted": 0,
+                       "yaw_gain_frames": 0, "yaw_servo_chunks": 0, "yaw_servo_untrusted": 0, "yarn_q_chunks": 0,
                        "if_settle_tasks": 0, "if_settle_frames": 0,
                        "turntable_frames": 0, "turntable_rescaled": 0,
                        **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS},
@@ -169,6 +170,7 @@ class FlagStats:
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
     def new_task(self):
+        self.yarn_q_chunks = 0
         self.if_camera_hints = 0
         self.player_frames_removed = 0
         self.insight_director_prompts = 0
@@ -415,6 +417,8 @@ class FlagStats:
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
         if self.if_settle:
             s.update(if_settle="on" if self.if_settle_budget else "skip", if_settle_budget=self.if_settle_budget, if_settle_frames=self.if_settle_frames)
+        if self.yarn_q:
+            s.update(yarn_q="on", yarn_q_chunks=self.yarn_q_chunks)
         return s
 
     @staticmethod
@@ -464,7 +468,8 @@ class FlagStats:
                 + ("".join(f" {k}={v}" for k, v in self.pose_mem_summary(
                     {k: t[f"pose_mem_{k}"] for k in POSE_MEM_FIELDS}).items()) if self.pose_mem else "")
                 + (f" warp_events={t['warp_events']} warp_patches={t['warp_patches']}" if self.warp_reanchor else "")
-                + (f" if_settle_tasks={t['if_settle_tasks']} if_settle_frames={t['if_settle_frames']}" if self.if_settle else ""))
+                + (f" if_settle_tasks={t['if_settle_tasks']} if_settle_frames={t['if_settle_frames']}" if self.if_settle else "")
+                + (f" yarn_q=on yarn_q_chunks={t['yarn_q_chunks']}" if self.yarn_q else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -513,6 +518,7 @@ class FlagStats:
         t["warp_patches"] += self.warp_patches
         t["if_settle_tasks"] += bool(self.if_settle_budget)
         t["if_settle_frames"] += self.if_settle_frames
+        t["yarn_q_chunks"] += self.yarn_q_chunks
         print(self.line(s), flush=True)
         return s
 
