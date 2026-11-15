@@ -1,0 +1,134 @@
+{
+ "exp": "ins14-fx-v2-a1",
+ "release_tag": "run-ins14-fx-v2-a1",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-fx-v2-a1",
+ "generated": "2026-11-15T05:28:38Z",
+ "git_sha": "0f70d08a7c60f35033e3d339ece658e2a05a44b6",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": false,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900"
+ ],
+ "player_model": "",
+ "notes": "insight, all six dev tasks: goal prompt vs caption prompt vs caption + insight director; wait-only tasks so the rollout equals the closed-loop one [arm 1/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900]",
+ "labels": [
+  "not scored",
+  "replayed dataset moves (open loop), A/B only",
+  "arm 1/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900"
+ ],
+ "report": "ins14-fx-v2-a1.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "OE001",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE001.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE001.jpg"
+  },
+  {
+   "task_id": "OE005",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE005.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE005.jpg"
+  },
+  {
+   "task_id": "OE018",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE018.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE018.jpg"
+  },
+  {
+   "task_id": "OE035",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE035.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE035.jpg"
+  },
+  {
+   "task_id": "OE064",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE064.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE064.jpg"
+  },
+  {
+   "task_id": "OE074",
+   "family": "insight",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "pass_scores": [],
+   "reason": "",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE074.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-ins14-fx-v2-a1/OE074.jpg"
+  }
+ ]
+}
