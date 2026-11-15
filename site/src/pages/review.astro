@@ -1,6 +1,6 @@
 ---
 // Blind side-by-side review: two people judge control and treatment clips by eye. All behaviour is in src/scripts/review.js.
-// No run names, flags or file names in this markup: the arms stay hidden until "Finish and reveal".
+// No run names, flags or file names in this markup: the arms stay hidden until "Finish and reveal" (or, in the per-trial reveal mode, until a trial has its vote).
 import Base from "../layouts/Base.astro";
 import "../styles/review.css";
 const home = import.meta.env.BASE_URL.replace(/\/?$/, "/");
@@ -24,6 +24,9 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, "/");
           <label>Family <select id="rv-fam"></select></label>
         </div>
         <ul class="rvlist" id="rv-gdesc"></ul>
+        <label class="rvcheck"><input type="checkbox" id="rv-reveal-each"> Show the answer after each vote</label>
+        <p class="scnote">That mode is for exploring: later trials are no longer blind to earlier answers, so use the fully blind mode (box unticked) for a preference count.</p>
+        <p class="rvrow" id="rv-mismatch" hidden><span class="scnote" id="rv-mismatch-text"></span> <button type="button" class="linkbtn" id="rv-newsession">Clear my votes and start over</button></p>
         <ul class="rvlist scnote" id="rv-dropped" hidden></ul>
         <p class="scnote">Your name and votes stay in this browser only. The name also seeds which side each clip is on, so a reload keeps the same sides. Keys: 1 left, 2 right, 3 no difference; up and down pick the question; left and right arrows move between trials; space plays or pauses (Enter presses a focused button).</p>
         <p class="callout" id="rv-nostore" hidden>This browser is not saving data for this page (private window or blocked site data), so a reload or closing the tab loses every vote. Finish and export before you leave.</p>
@@ -60,6 +63,7 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, "/");
       </div>
       <div class="cvgrid rvgrid" id="rv-grid"></div>
       <div id="rv-qs" class="rvqs"></div>
+      <div class="card rvinstant" id="rv-instant" aria-live="polite" hidden></div>
       <label class="rvnote">Note (optional) <textarea id="rv-note" rows="2" maxlength="500"></textarea></label>
       <div class="rvrow rvnav">
         <button type="button" class="cvbtn" id="rv-back">Back</button>
@@ -74,6 +78,7 @@ const home = import.meta.env.BASE_URL.replace(/\/?$/, "/");
     <section id="rv-reveal" aria-labelledby="h-rv-reveal" hidden>
       <h2 id="h-rv-reveal" class="sec">Results</h2>
       <p class="sub">Revealed. Votes on these trials are now locked for this name in this browser, and other selections leave them out.</p>
+      <p class="callout" id="rv-modenote" hidden>Votes were made with the answer shown after each vote, so later trials were not blind to earlier answers. Use these counts for exploring, not as a preference count.</p>
       <div id="rv-results"></div>
       <div class="card rvexport">
         <h3>Export and agreement</h3>
