@@ -189,7 +189,8 @@ Env:
 Stall watchdog (watchdog.py), per generate() call: `--lingbot-stall-dump N` (LINGBOT_STALL_DUMP_S, default
 300, 0 = off) dumps every thread's stack to stderr once a call has run N s, and every N s after;
 `--lingbot-stall-abort N` (LINGBOT_STALL_ABORT_S, default 0 = off) dumps, prints `[lingbot] stall:` and
-exits the process with 124 after N s. The process is this runner: under pwa gen-arms that is the whole
+exits the process with 124 once a call has made no progress for N s (session.step marks progress
+per latent chunk and per decoded latent). The process is this runner: under pwa gen-arms that is the whole
 shard, so an abort drops every remaining arm and family of the shard.
 
 Start-up (fast_start.py): `[lingbot] timing <part> <s>s` lines for each load component and for the

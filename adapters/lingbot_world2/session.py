@@ -50,6 +50,7 @@ import numpy as np
 from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import sink_scale as SK
+from adapters.lingbot_world2 import watchdog as W
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
 FRAMES_PER_CHUNK = 4 * CHUNK    # pixel frames per chunk after the first latent
@@ -66,6 +67,33 @@ _CHUNK_RE = re.compile(r"^(?P<task>.+)_chunk_(?P<idx>\d+)$")
 def chunks_for(num_frames: int) -> int:
     """Latent chunks to generate for a harness request of num_frames (33 -> 2)."""
     return max(1, int(math.floor((int(num_frames) - 1) / FRAMES_PER_CHUNK + 0.5)))
+
+
+def to_uint8_host(x):
+    """Decoded VAE output slice -> uint8 frames on the host, the same ops in the same order as the
+    full-video post-processing this replaces: .float().clamp(-1, 1), then ((x + 1) * 127.5).round()
+    cast to uint8, then .cpu(). All elementwise, so converting slice by slice gives identical frames."""
+    import torch  # noqa: PLC0415
+    return ((x.float().clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).cpu()
+
+
+def decode_slices(decoder, x, feat_cache, skip: int = 0):
+    """Run the causal VAE decoder one latent at a time over x [1, C, L, h, w] (latent 0 of a rollout gives
+    1 frame, every later latent 4), as WanVAE_.decode does, and return uint8 host frames [1, 3, F, H, W]
+    with the first `skip` frames dropped. Each slice is converted and moved off the device as soon as it is
+    decoded, so no full-length video tensor is built on the device. A progress mark per latent."""
+    import torch  # noqa: PLC0415
+    outs, seen = [], 0
+    for i in range(x.shape[2]):
+        out = decoder(x[:, :, i:i + 1], feat_cache=feat_cache, feat_idx=[0])
+        n = out.shape[2]
+        if seen + n > skip:
+            with torch.autocast("cuda", enabled=False):
+                outs.append(to_uint8_host(out[:, :, max(0, skip - seen):]))
+        seen += n
+        del out
+        W.progress()
+    return torch.cat(outs, 2)
 
 
 def keys_needed(n_chunks: int, first: bool) -> int:
@@ -591,14 +619,17 @@ class LingBotSession:
                     t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
                     pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
                 self.chunk_id += 1
+                W.progress()  # stall watchdog: a long (dataset-mode) step is not a stall while chunks advance
             lat = torch.cat(new, dim=1)
+            del new, latent, x0, pred, kwargs, emb  # denoise temporaries; KV cache, y and track stay
             mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")
-            video = self._decode(lat)
-            mark("step0.decode", f"({lat.shape[1]} latents)")
+            video = self._decode(lat)  # uint8 [3, F, H, W] on the host
+            mark("step0.decode", f"({lat.shape[1]} latents, {video.shape[1]} frames, "
+                 f"peak VRAM {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB)" if timing else "")
         if modulated:
             self.weight_mod_steps += 1
 
-        frames = ((video.clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 3, 0).cpu().numpy()
+        frames = video.permute(1, 2, 3, 0).cpu().numpy()
         del video
         mark("step0.to_host")
         if not first:
@@ -625,25 +656,31 @@ class LingBotSession:
             SK.restore_keys(self.kv, n_tokens, saved)
 
     def _decode(self, lat):
-        """New latents -> new pixel frames [3, F, H, W] in [-1, 1]."""
+        """New latents -> new pixel frames, uint8 [3, F, H, W] on the host (to_uint8_host per decoded
+        latent, see decode_slices). Neither path builds a full-length video tensor on the device: a
+        dataset-mode task is one step of up to 280 latents (1117 frames, an fp32 copy of 4.82 GiB)."""
         import torch  # noqa: PLC0415
+        torch.cuda.empty_cache()  # hand the cached blocks the denoise loop no longer needs to the decoder
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()  # step0.decode reports the decode's own peak
         vae = self.pipe.vae
-        if not self.stream_decode:
-            self._all_lat.append(lat)
-            full = vae.decode([torch.cat(self._all_lat, dim=1)])[0]
-            n_new = 4 * lat.shape[1] - (3 if len(self._all_lat) == 1 else 0)
-            return full[:, -n_new:]
-        # Streaming: mirrors Wan2_1_VAE.decode / WanVAE_.decode (vae2_1.py) but keeps
-        # the decoder's causal feature cache (_feat_map) across steps instead of
-        # clearing it at the start and end of each call.
         m = vae.model
         mean, inv_std = vae.scale
+        if self.stream_decode:
+            # Streaming: mirrors Wan2_1_VAE.decode / WanVAE_.decode (vae2_1.py) but keeps the decoder's
+            # causal feature cache (_feat_map) across steps instead of clearing it each call.
+            zs, feat, skip = lat, self._feat_map, 0
+        else:
+            # Re-decode every latent so far with a fresh cache (what WanVAE_.decode does after
+            # clear_cache()) and keep only the new frames.
+            from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
+            self._all_lat.append(lat)
+            zs, feat = torch.cat(self._all_lat, dim=1), [None] * count_conv3d(m.decoder)
+            n_new = 4 * lat.shape[1] - (3 if len(self._all_lat) == 1 else 0)
+            skip = 4 * zs.shape[1] - 3 - n_new
         with torch.cuda.amp.autocast(dtype=vae.dtype):
-            z = lat.unsqueeze(0)
+            z = zs.unsqueeze(0)
             z = z / inv_std.view(1, m.z_dim, 1, 1, 1) + mean.view(1, m.z_dim, 1, 1, 1)
             x = m.conv2(z)  # kernel 1 in time: no cache needed
-            outs = []
-            for i in range(x.shape[2]):
-                outs.append(m.decoder(x[:, :, i:i + 1], feat_cache=self._feat_map, feat_idx=[0]))
-            out = torch.cat(outs, 2)
-        return out.float().clamp_(-1, 1).squeeze(0)
+            out = decode_slices(m.decoder, x, feat, skip)
+        return out.squeeze(0)
