@@ -53,3 +53,10 @@ def test_late_scale_applies_through_wrapped_layers(monkeypatch):
     monkeypatch.setenv("LINGBOT_CAM_WEIGHT_STATIC_LATE", "0.25")
     mod2 = W.WeightModulator(dit)
     assert (mod2.late_steps, mod2.cam_static_late) == (2, 0.25)
+
+
+def test_reversed_schedule_is_counted_as_modulated():
+    mod = W.WeightModulator(_dit(3, n=2), cam_static=1.0, cam_static_late=0.0, late_steps=2)
+    assert mod.step(EYE) and [mod.denoise_step(i, 4) for i in range(4)] == [1.0, 1.0, 0.0, 0.0]
+    assert not mod.step(_move_rel())  # first-person moving chunks are never rescheduled
+    assert not W.WeightModulator(_dit(3, n=2), cam_static=1.0, cam_static_late=1.0, late_steps=2).step(EYE)

@@ -171,8 +171,9 @@ reset and first step of every rollout, always on. Opt-in, all off by default:
 
 In-process use (pwa gen-arms): main(argv) can be called several times in one process. Each call re-reads
 the flags and env, resets poses' turn rates, the flag counters and prompts' current task, and imports a
-fresh upstream run_agent (so no patch stacks); only the loaded pipe (_PIPES, keyed by checkpoint, T5
-placement and KV window) is shared, and each call's engine builds its own session.
+fresh upstream run_agent (so no patch stacks); only the loaded pipe (_PIPES, keyed by checkpoint and T5
+placement) is shared; each call's engine sets its own KV window on it, detaches an earlier arm's weight-mod
+wrappers, and builds its own session.
 The fast-start flags are per call too: --lingbot-fast-y / --lingbot-fast-t5's disk cache follow each call's
 flags, while the load-time parts (read-ahead, meta T5, lazy T5) only apply to the call that loads the pipe;
 the loader patches are undone after that load, so they never stack.
@@ -421,6 +422,8 @@ def load_pipe(environ=os.environ):
 class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
+    weight_mod = None  # --lingbot-weight-mod: a WeightModulator, set in __init__
+
     def __init__(self, args):
         self.args = args
         self.cfg, self.pipe, weights, t5_cpu = load_pipe()
@@ -559,7 +562,7 @@ class LingBotWorld2Engine:
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
-        modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks)
+        modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks) if self.weight_mod is not None else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
