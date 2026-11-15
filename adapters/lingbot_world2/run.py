@@ -79,7 +79,8 @@ and sets the next chunk's left / right pose gain so the rendered heading follows
 per-direction estimate of rendered / commanded is divided out and the heading error so far is added back, each
 chunk's gain within 0.5 to 2.0. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
 and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
-them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). Refused with
+them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). GC call names
+only unless LINGBOT_YAW_SERVO_TASKS (a regex) says otherwise. Refused with
 --lingbot-yaw-gain (both set the model-track gain) and --lingbot-gc-ease-turns. See yaw_servo.py and
 research/camera-response.md.
 
@@ -762,7 +763,7 @@ class LingBotWorld2Engine:
         sk_chunks = self.session.sink_scaled_chunks if SINK_SCALE.enabled else 0
         pm_before = self._pose_mem_counts() if POSE_MEM.enabled else None
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
-        if self.yaw_servo is not None and any(YSV.yaw_part(k) for k in keys):
+        if self.yaw_servo is not None and YSV.applies(name) and any(YSV.yaw_part(k) for k in keys):
             # chunk by chunk, each chunk's pose gain set from the yaw the earlier chunks rendered
             before = (self.yaw_servo.chunks, self.yaw_servo.untrusted)
             frames = YSV.step(self.session, self.yaw_servo, keys, math.degrees(P.YAW), MT.chunk_turn)

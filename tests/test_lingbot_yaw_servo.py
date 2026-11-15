@@ -56,6 +56,8 @@ def test_helpers():
     assert YS.enabled(["x", "--lingbot-yaw-servo"], {}) and YS.enabled([], {"LINGBOT_YAW_SERVO": "1"}) and not YS.enabled([], {})
     with pytest.raises(SystemExit):
         YS.YawServo(beta=0.0)
+    assert YS.applies("GC033_full", {}) and YS.applies("GC033_chunk_02", {}) and not YS.applies("OE034_full", {})
+    assert not YS.applies("IF010_chunk_01", {}) and YS.applies("OE048_full", {"LINGBOT_YAW_SERVO_TASKS": "GC|OE048"})
 
 
 @pytest.mark.parametrize("segs,g", [
@@ -224,11 +226,13 @@ def test_runner_arms_servo_corrects_and_neighbours_are_untouched(monkeypatch, ca
     # the fake frames carry the heading instead of an image: read it back, and skip the image-based rigid test
     monkeypatch.setattr(R.MT, "chunk_turn", lambda frames: (float(frames[-1, 0, 0, 0] - frames[0, 0, 0, 0]), 0.0, 1.0))
     monkeypatch.setattr(R.YSV, "step", functools.partial(YS.step, rigid=None))
-    seen = []
+    seen, seen_headings = [], []
 
     def fake_import(fresh=True):
         def run_task(task, eng, out, args):
             eng.generate(str(img), "p", "j-80,l-80,none-12", tmp_path, "GC033_full", 173)   # left 90, right 90, dataset mode
+            seen_headings.append(eng.session.heading)
+            eng.generate(str(img), "p", "j-80,l-80,none-12", tmp_path, "OE034_full", 173)   # out-of-sight: not a servo task
             return {"task_id": task["task_id"], "success": False}
 
         ra = SimpleNamespace(run_task=run_task, decide_action=lambda *a, **kw: "WAIT", to_sana_key=lambda a: "none")
@@ -246,10 +250,13 @@ def test_runner_arms_servo_corrects_and_neighbours_are_untouched(monkeypatch, ca
     assert R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"]) == 0
     assert R.main(["run.py", "--lingbot-turn-cal"]) == 0
     base, servo, again = seen
-    assert base.heading == pytest.approx(-90 * 1.237 + 90 * 0.935, abs=0.01)       # 27 degrees left of the start
-    assert abs(servo.heading) < 2.0                                                # the servo arm comes back
-    assert again.heading == pytest.approx(base.heading) and again.steps == base.steps == 1 and again.gains == [(1.0, 1.0)]
-    assert servo.steps == 11 and servo.gains[0] == (1.0, 1.0) and any(g != (1.0, 1.0) for g in servo.gains)
+    off = -90 * 1.237 + 90 * 0.935                                                 # 27 degrees left of the start
+    assert seen_headings[0] == pytest.approx(off, abs=0.01) and seen_headings[2] == pytest.approx(off, abs=0.01)
+    assert abs(seen_headings[1]) < 2.0                                             # the servo arm comes back on GC033
+    assert base.heading == servo.heading == again.heading == pytest.approx(off, abs=0.01)   # OE034: open loop in every arm
+    assert again.steps == base.steps == 2 and again.gains == [(1.0, 1.0)] * 2
+    assert servo.steps == 12 and servo.gains[0] == (1.0, 1.0) and any(g != (1.0, 1.0) for g in servo.gains[:11])
+    assert servo.gains[11] in ((1.0, 1.0), servo.gains[10])                        # the last call is one plain step
     assert R.YAW_SERVO is False
     out = capsys.readouterr().out
     modes = [ln for ln in out.splitlines() if ln.startswith("[lingbot] mode:")]

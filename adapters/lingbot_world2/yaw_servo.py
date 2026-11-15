@@ -22,12 +22,15 @@ booked at what the current estimates predict, so one bad chunk on a static scene
 After LOCK_AFTER untrusted turn runs in one rollout the scene is taken to have a moving subject: the servo locks,
 forgets its estimates and leaves every later chunk at gain 1 (the flags line then says yaw_servo=locked).
 
+Tasks: GC call names only by default (LINGBOT_YAW_SERVO_TASKS, a regex matched at the start of the call name).
+
 Constants (env): LINGBOT_YAW_SERVO_K (1.0: share of the heading error corrected per chunk), LINGBOT_YAW_SERVO_BETA
 (0.6: weight of the newest chunk in the estimates). Pure Python and numpy; the session is passed in.
 """
 from __future__ import annotations
 
 import os
+import re
 
 FLAG = "--lingbot-yaw-servo"
 LO, HI = 0.5, 2.0
@@ -39,6 +42,14 @@ LOCK_AFTER = 2                 # untrusted turn runs in one rollout before the s
 
 def enabled(argv: list[str], environ=os.environ) -> bool:
     return FLAG in argv or environ.get("LINGBOT_YAW_SERVO", "0") == "1"
+
+
+def applies(name: str, environ=os.environ) -> bool:
+    """True when the servo acts on this call name. Default: GC tasks only, as --lingbot-reanchor.
+    The GC dev scenes are static, which the yaw estimate needs; three of the six out-of-sight dev scenes have a
+    moving subject, where the servo changes the first chunks and then locks. LINGBOT_YAW_SERVO_TASKS (a regex
+    matched at the start of the call name) widens it, e.g. "GC|OE048"."""
+    return re.match(environ.get("LINGBOT_YAW_SERVO_TASKS", "GC"), name or "") is not None
 
 
 def split_chunks(keys: list[str], first: bool, chunk: int = 16) -> list[list[str]]:
