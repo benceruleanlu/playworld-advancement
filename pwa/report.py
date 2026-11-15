@@ -7,8 +7,8 @@ import math
 import os
 
 from .aggregate import aggregate_pass, mean_std, upstream_cross_check
-from .core import (FAMILIES, cap_label, chunk_cap, current_branch, RESULTS_CSV, RUNS, exp_dir, log, now, read_json,
-                   read_meta, video_path, write_json)
+from .core import (FAMILIES, SCRIPTED_LABEL, SCRIPTED_TAG, cap_label, chunk_cap, current_branch, RESULTS_CSV, RUNS,
+                   exp_dir, log, now, read_json, read_meta, scripted_player, video_path, write_json)
 from .score import Judge, eval_dir, passes_present
 
 # Paper numbers, full 171-task benchmark: gc, if, insight, outsight, overall.
@@ -105,6 +105,8 @@ def render(rep: dict, meta: dict) -> str:
         p(f"*** {rep['judge']['label']} ***")
     if chunk_cap(meta):
         p(f"*** {cap_label(chunk_cap(meta))} ***")
+    if scripted_player(meta):
+        p(f"*** {SCRIPTED_LABEL} ***")
     p()
     p(f"{'family':<9} {'mean':>5} {'std':>5} {'n':>3} {'gate':>7} {'miss':>4} {'drop':>4}  per-pass")
     for fam, f in rep["families"].items():
@@ -144,6 +146,10 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
         p()
     if chunk_cap(meta):
         p(f"> **{_md_cell(cap_label(chunk_cap(meta)).capitalize())}.** Smoke tier only; never the site headline.")
+        p()
+    if scripted_player(meta):
+        p(f"> **{_md_cell(SCRIPTED_LABEL.capitalize())}.** Moves replayed by the scripted player; never a closed-loop "
+          f"score or the site headline.")
         p()
     p(f"runner `{meta.get('runner')}` | action source `{meta.get('action_source')}` | passes {len(rep['passes'])} "
       f"| tasks {rep['n_tasks']} | missing {rep['n_missing']}")
@@ -198,7 +204,8 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            "runner": meta.get("runner", ""), "action_source": meta.get("action_source", ""),
            **{f: r4(fam.get(f, {}).get("mean")) for f in FAMILIES},
            "overall": r4(rep["overall"]), "overall_std": r4(rep["overall_std"]), "passes": len(rep["passes"]),
-           "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"], "notes": capped_notes(meta.get("notes", ""), cap),
+           "n_tasks": rep["n_tasks"], "n_missing": rep["n_missing"],
+           "notes": scripted_notes(capped_notes(meta.get("notes", ""), cap), scripted_player(meta)),
            "branch": meta.get("branch") or current_branch(),
            # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
            "n_dropped": sum(f.get("dropped") or 0 for f in fam.values()),
@@ -215,6 +222,14 @@ def capped_notes(notes: str, cap: int | None) -> str:
         return notes or ""
     tag = f"[capped smoke: {cap} chunks]"
     return notes if (notes or "").startswith(tag) else (f"{tag} {notes}" if notes else tag)
+
+
+def scripted_notes(notes: str, scripted: bool) -> str:
+    """Notes of a scripted-player run start with its tag (idempotent), so the csv and the site never read it as
+    an AI-played closed-loop run."""
+    if not scripted or SCRIPTED_TAG in (notes or ""):
+        return notes or ""
+    return f"{SCRIPTED_TAG} {notes}" if notes else SCRIPTED_TAG
 
 
 def run_url() -> str:

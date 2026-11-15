@@ -40,6 +40,24 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-if-slow-translation       if_slow=on, if_translation_frames (IF session frames whose W/S/A/D
                                       translation was halved)
 
+  --lingbot-weight-mod                weight_mod=on, weight_mod_steps (generate steps with any modulated latent
+                                      chunk: 0 or 1 per task in dataset mode), weight_mod_chunks (latent chunks
+                                      whose camera or text scale was not 1.0; stateless: 1 per modulated rollout)
+
+  --lingbot-if-identity-cue           if_identity=on, if_identity_prompts (prompts encoded with the cue: one per
+                                      session reset, every call when stateless; third-person IF only)
+  --lingbot-measured-turn             measured_turn=on|skip, measured_chunks, measured_unreliable, commanded_yaw,
+                                      measured_yaw, commanded_tilt, measured_tilt (totals up to the last decision)
+  --lingbot-cond-schedule             cond_sched=on|skip, cond_sched_chunks, cond_sched_calls (session chunks and
+                                      DiT forward calls whose early-step cam/text scales differed from 1.0)
+  --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
+  --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
+                                      wait-only insight), scripted_planned (script + tail chunks),
+                                      scripted_chunks (decisions answered from the script), scripted_end
+                                      (1 when the script ran out and the wrapper answered END, 0 when the
+                                      harness cap cut it first); the total line adds scripted_chunks and
+                                      scripted_ends
+
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
 """
@@ -55,7 +73,16 @@ class FlagStats:
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
-                 if_subject: bool = False, noise_mean: bool = False):
+                 if_subject: bool = False, weight_mod: bool = False, window: str = "",
+                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
+                 noise_mean: bool = False):
+        self.scripted = bool(scripted)
+        self.cond_sched = cond_sched
+        self.measured_turn = bool(measured_turn)
+        self.if_identity = bool(if_identity)
+        self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
+        self.weight_mod = bool(weight_mod)
+        self.weight_mod_late = ""  # set by the engine: WeightModulator.late_schedule()
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -76,7 +103,9 @@ class FlagStats:
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
-                       "if_subject_prompts": 0}
+                       "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
+                       "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
+                       "scripted_chunks": 0, "scripted_ends": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -90,6 +119,11 @@ class FlagStats:
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
         self.if_subject_prompts = 0
+        self.weight_mod_steps = self.weight_mod_chunks = 0
+        self.if_identity_prompts = 0
+        self.measured = {}
+        self.cond_sched_chunks = self.cond_sched_calls = 0
+        self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -125,6 +159,11 @@ class FlagStats:
         """--lingbot-if-subject-director: one generate() call conditioned on the structured IF prompt."""
         self.if_subject_prompts += 1
 
+    def modulated(self, steps: int = 1, chunks: int = 1):
+        """--lingbot-weight-mod: generate steps with any modulated latent chunk, and modulated latent chunks."""
+        self.weight_mod_steps += int(steps)
+        self.weight_mod_chunks += int(chunks)
+
     def if_repeat_hint(self):
         self.if_repeat_checks += 1
 
@@ -147,6 +186,10 @@ class FlagStats:
     def completion_end(self):
         self.gc_completion_ends += 1
 
+    def cond_scheduled(self, chunks: int = 0, calls: int = 0):
+        self.cond_sched_chunks += int(chunks)
+        self.cond_sched_calls += int(calls)
+
     def completion_summary(self, counts) -> dict:
         if not self.gc_completion:
             return {}
@@ -158,11 +201,24 @@ class FlagStats:
                  ("gc_director_chunks", "gc_director_updates")}} if self.gc_director else {})
 
     # -- output ----------------------------------------------------------------
+    def measured_turn_event(self, summary: dict):
+        """measured_turn.wrap on_event: the task's totals so far (the last call is the whole rollout but
+        its final chunk)."""
+        self.measured = dict(summary)
+
     def if_horizon_event(self, kind: str, cap: int):
         """if_horizon.wrap on_event: "armed" or "end", with the task's chunk budget."""
         self.if_horizon_cap = int(cap)
         if kind == "end":
             self.if_horizon_ends += 1
+
+    def scripted_event(self, kind: str, n: int):
+        """scripted_player.wrap on_event: "plan", "chunk" or "end", with the plan length."""
+        self.scripted_planned = int(n)
+        if kind == "chunk":
+            self.scripted_chunks += 1
+        elif kind == "end":
+            self.scripted_end = 1
 
     def summary(self, task_id) -> dict:
         if self.prompt_mode == "goal":
@@ -194,10 +250,30 @@ class FlagStats:
             s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
         if self.if_subject:
             s.update(if_subject="on", if_subject_prompts=self.if_subject_prompts)
+        if self.weight_mod:
+            s.update(weight_mod="on", weight_mod_steps=self.weight_mod_steps, weight_mod_chunks=self.weight_mod_chunks)
+            if self.weight_mod_late:  # LINGBOT_CAM_LATE_STEPS > 0 only, so #87-only arms keep their line
+                s.update(weight_mod_late=self.weight_mod_late)
+        if self.window:
+            s.update(window=self.window)
+        if self.if_identity:
+            s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
                      if_horizon_ends=self.if_horizon_ends)
+        if self.cond_sched != "off":
+            s.update(cond_sched=self.cond_sched, cond_sched_chunks=self.cond_sched_chunks,
+                     cond_sched_calls=self.cond_sched_calls)
+        if self.measured_turn:
+            m = self.measured
+            s.update(measured_turn="on" if m else "skip", measured_chunks=m.get("chunks", 0),
+                     measured_unreliable=m.get("unreliable", 0),
+                     commanded_yaw=round(m.get("commanded_yaw", 0)), measured_yaw=round(m.get("measured_yaw", 0)),
+                     commanded_tilt=round(m.get("commanded_tilt", 0)), measured_tilt=round(m.get("measured_tilt", 0)))
+        if self.scripted:
+            s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
+                     scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
         return s
 
     @staticmethod
@@ -221,7 +297,15 @@ class FlagStats:
                    if self.if_horizon else "")
                 + "".join(f" {k}={v}" for k, v in self.director_summary(t).items())
                 + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else "")
-                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else ""))
+                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
+                + (f" cond_sched={self.cond_sched} cond_sched_chunks={t['cond_sched_chunks']}"
+                   f" cond_sched_calls={t['cond_sched_calls']}" if self.cond_sched != "off" else "")
+                + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
+                   if self.weight_mod else "")
+                + (f" window={self.window}" if self.window else "")
+                + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
+                + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
+                   if self.scripted else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -237,6 +321,11 @@ class FlagStats:
         t["gc_director_updates"] += self.gc_director_updates
         t["gc_eased_turns"] += self.gc_eased_turns
         t["if_subject_prompts"] += self.if_subject_prompts
+        t["weight_mod_steps"] += self.weight_mod_steps
+        t["weight_mod_chunks"] += self.weight_mod_chunks
+        t["if_identity_prompts"] += self.if_identity_prompts
+        t["scripted_chunks"] += self.scripted_chunks
+        t["scripted_ends"] += self.scripted_end
         t["caption_used"] += s["caption"] == "used"
         t["caption_fallback"] += s["caption"] == "fallback"
         t["reanchor_events"] += self.reanchor_events
@@ -246,6 +335,8 @@ class FlagStats:
         t["gc_completion_ends"] += self.gc_completion_ends
         t["if_horizon_tasks"] += bool(self.if_horizon_cap)
         t["if_horizon_ends"] += self.if_horizon_ends
+        t["cond_sched_chunks"] += self.cond_sched_chunks
+        t["cond_sched_calls"] += self.cond_sched_calls
         print(self.line(s), flush=True)
         return s
 
