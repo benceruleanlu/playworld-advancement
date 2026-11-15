@@ -141,12 +141,17 @@ def test_servo_ignores_untrusted_or_wild_chunks_and_trims_in_waits():
     keys, gain = s.next_chunk()
     s.observe({"j": 0.0, "l": 500.0, "none": 0.0})                    # wild ratio: not learned either
     assert s.est["l"] == 1.0
+    # a camera that renders half the commanded right turn: the gain limit (2.0) leaves the turn short,
+    # and the trim finishes it during the wait that follows
     t = CP.Servo([("l", 45), ("none", 64)])
-    end = _simulate(t, 1.0, 0.7)
+    end = _simulate(t, 1.0, 0.5)
     assert abs(end - 45) <= t.tol                                    # trims stop once inside the tolerance
     assert any("R" in row["keys"] and row["target_before"] == 45.0 for row in t.log)   # and happen in the wait
     no_trim = CP.Servo([("l", 45), ("none", 64)], trim=False)
-    assert abs(_simulate(no_trim, 1.0, 0.7) - 45) > no_trim.tol
+    assert abs(_simulate(no_trim, 1.0, 0.5) - 45) > 5.0
+    mild = CP.Servo([("l", 45), ("none", 64)])                       # a mild error is corrected inside the turn: no trim
+    assert abs(_simulate(mild, 1.0, 0.7) - 45) <= mild.tol
+    assert not any("R" in row["keys"] and row["target_before"] == 45.0 for row in mild.log)
 
 
 def test_measure_chunk_splits_by_key():
