@@ -1,6 +1,6 @@
 # Agent and contributor notes
 
-Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12) with inference-time methods. Project docs live in this file (README.md is the public landing page); do not add a docs/ directory.
+Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12). The track allows fine-tuning and forbids training from scratch; we change only how the model is run at inference time, a choice made for time (see "Plan of record"). Project docs live in this file (README.md is the public landing page); do not add a docs/ directory.
 
 ## Layout
 
@@ -10,6 +10,7 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 - `splits/` dev (24) / heldout (147) / all (171) task lists. Regenerate with `splits/make_splits.py`; do not hand-edit.
 - `runs/<exp>/` rollouts, verifier output, logs (git-ignored).
 - `results/experiments.csv` shared experiment log (committed).
+- `research/` working notes behind the plan: baseline census, red-team rulings and plan, autoresearch loop study, out-of-sight analysis (`research/README.md` indexes them). Plan of record: issue #9.
 
 ## Rules
 
@@ -17,7 +18,8 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 - Iterate on `dev`. Do not score `heldout` before code freeze.
 - Final numbers must be closed loop (`--action-source agent` or `refined`) and scored with Gemini 3.1 Pro at the upstream sampling settings. `--action-source dataset` is for fast A/B only.
 - Do not change verifier FPS, resolution, or JPEG settings.
-- A delta smaller than 2x the pass-to-pass std is noise.
+- For a reported claim, a delta smaller than 2x the pass-to-pass std is noise.
+- For dev decisions use the adoption rule ("Plan of record"): a task cell moves only at a full point on the mean of its judge passes, and a flag is adopted only if the gain repeats on both seeds and no gate that passed in the baseline fails (`pwa cells` gives the readout).
 - Screening judge (`--judge-model`, e.g. `gemini-4-hydrogen`) is for dev loops only: picking which arm deserves an official run. The official judge (Gemini 3.1 Pro, upstream settings) decides what ships and produces every reported number. Never quote, plot or compare a screening score against the leaderboard or against an official score.
 - Secrets live in `config/env.sh` only. Never print or commit key values.
 
@@ -51,19 +53,19 @@ Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doc
 - `pwa preview EXP TASK` export the contact sheets the judge sees.
 - `pwa run EXP ...` gen + score + report.
 
-Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source dataset --passes 2`, change code, rerun under a new name, `pwa compare sana-base-dev sana-anchor-v1`.
+Typical loop: run one family of dev tasks per arm (`experiment` workflow, `tasks` input, `num_shards` = number of tasks), the same tasks with a flag on under a new name, then `pwa cells BASE ARM`. Two seeds per arm before adopting anything.
 
 ### Adapters
 
-`adapters/<name>/run.py` imports upstream `run_agent`, applies `adapters/common/agent_api.patch` (sets auth by `PLAYER_API_PROVIDER`), swaps `SanaWMEngine` for our engine, and calls `main()`. Wrappers compose around `generate()`, e.g. `AnchorMemory(base_engine)`. `matrix_game3/run.py` is a stub to fill in.
+`adapters/<name>/run.py` imports upstream `run_agent`, applies `adapters/common/agent_api.patch` (sets auth by `PLAYER_API_PROVIDER`), swaps `SanaWMEngine` for our engine, and calls `main()`. Wrappers compose around `generate()`, e.g. `AnchorMemory(base_engine)`. `matrix_game3/run.py` is a stub and stays one: the Matrix-Game 3.0 line was dropped (issue #4 closed). `sana_wm` ran a one-task smoke test and SANA-WM work is stopped.
 
 `lingbot_world2` (14B) and `lingbot_world2_1p3b` (1.3B) run LingBot-World v2 causal-fast (PlayWorld paper: 1.82 overall via its web demo). Notes:
 
 - The released code is conditioned on camera poses only; its WASD/IJKL files are never read. `adapters/lingbot_world2/poses.py` turns each key into per-frame camera deltas (signs checked against upstream examples; rotation rates via `LINGBOT_YAW_RAD` / `LINGBOT_PITCH_RAD`).
-- Turn calibration, off by default: `-- --lingbot-turn-cal` (Actions input `extra`) or `LINGBOT_TURN_CAL=1`. Dataset tokens are fixed angles in the task prompts ("→*4" = 90 degrees, "u*2" = 40 degrees) but the default 0.03 / 0.01 rad per frame turns 34 / 11 degrees per 20-frame token. The flag sets the rates per call so a token is 22.5 degrees of yaw and 20 of pitch in dataset mode, and a closed-loop chunk is 2 tokens (45 / 40 degrees). Not corrected for tasks whose dataset actions exceed the frame budget and are rescaled by the harness. Unscored until the tier 1 run in its PR.
-- Caption prompt, off by default: `-- --lingbot-caption-prompt` (Actions input `extra`) or `LINGBOT_PROMPT_MODE=auto|caption`. The harness gives the engine the agent goal as its text prompt: "wait and observe" on 29 of 30 Insight tasks, camera instructions on Out-of-sight. The flag conditions LingBot on the task's `image_caption` instead (plus the goal for IF, whose goal describes the subject's action), as upstream's Genie 3 and HappyOyster players do; the agent still sees the goal (`adapters/common/prompts.py`). Unscored until the tier 1 run in its PR.
-- Re-anchoring, off by default, session mode only: `-- --lingbot-reanchor` (Actions input `extra`) or `LINGBOT_REANCHOR=1`. `session.ReturnDetector` follows the commanded camera track; when it comes back within 6 degrees and 2 key units of the start pose after leaving (20 degrees or 8 units), that latent of the image conditioning `y` is set to the input image again (mask 1, latent of a still clip), once per visit. GC call names only (`LINGBOT_REANCHOR_TASKS`, a regex), because the Out-of-sight rubric scores a first-frame reset as level 1. The track is the commanded one: rotate-then-walk loops such as GC038 close only with `--lingbot-turn-cal`. Unscored until the tier 1 run in its PR.
-- Player hint, off by default: `-- --lingbot-player-hint` (Actions input `extra`) or `LINGBOT_PLAYER_HINT=1`. Upstream never tells the closed-loop player how far one action turns the camera (default rates: 55 degrees of yaw per chunk, 48 on the first; 45 with turn calibration). The flag appends to the goal the player reads the size of one action and the commanded camera relative to the start (heading, tilt, position, total turned), replayed with `poses.py` (`adapters/lingbot_world2/player_hint.py`). The pose is commanded, not measured from the video. LingBot's own prompt and inputs do not change, and dataset mode and wait-only insight tasks never call the player, so only closed-loop GC, IF and out-of-sight rollouts differ. `gen.log` prints the pose at each decision. Unscored until the tier 1 run in its PR.
+- Turn calibration, off by default: `-- --lingbot-turn-cal` (Actions input `extra`) or `LINGBOT_TURN_CAL=1`. Dataset tokens are fixed angles in the task prompts ("→*4" = 90 degrees, "u*2" = 40 degrees) but the default 0.03 / 0.01 rad per frame turns 34 / 11 degrees per 20-frame token. The flag sets the rates per call so a token is 22.5 degrees of yaw and 20 of pitch in dataset mode, and a closed-loop chunk is 2 tokens (45 / 40 degrees). Not corrected for tasks whose dataset actions exceed the frame budget and are rescaled by the harness. Unscored; under the plan of record it is evaluated only inside the arms that need it (player hint, GC re-anchor), not as a separate decision.
+- Caption prompt, off by default: `-- --lingbot-caption-prompt` (Actions input `extra`) or `LINGBOT_PROMPT_MODE=auto|caption`. The harness gives the engine the agent goal as its text prompt: "wait and observe" on 29 of 30 Insight tasks, camera instructions on Out-of-sight. The flag conditions LingBot on the task's `image_caption` instead (plus the goal for IF, whose goal describes the subject's action), as upstream's Genie 3 and HappyOyster players do; the agent still sees the goal (`adapters/common/prompts.py`). Unscored; adopted only under the adoption rule ("Plan of record").
+- Re-anchoring, off by default, session mode only: `-- --lingbot-reanchor` (Actions input `extra`) or `LINGBOT_REANCHOR=1`. `session.ReturnDetector` follows the commanded camera track; when it comes back within 6 degrees and 2 key units of the start pose after leaving (20 degrees or 8 units), that latent of the image conditioning `y` is set to the input image again (mask 1, latent of a still clip), once per visit. GC call names only (`LINGBOT_REANCHOR_TASKS`, a regex), because the Out-of-sight rubric scores a first-frame reset as level 1. The track is the commanded one: rotate-then-walk loops such as GC038 close only with `--lingbot-turn-cal`. Unscored; adopted only under the adoption rule ("Plan of record").
+- Player hint, off by default: `-- --lingbot-player-hint` (Actions input `extra`) or `LINGBOT_PLAYER_HINT=1`. Upstream never tells the closed-loop player how far one action turns the camera (default rates: 55 degrees of yaw per chunk, 48 on the first; 45 with turn calibration). The flag appends to the goal the player reads the size of one action and the commanded camera relative to the start (heading, tilt, position, total turned), replayed with `poses.py` (`adapters/lingbot_world2/player_hint.py`). The pose is commanded, not measured from the video. LingBot's own prompt and inputs do not change, and dataset mode and wait-only insight tasks never call the player, so only closed-loop GC, IF and out-of-sight rollouts differ. `gen.log` prints the pose at each decision. Unscored; adopted only under the adoption rule ("Plan of record").
 - Flag counters (`adapters/lingbot_world2/flag_stats.py`): after each task `gen.log` gets `[lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30` (caption `off|used|fallback|none`, reanchor `off|on|skip`), a `[lingbot] flags total ...` line at the end, and the same fields under `lingbot_flags` in `<task>_result.json`. Grep it before scoring: a flag that is on but shows `caption=fallback`, `reanchor=on reanchor_events=0` on every GC task, or `player_hints=0` on closed-loop tasks did nothing. The `[lingbot] mode:` line lists every active flag.
 - Default is a persistent session (`adapters/lingbot_world2/session.py`, `reset/step`): the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache survive across agent steps. `<task>_chunk_<NN>` following chunk NN-1 of the same task continues; chunk 01, another task or `<task>_full` (dataset mode: reset plus one long step) resets. A/B baseline: `-- --lingbot-stateless` (Actions input `extra`) or `LINGBOT_SESSION=0`, a fresh upstream rollout per call. `LINGBOT_STREAM_DECODE=0` re-decodes all latents per step instead of streaming.
 - Session frame accounting: a request of F frames runs n = round((F-1)/16) latent chunks; the first step returns 16n-3 frames (input frame first), later steps the previous last frame plus 16n new ones, so the harness stitch is seamless (default 33 -> 29, then 33). The stateless path rounds up to 4n+1 frames with latent length a multiple of 4 (33 -> 45; `-- --chunk-frames 29` for exact chunks).
@@ -91,11 +93,11 @@ Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner
   - At launch the workflow adds a `status=running` row for EXP to `results/experiments.csv` on main, with `run_url` linking to the Actions run. The final row (`status=scored`) replaces it. A gen-only run ends as `generated`, and a failed or cancelled job as `failed` / `cancelled`. Rows from before these columns have them blank. These marker steps never fail the job.
   - Every scored run commits `results/reports/EXP.md` to main: the report plus a table of every task with its mean, status and the verifier's reason. Read that instead of downloading the artifact.
   - Each marker is one more commit to main touching `results/experiments.csv`, so it also triggers a Pages deploy.
-- LingBot memory probe: Actions tab -> `probe` -> Run workflow, on a ref that contains `probe_lingbot.py` (the #37 branch until it merges). Inputs: exp, variant (1.3b|14b), tasks, angles, holds, windows (e.g. `18:6,-1:0`), dino, gpu. One Modal GPU, no scoring and no results row; the step summary shows `summary.tsv` and `runs/EXP/probe` is uploaded as an artifact.
+- LingBot memory probe (out-of-sight memory work is cut for the event; kept for future work): Actions tab -> `probe` -> Run workflow, on a ref that contains `probe_lingbot.py` (the #37 branch until it merges). Inputs: exp, variant (1.3b|14b), tasks, angles, holds, windows (e.g. `18:6,-1:0`), dino, gpu. One Modal GPU, no scoring and no results row; the step summary shows `summary.tsv` and `runs/EXP/probe` is uploaded as an artifact.
 - Full 171-task runs: `stage=gen-only` first, then `stage=score-only` (jobs cap at ~6 h).
 - Repo secrets: `GEMINI_API_KEY`, `PLAYER_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, optional `HF_TOKEN`. Optional repo variables: `PLAYER_API_PROVIDER`, `PLAYER_API_URL`, `PLAYER_MODEL`.
 - From a laptop: `modal run modal_app.py --exp NAME --split dev --num-shards 4`, then `modal volume get pwa-runs /NAME runs/`, then `pwa score NAME`.
-- The SANA image install in `modal_app.py` is unverified until the first real run.
+- The SANA image install in `modal_app.py` was verified by a one-task smoke run. SANA-WM work is stopped, so it is not maintained further.
 
 ### Run speed
 
@@ -105,27 +107,40 @@ Sharding is per family: `pwa/gen.py::shard_tasks()` (mirroring upstream `run_age
 
 - dev (6 per family): 4 shards -> busiest shard runs 8 tasks; 6 shards -> 4 tasks, the floor. More than 6 shards adds nothing.
 - all (gc 48, if 50, insight 30, outsight 43): 4 -> 44 tasks per shard, 8 -> 23, 24 -> 9, 50 -> 4.
+- One family per dispatch (`tasks` input listing that family's tasks, `num_shards` = number of tasks) gives one task and one model load per GPU. This is how dev arms are run; no code change was needed.
+
+Measured on `lb14-session-agent-dev-v1` (14B, closed loop, gpt-4.1-mini player, 24 dev tasks, 4 H100 shards), recomputed from its `gen.shard*.log`, `meta.shard*.json` and `_result.json` files (`research/autoresearch-loop.md`):
+
+| Step | Measured |
+|---|---|
+| Model load, once per family per shard | 267 to 357 s over 16 loads (10 of 16 between 273 and 290 s) |
+| First chunk of a rollout (session reset, `y` encode, 29 frames) | 93.5 to 103.1 s on 23 of 24 tasks; 30.6 s on OE064 |
+| Each later chunk (33 frames) | 10.4 to 12.3 s, mostly 11.3 to 11.5 s |
+| One rollout, first chunk included, load excluded | insight (no player) 367 to 443 s; agent tasks 522 to 610 s |
+| Player calls | about 4 s per chunk on average; 3 timeouts (retried), 0 fallbacks |
+| Scoring, 24 tasks x 2 passes, 6 workers | about 10 min, fetch included |
 
 Verified:
+- The run's 142 min generation wall clock (about 18 min per task on an 8-task shard) includes GPU queueing: shards 0 and 1 started at 21:35 and 21:36 UTC, shard 3 at 22:31, and shard 2 two seconds after shard 0 finished. Each shard's own time matches the components above (shard 0: 8 tasks and 4 loads in 87 min). Earlier "over 23 min per task" figures were queueing too.
+- Every agent task in that run ran to the 30-chunk cap or one short of it (mean 29.7 chunks, about 60 s of video); END came only as the last or second-to-last step.
 - Launching several `experiment` runs at once can fail with Modal `App create rate limit exceeded` (`RESOURCE_EXHAUSTED`) in the prefetch step, before any GPU starts. Stagger dispatches by 1-2 min; rerun under the same name is fine if nothing was generated.
 - Scoring runs on the Actions runner with `pwa score --workers 6`; it is serial after generation.
-- `lb14-session-agent-dev-v1` (14B, closed loop, 24 dev tasks, 4 H100 shards): 142 min generation wall clock, about 9.5 GPU-hours, so about 18 min per task on a shard with 8 tasks. Accounted GPU time: 136 min denoising (717 steps at 11.3 s), 40 min first steps (25 at 95 s), 83 min model loads (17 loads, one per family per shard). About 310 GPU-min is outside the `[lingbot]` timings, mostly agent API waits and video I/O (not split further). Source: issue #13.
-- Every agent task in that run hit the 30-chunk cap (mean 29.7 chunks, about 60 s of video); the player almost never returns END. 742 agent calls, 3 timeouts (retried), 0 fallbacks.
-- The single-task GC005 time (~15 min) underestimates dev tasks: at 23:40 UTC on 2026-11-14, `lb14-turncal-dev-v1` (busiest shard 4 tasks) was still generating after 94 min and `lb14-session-dev-v1` (8 tasks) after 126 min, so those two runs were slower per task than `lb14-session-agent-dev-v1` (cause not checked).
 
 Unverified (check and update):
-- Concurrent H100 containers available on our quota (`lb14-turncal-dev-v1` asked for 24, but only 6 have dev work).
+- Concurrent H100 containers on our quota. Until it is read, size requests to about 10 GPUs in flight; the starting-model 171 run uses 8 shards so dev arms are not starved.
+- Per-chunk player time and chunk counts with `gpt-6-luna` (longer replies, maybe earlier END). Read them from the `lb14-luna-*` runs.
 - Whether a shard with no tasks exits before loading the model.
-- How the ~310 unaccounted GPU-min of `lb14-session-agent-dev-v1` split between agent API latency and video I/O.
+- Why `lb14-turncal-dev-v1` (busiest shard 4 tasks) and `lb14-session-dev-v1` (8 tasks) were still generating after 94 and 126 min at 23:40 UTC on 2026-11-14; probably the same queueing, not checked.
+- One family per dispatch at one task per GPU: estimated about 15 min of generation per arm (one load plus one rollout), not yet timed end to end. A one-task dispatch took about 14.5 min end to end in the loop study (not re-checked).
 
-Levers, biggest first: load the model once per shard instead of once per family (83 of 568 GPU-min in the dev baseline); raise `num_shards` up to the largest family size (dev: 6); one task per GPU would need cross-family sharding in `pwa gen`; 1.3B for A/B, 14B to confirm; `--action-source dataset` for A/B only (no agent calls, not for final numbers); `tasks` input to run only the family a method targets; start the next A/B while the last one runs.
+Full 171-task budget at 8 shards (busiest shard 23 tasks: 6 GC, 7 IF, 4 insight, 6 out-of-sight): from the component timings, about 19 agent rollouts at ~9.5 min, 4 insight at ~7 min and 4 loads at ~5 min, so about 3.8 h if no shard queues (estimate). Using the queued 18 min/task wall clock instead gives ~6.9 h, over the 350 min job cap (issue #9). Confirm with the Luna timings before sizing shards, and size against the slowest shard and the available quota.
+
+Levers, biggest first: one family per dispatch for dev arms; shared baselines (every arm compares with the same main baseline at two seeds); stagger dispatches; load the model once per shard instead of once per family (83 of 568 GPU-min in the dev baseline; not built). Not adopted before freeze: cross-family sharding, 50-shard runs, an A/B matrix workflow, a warm Modal class, the 1.3B for decisions, dataset-mode screening of the camera families.
 
 | Exp | Runner | Tasks | Shards | GPU | Gen wall clock | Min/task | Notes |
 |---|---|---|---|---|---|---|---|
 | lb14-session-agent-gc005-v1 | lingbot_world2 | 1 | 1 | H100 | <=16 min | <=16 (incl. load) | closed loop; upper bound, gen start to job end incl. scoring |
-| lb14-session-agent-dev-v1 | lingbot_world2 | 24 | 4 | H100 | 142 min | ~18 (incl. 4 loads per shard) | closed loop; every agent task ran all 30 chunks |
-
-Full 171-task budget at the measured ~18 min/task: 4 shards ~13 h and 8 shards ~6.9 h (both over the 6 h job cap), 24 shards ~2.7 h, 50 shards ~1.2 h.
+| lb14-session-agent-dev-v1 | lingbot_world2 | 24 | 4 | H100 | 142 min | ~18 wall clock incl. queueing; ~9.5 per agent rollout on the GPU | closed loop, gpt-4.1-mini player; every agent task ran 28 to 30 chunks |
 
 ### Results site
 
@@ -137,9 +152,45 @@ Every scored `experiment` run publishes its rollouts. The "Publish scenes" step 
 
 Attribution must stay correct everywhere it appears: the site's footer credits and Scenes line, README "Credits", and the release notes in `experiment.yml`. Facts: PlayWorld is Ding et al., arXiv:2608.13552 (code kxding/PlayWorld, no license; data jocelynd/playworld-bench). Its task images come from Pexels and web image search with source-specific terms, and the task JSON does not record each image's source. LingBot-World v2 is the Robbyant Team, arXiv:2607.07534, CC BY-NC-SA 4.0. Its weights and modules run unchanged, but `adapters/lingbot_world2/session.py` re-implements its sampling loop, so never call our use "unmodified". Credit the model that actually generated a run, never LingBot by default. Scene videos are released under CC BY-NC-SA 4.0, non-commercial, and removal requests go to an issue titled "Scene removal request". Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA), Matrix-Game 3.0 (Skywork AI) and LingBot come from the PlayWorld paper.
 
-## Plan (30 hours)
+## Plan of record
 
-Submission due Sunday 14:30: repo link, 2-minute demo video, short description. No commits before the event starts.
+Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single plan (issue #48 and its sub-issues are closed as research records). Reasoning, rulings and the three candidate plans: `research/red-team-and-plan.md`.
+
+**Goal by Sunday 14:30 Pacific:** a closed-loop 171-task score for the starting model and for our method on the same harness, a described method, and evidence of where the world still breaks. Submission: repo link, 2-minute demo video, short description.
+
+### Settled
+
+- Model: LingBot-World v2 14B, persistent session. The starting model is the same runner with every method flag off.
+- Player: `gpt-6-luna` for every compared run (#61, the workflow's `player_model` default). The gpt-4.1-mini baseline is a diagnostic only.
+- Official judge: Gemini 3.1 Pro at upstream settings, for every reported number.
+- Screening judge: `gemini-4-hydrogen` (`--judge-model`), for dev loops only, kept in its own eval folder and never written to `results/experiments.csv`. Used only if a calibration on the 24 baseline videos shows it agrees with the official judge.
+- The dataset `image_caption` may be used as model input, and this is disclosed. Upstream's Genie 3 player sends it to Genie 3.
+- The coordinator session launches experiment runs, merges the integration branch (`method/candidate-v1`, PR #63) when CI is green, and freezes and launches the final run.
+
+### Timeline (Pacific)
+
+| When | What |
+|---|---|
+| Saturday 16:50 | Player check with `gpt-6-luna` on the 6 out-of-sight and 6 GC dev tasks, read from action logs: reversals, return to start, early END. Caption prompt on the 6 insight tasks (`lb14-cap-ins-s42`). |
+| After the player check | Starting-model run on all 171 tasks, generation only, 8 shards. Scored at freeze. |
+| To about 19:00 | Integration branch: caption prompt (#32), GC re-anchor (#46), player hint (#59), each behind an off-by-default flag with per-task counters. Screening-judge option and its calibration. |
+| 19:00 to 22:30 | Second seeds for whatever moved; caption guard runs on the camera families; re-anchor. |
+| 22:30 to Sunday 01:30 | All adopted flags together on the 24 dev tasks, two seeds, official judge. |
+| Sunday 02:00, hard limit 03:30 | Code freeze. Method run on 171 tasks; score the starting-model run. |
+| To 10:30 | Scoring, refills, second seeds if GPUs allow. Numbers freeze at 10:30. |
+| Overnight | Rigour: failure taxonomy per family, horizon curve from scored rollout prefixes, judge-noise table, failure gallery. |
+| 10:30 to 13:45 | Video, description, submit. |
+
+### Testing tiers and the adoption rule
+
+- **Smoke tier:** 2 or 3 targeted tasks with the flag on, read from `gen.log` (the `[lingbot]` lines and the flag counters) and the action logs, not from scores. It answers "did the flag fire and did nothing break".
+- **Decision tier:** all 6 dev tasks of the target family, 2 seeds, official judge, against the shared main baseline at the same seeds.
+- **Adoption rule:** a task cell (one task at one seed) moves only when the mean of its judge passes changes by a full point. A flag is adopted only if the gain repeats on both seeds and no gate that passed in the baseline fails. Read it with `pwa cells`. The baseline showed two passes on the same video disagreeing by 0.5 or more on 10 of 24 tasks, so smaller per-task moves and family-mean thresholds are inside judge noise.
+- Reported claims still need a closed-loop run scored by Gemini 3.1 Pro over 2 or more passes, with a delta of at least 2x the pass std.
+
+### Cut for this event
+
+Out-of-sight memory and sink work (sink changes, the state writer, the return prompt switch, the still-camera probe), best-of-N, fine-tuning of any kind (the self-distillation LoRA in #58 is future work), the 1.3B for decisions, SANA-WM, Matrix-Game 3.0, a plan-aware player fed the dataset actions, dataset-mode screening of the camera families, and new autoresearch ideas (the loop is paused). Fine-tuning and out-of-sight memory are written up as findings and future work. Reasons for each: `research/red-team-and-plan.md` ("What was cut, and why").
 
 ### Reference scores (paper, full benchmark, 1-5)
 
@@ -149,56 +200,26 @@ Submission due Sunday 14:30: repo link, 2-minute demo video, short description. 
 | LingBot-World v2 (web demo) | 2.04 | 2.13 | 1.95 | 1.16 | 1.82 |
 | SANA-WM | 1.72 | 1.89 | 1.13 | 1.16 | 1.48 |
 | Matrix-Game-3.0 | 1.30 | 1.25 | 1.00 | 1.00 | 1.14 |
+| Ours: `lb14-session-agent-dev-v1`, 24 dev tasks, gpt-4.1-mini player (diagnostic only, measured) | 1.83 | 1.81 | 1.58 | 1.33 | 1.64 ± 0.13 |
 
-Genie 3 is weak on insight and out-of-sight. That is where we win. LingBot already beats Genie 3 on insight (1.95 vs 1.51); its gap is out-of-sight (1.16) and GC.
+Genie 3 leads on GC, IF and out-of-sight; LingBot's web demo leads on insight (1.95 vs 1.51). The red-team review estimated that out-of-sight alone cannot reach 2.12 (every out-of-sight task at 2.0 gives about 2.03 overall), so two or three families must move.
 
-### Dev baseline (measured)
+Our row: LingBot v2 14B, persistent session, closed loop, 2 passes, 0 missing, 0 dropped. Dev is 6 tasks per family (task-sampling error roughly 0.2 per family), the paper rows are 171 tasks through LingBot's web demo, and this row used the gpt-4.1-mini player, not `gpt-6-luna`. It is not like for like with 1.82 and is not the starting-model number. The run predates #44 and #47, so it has no `results/reports/` file and no Scenes release.
 
-`lb14-session-agent-dev-v1`: LingBot v2 14B, persistent session, closed loop (gpt-4.1-mini player), 24 dev tasks, 2 passes, 0 missing.
+What its census found (`research/baseline-census.md`, which corrects the first census on issue #49):
 
-| GC | IF | Insight | Out-of-sight | Overall |
-|---|---|---|---|---|
-| 1.83 | 1.81 | 1.58 | 1.33 | 1.64 ± 0.13 |
-
-Dev is 6 tasks per family, and the paper rows are 171 tasks through LingBot's web demo, so this is not like for like with 1.82. Compare new dev runs against this row with `pwa compare`: a delta under 0.25 overall is noise. The run predates #44 and #47, so it has no `results/reports/` file and no Scenes release.
-
-What the failure census (issue #49) found in this run:
-
-- The player decides most GC and out-of-sight outcomes. It reverses left and right 9 to 17 times per out-of-sight rollout and up to 25 on GC (GC036). 4 of 6 out-of-sight rollouts never return to the start view, so no content is graded.
-- By the rule set before the census, out-of-sight content work (#51, #52, #53) waits until control and the player are fixed (#6; turn calibration, player hint PR #59).
+- The player decides most GC and out-of-sight outcomes. It reverses direction 9 to 17 times per out-of-sight rollout and up to 25 on GC (GC036). 4 of 6 out-of-sight rollouts never return to the start view, so no content is graded. It sent END on 7 of 18 agent tasks, always as its 29th or 30th step.
 - Where the camera did return (OE047, OE048), two passes on the same video differ by up to 3 points.
-- Insight (1.58) is below the paper with no player involved: all six rollouts are 30 WAIT chunks and three are flagged static in at least one pass. The caption prompt (PR #32) is the first lever.
-- IF: three of six rollouts are `W` for 29 chunks.
+- Insight (1.58) is below the paper with no player involved: all six rollouts are 30 WAIT chunks, and four (OE001, OE005, OE018, OE035) are flagged static in at least one pass. The caption prompt (#32) is the first lever.
+- IF: two of six rollouts are `W29 E1` (IF002, IF052), IF031 is `W24 Wt1 W3 E1`, and IF017 turned right for 29 chunks.
 
-### Timeline
-
-| Hours | Goal | Exit criterion |
-|---|---|---|
-| 0-2 | setup.sh, keys, one SANA-WM task generated and scored | one score JSON |
-| 2-6 | MG3 adapter in parallel; dev baseline; measure min/task | baseline in results/experiments.csv; base-model go/no-go |
-| 6-18 | workstreams A-D | each beats baseline on its family (dev) |
-| 18-20 | integrate, closed-loop dev run, 2 passes | combined > baseline |
-| **20** | **code freeze**, full 171 closed-loop run, sharded | |
-| 20-26 | full run + 2-3 verifier passes | final score with std |
-| 26-30 | horizon curve, failure gallery, writeup, demo | submission |
-
-Full-run budget: `171 * min_per_task / n_gpus / 60` must fit in ~6 h. Check at hour 4.
-
-### Workstreams
-
-- **A. Insight progress scheduler.** LLM plans process stages, re-prompt per chunk, stall detector forces progress. WAIT-only tasks run with no agent calls.
-- **B. Control / gate fixes.** Action magnitude calibration, pose-checked correction. Gate fail = 1.0 on GC, IF third-person, out-of-sight.
-- **C. Out-of-sight state tracker.** Save target crop + description on exit, advance state with LLM, condition on edited anchor on return.
-- **D. Eval infra (owner from hour 2).** `pwa`, proxy metrics, horizon curve, failure gallery.
-
-Cut: fine-tuning, full pose-indexed spatial memory. Re-injecting the first frame when the pose returns near the start is in PR #46 (GC only, opt-in, unscored). Telling the player what one action does and where the commanded camera is: PR #59 (opt-in, unscored). Out-of-sight hypotheses and test plan: issue #48.
-
+Expected outcome (estimates from issue #9, nothing scored yet): starting model 1.5 to 1.8 on the full benchmark; method 1.6 to 2.0; chance of passing 2.12 about 5 to 10%.
 
 ### Compute
 
-- Generation (SANA-WM, Matrix-Game 3.0) needs CUDA GPUs: run it on Modal, sharded.
-- Mac Studio (96 GB): `pwa`, scoring (Gemini), agent player and planner calls (OpenAI), proxy metrics on short clips, reviewing rollouts. The upstream SANA runner falls back to CPU off CUDA, so do not generate there.
-- Agent player: the `experiment` workflow's `player_model` input (default `gpt-6-luna`, OpenAI) is passed to the runner as `--agent-model` and checked by the preflight step; `adapters/common/agent_api.py` falls back to `gpt-4.1-mini` outside the workflow (`PLAYER_API_PROVIDER=openai`). The baseline `lb14-session-agent-dev-v1` used gpt-4.1-mini, which reversed direction 9 to 25 times per camera task and never ended a rollout early (#49). Keep one player for every run that is compared. Scorer stays Gemini 3.1 Pro so numbers compare to the leaderboard.
+- Generation (LingBot-World v2) needs CUDA GPUs: run it on Modal H100s, sharded, from the `experiment` workflow.
+- Mac Studio (96 GB): `pwa`, scoring (Gemini), agent player calls (OpenAI), reviewing rollouts. Do not generate there (the upstream runners fall back to CPU off CUDA).
+- Agent player: the `experiment` workflow's `player_model` input (default `gpt-6-luna`, OpenAI) is passed to the runner as `--agent-model` and checked by the preflight step; `adapters/common/agent_api.py` falls back to `gpt-4.1-mini` outside the workflow (`PLAYER_API_PROVIDER=openai`), so set the player explicitly there. Every compared run uses `gpt-6-luna`. The baseline `lb14-session-agent-dev-v1` used gpt-4.1-mini, which reversed direction 9 to 25 times per camera task and never shortened a rollout by more than one chunk (`research/baseline-census.md`). The scorer stays Gemini 3.1 Pro so numbers compare to the leaderboard.
 
 ## Judging
 
