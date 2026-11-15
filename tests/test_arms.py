@@ -296,17 +296,18 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
 
     monkeypatch.setattr(R, "import_run_agent", fake_import)
     default_yaw = P.YAW
+    _, preloaded, _, _ = R.load_pipe()  # what warm_app.py's @modal.enter does before any call
     assert R.main(["run.py", "--tasks", "GC005", "--lingbot-turn-cal", "--lingbot-player-hint", "--lingbot-fast-y"]) == 0
     assert R.main(["run.py", "--tasks", "GC005", "--lingbot-stateless"]) == 0
     assert R.main(["run.py", "--tasks", "GC005"]) == 0
 
-    assert len(loads) == 1  # one pipe for three arms
+    assert len(loads) == 1  # one pipe for three arms, loaded ahead of them
     assert all(getattr(i2v, n) is f for n, f in originals.items())  # loader patches undone after the load
     # fast-start flags are per call: arm 1's streamed y does not leak into arm 3
     assert R.FAST == R.FS.FastFlags()
     a1, a2, a3 = calls
     assert all(c["fresh"] for c in calls) and len({id(c["module"]) for c in calls}) == 3
-    assert a1["engine"].pipe is a2["engine"].pipe is a3["engine"].pipe
+    assert preloaded is a1["engine"].pipe is a2["engine"].pipe is a3["engine"].pipe
     assert a1["argv"] == a2["argv"] == a3["argv"] == ["run.py", "--tasks", "GC005"]  # flags stripped
     # turn-cal arm calibrated; the next arms start from the default rates again
     assert a1["yaw"] != default_yaw and a2["yaw"] == a3["yaw"] == default_yaw == P.YAW
