@@ -46,12 +46,18 @@
   function isTest(r) { return /fake_runner/.test(r.runner || ""); }
   /* Score-less status row the experiment workflow writes while a run is in flight, or when it failed. Not a result. */
   function isLive(r) { return r.overall === null && /^(running|generated|failed|cancelled)$/.test(r.status || ""); }
+  // a status row still saying running long after the ~6 h job cap: the run ended without writing a final status
+  var STALE_MS = 7 * 3600000;
+  function isStale(r) { return r.status === "running" && r.overall === null && r.t !== null && Date.now() - r.t > STALE_MS; }
+  // ended without a result: failed, cancelled, or a stale running row. Hidden by default.
+  function isEnded(r) { return isLive(r) && (r.status === "failed" || r.status === "cancelled" || isStale(r)); }
   function isOpen(r) { return r.action_source === "dataset"; }
   function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
+  // capped smoke tier, a behaviour check only: each rollout was cut to fewer agent chunks than the official 30 (csv max_chunks, or for rows from
+  // before that column an smk-/smkNN- name or notes saying capped smoke); never comparable to a real score
+  function isCapped(r) { return (typeof r.max_chunks === "number" && r.max_chunks > 0) || /^smk\d*-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
   // real run too small to estimate a score: fewer than a dev split of tasks, or a single verifier pass
-  // capped: each rollout was cut to max_chunks agent chunks (official 30), so it is never comparable to a real score
-  function isCapped(r) { return typeof r.max_chunks === "number" && r.max_chunks > 0; }
   function isSmoke(r) { return !isTest(r) && (isCapped(r) || (r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -119,7 +125,7 @@
   /* ---------- state ---------- */
   var ALL = [];
   var source = "";
-  var filt = { runner: "", split: "", action: "", branch: "", tests: false };
+  var filt = { runner: "", split: "", action: "", branch: "", tests: false, ended: false };
   var sort = { key: "overall", dir: -1 };
   var sel = []; // chosen experiment keys for the bar chart, in slot order
   var slotOf = {}; // exp key -> slot 1..4, stable while selected
@@ -130,6 +136,7 @@
   function visible() {
     return ALL.filter(function (r) {
       if (!filt.tests && isTest(r)) return false;
+      if (!filt.ended && isEnded(r)) return false;
       if (filt.runner && r.runner !== filt.runner) return false;
       if (filt.split && r.split !== filt.split) return false;
       if (filt.action && r.action_source !== filt.action) return false;
@@ -178,6 +185,9 @@
     var nt = ALL.filter(isTest).length;
     $("hidden-count").textContent = nt ? "(" + nt + " hidden)" : "";
     $("f-tests").checked = filt.tests;
+    var ne = ALL.filter(function (r) { return isEnded(r) && (filt.tests || !isTest(r)); }).length;
+    $("ended-count").textContent = ne ? "(" + ne + " hidden)" : "";
+    $("f-ended").checked = filt.ended;
   }
 
   /* ---------- leaderboard ---------- */
@@ -196,13 +206,18 @@
   function badgesFor(r) {
     var b = el("div", { class: "badges" });
     if (r.ref) { b.appendChild(el("span", { class: "badge", text: "published, all 171 tasks" })); return b; }
-    if (isLive(r)) b.appendChild(el("span", { class: "badge" + (r.status === "failed" || r.status === "cancelled" ? " warn" : ""), title: "Status row from the experiment workflow. Not a score.", text: r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status }));
+    if (isLive(r)) b.appendChild(el("span", { class: "badge" + (isEnded(r) ? " warn" : ""),
+      title: isStale(r) ? "Marked running at launch and never updated. Jobs stop after about 6 hours, so this run ended without a result." : "Status row from the experiment workflow. Not a score.",
+      text: isStale(r) ? "! no result, stale" : r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status + ", no result" }));
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
     if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "The moves were replayed from the dataset instead of chosen by the AI player. Fine for quick tests, never for final scores.", text: "replayed moves, test only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", title: "An AI player chose every move while the world was being generated (closed loop).", text: "AI played" }));
     if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run from branch " + r.branch + ". The code behind this score is not merged into main yet.", text: "code not merged" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
-    if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: "Each rollout was cut to " + r.max_chunks + " agent chunks instead of 30. A fast smoke check, never comparable to a real score.", text: "capped smoke, " + r.max_chunks + " chunks" }));
+    if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: typeof r.max_chunks === "number" && r.max_chunks > 0
+      ? "Each rollout was cut to " + r.max_chunks + " agent chunks instead of 30. A fast smoke check, never comparable to a real score."
+      : "Capped smoke run: rollouts stop early, on a few chosen tasks. A behaviour check only, not comparable with official scores.",
+      text: typeof r.max_chunks === "number" && r.max_chunks > 0 ? "capped smoke, " + r.max_chunks + " chunks" : "capped smoke" }));
     else if (isSmoke(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: a quick check that the pipeline works, too small to estimate a score.", text: "tiny test run" }));
     return b;
   }
@@ -223,14 +238,16 @@
     if (r.notes && !r.ref) td.appendChild(el("div", { class: "meta-line notes", text: r.notes }));
     tr.appendChild(td);
     var o = el("td", { class: "num overall" });
+    // same rows renderBoard leaves out of BEST: a smoke or capped row that ties a fair best is not underlined
+    var fair = !isSmoke(r);
     if (r.overall === null) dashCell(o);
     else {
-      o.appendChild(el("div", { class: r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
+      o.appendChild(el("div", { class: fair && r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
       if (typeof r.overall_std === "number") o.appendChild(el("div", { class: "std", text: "±" + fmt(r.overall_std) }));
     }
     tr.appendChild(o);
     FAMS.forEach(function (f) {
-      var t = el("td", { class: "num" + (r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
+      var t = el("td", { class: "num" + (fair && r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
     });
     var ckt = el("td", { class: "hide-sm" }); if (r.ref) dashCell(ckt); else ckt.appendChild(checksEl(r)); tr.appendChild(ckt);
     var nt = el("td", { class: "num hide-sm" });
@@ -256,7 +273,8 @@
   function renderBoard() {
     var t = $("board"); clear(t);
     BEST = {};
-    visible().filter(function (r) { return !isCapped(r); }).concat(REFS).forEach(function (r) {
+    // tiny and capped runs never take the underline: it marks the best fair score in each column
+    visible().filter(function (r) { return !isSmoke(r); }).concat(REFS).forEach(function (r) {
       ["overall"].concat(FAMS.map(function (f) { return f[0]; })).forEach(function (k) {
         if (r[k] !== null && (BEST[k] === undefined || r[k] > BEST[k])) BEST[k] = r[k];
       });
@@ -282,7 +300,7 @@
     var tb = el("tbody");
     if (!rows.length) {
       var nt = ALL.filter(isTest).length;
-      var msg = ALL.length ? "No experiments match these filters." + (!filt.tests && nt ? " " + nt + " pipeline test row" + (nt > 1 ? "s are" : " is") + " hidden; tick \"Show pipeline tests\" to see them." : "")
+      var msg = ALL.length ? "No experiments match these filters." + (!filt.tests && nt ? " " + nt + " pipeline test row" + (nt > 1 ? "s are" : " is") + " hidden; tick \"Show pipeline tests\" to see them." : "") + (!filt.ended && ALL.some(isEnded) ? " Runs that ended without a result are hidden; tick \"Show runs with no result\" to see them." : "")
                            : "No experiments logged yet. Run the experiment workflow and rows appear here.";
       tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: String(COLS.length), text: msg })]));
     }
@@ -595,7 +613,7 @@
     li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., \u201CPlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives\u201D, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources\u2019 terms.")]);
     li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, \u201CInfinite Worlds with Versatile Interactions\u201D, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/benceruleanlu/playworld-advancement/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
     li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
-    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-4.1-mini.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the first practice-task baseline used gpt-4.1-mini.")]);
     li([T("Site built with "), A("https://astro.build", "Astro"), T(".")]);
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
     f.appendChild(ul);
@@ -609,35 +627,118 @@
     insight: { name: "Insight evolution", n: 30, q: "Does something changing on screen (melting, filling, growing) keep changing?" },
     outsight: { name: "Out-of-sight evolution", n: 43, q: "When the camera looks away and back, has the hidden part of the world changed sensibly?" }
   };
-  // status: shipped | testing | planned. evidence: experiment names in results/experiments.csv.
+  // status: shipped | testing | planned | dropped. evidence: experiment names in results/experiments.csv.
+  // Plan of record: issue #9. Reasons for dropped cards: research/red-team-and-plan.md.
+  var RESEARCH = "https://github.com/" + REPO + "/blob/main/research/";
   var METHODS = [
-    { title: "Base model: LingBot-World v2", status: "shipped",
-      what: "Uses the open LingBot-World v2 model (1.3B and 14B sizes). Each key the player presses becomes a camera movement.", fams: ["gc", "if", "insight", "outsight"],
-      body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. We run the released 1.3B and 14B checkpoints. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples. Our first baseline on the 24 practice tasks (14B, session memory, AI player, two scorings) is 1.64 ±0.13, below the paper's 1.82. The paper scored LingBot through its web demo on all 171 tasks, so the two numbers are not like for like.",
-      links: [["#14", PR + "14"]], evidence: ["lb14-session-agent-dev-v1", "lb13-stateless-gc005-v1"] },
-    { title: "Persistent session memory", status: "testing",
+    { title: "Base model: LingBot-World v2 14B", status: "shipped",
+      what: "Uses the open LingBot-World v2 model, 14B size. Each key the player presses becomes a camera movement.", fams: ["gc", "if", "insight", "outsight"],
+      body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples. The starting model for the final comparison is this runner with every optional change switched off. Our first baseline on the 24 practice tasks (14B, session memory, gpt-4.1-mini player, two scorings) is 1.64 ±0.13. It is a diagnostic only: the paper scored LingBot through its web demo on all 171 tasks, and the runs we compare now use a different player. The 1.3B size, SANA-WM and Matrix-Game 3.0 are not used for decisions.",
+      links: [["#14", PR + "14"]], evidence: ["lb14-session-agent-dev-v1"] },
+    { title: "Persistent session memory", status: "shipped",
       what: "Keeps the model's short-term memory between the player's moves, instead of starting fresh every two seconds.", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. The first session run (lb14-session-agent-gc005-v1, a one-task smoke test) used the 14B model as a key check, so it is not an A/B against the 1.3B stateless baseline. The 24-task baseline (lb14-session-agent-dev-v1, 1.64) also runs with session memory. No run with session memory off exists on the same tasks and model, so its effect is unmeasured.",
+      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. Every 14B run uses it, including the starting model. No run with session memory off exists on the same tasks and model, so its effect is unmeasured, and no such run is planned before submission.",
       links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1",
       // like-for-like only: same 1.3B runner as the stateless baseline
       match: function (r) { return r.runner === "lingbot_world2_1p3b" && isClosed(r) && !/stateless/i.test(r.exp + " " + r.notes); } },
-    { title: "A. Insight progress scheduler", status: "planned",
-      what: "Tells the model what the scene shows instead of what the player wants, so changes like melting keep going.", fams: ["insight"],
-      body: "An LLM plans the stages of the process, re-prompts each chunk with the next stage, and a stall detector forces progress when frames stop changing. WAIT-only tasks run with no agent calls. In review (#32): condition LingBot on the scene caption instead of the agent goal, which is \"wait and observe\" on 29 of 30 Insight tasks. Measured so far: the baseline scores 1.58 on the 6 practice Insight tasks (paper: 1.95). All six rollouts are 30 WAIT steps with no player involved, and the judge marked three of them static in at least one scoring.", links: [["#32", PR + "32"]], evidence: [] },
-    { title: "B. Control and gate fixes", status: "testing",
+    { title: "AI player: gpt-6-luna", status: "testing",
+      what: "Every run we compare now uses gpt-6-luna as the AI player, instead of gpt-4.1-mini.", fams: ["gc", "if", "outsight"],
+      body: "The failure count on the 24-task baseline found that the player, not the world model, decided most geometry and out-of-sight outcomes. gpt-4.1-mini reversed left and right 9 to 17 times on each out-of-sight task and up to 25 times on a geometry task, and in 4 of 6 out-of-sight rollouts the camera never returned to the start view, so the judge graded no content. It never ended a rollout more than one step early. The first gpt-6-luna runs on the 6 out-of-sight and 6 geometry practice tasks (lb14-luna-oos-s42, lb14-luna-gc-s42) were stopped before they produced a result. The check now runs on the capped smoke tier: smk-gc-base-c10-v1 uses gpt-6-luna with every optional change off on GC005, GC033 and GC036, read from the action logs (reversals, return to start, early END). Because the player changed, the 1.64 baseline is not the starting-model number.",
+      links: [["#61", PR + "61"]], evidence: ["smk-gc-base-c10-v1"] },
+    { title: "Method candidate: caption prompt, re-anchor, player hint", status: "testing",
+      what: "Three optional changes, each off unless switched on, merged together so every test runs the same code.", fams: ["gc", "if", "insight", "outsight"],
+      body: "Caption prompt (#32): gives the model the dataset's scene description instead of the player's goal, which is \"wait and observe\" on 29 of 30 insight tasks. The benchmark's own Genie 3 player sends that description too; we disclose its use. Re-anchor (#46): shows the model the input image again when the commanded camera returns to the start pose, on geometry tasks only. Player hint (#59): tells the AI player how far one action turns the camera and where the commanded camera is relative to the start. Each change logs a per-task counter, so a test shows whether it fired. A change is kept only if per-task scores move by a full point on both of two seeds and no task that passed its gate in the baseline fails it. Merged on main with every change switched off (#63); none is scored yet. The first runs (an insight run with the caption prompt and an all-changes smoke run from the integration branch) were stopped before they produced a result. smk-gc-hint-c10-v1 runs the player hint with turn calibration on the capped smoke tier (GC005, GC033, GC036), next to the same tasks with no changes.",
+      links: [["#63", PR + "63"], ["#32", PR + "32"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: ["smk-gc-hint-c10-v1"],
+      match: function (r) { return r.branch === "method/candidate-v1" || /^cand\d/.test(r.exp) || /caption|re-?anchor|player.?hint/i.test(r.notes); } },
+    { title: "Turn calibration", status: "testing",
       what: "Optional turn fix: one turn key now turns the angle the task expects (22.5° sideways, 20° up or down) instead of 34° and 11°.", fams: ["gc", "if", "outsight"],
-      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. Built: opt-in LingBot turn calibration, so one dataset token turns 22.5 degrees of yaw or 20 of pitch as the task prompts assume, instead of the default 34 and 11 degrees. In review (#46): opt-in re-anchoring for GC tasks, which shows the model the input image again when the commanded camera track returns to the start pose; not yet run on a GPU. In review (#59): an opt-in hint that tells the AI player how far one action turns the camera and where the commanded camera is relative to the start; unit tests only. What the 24-task baseline showed (turn calibration off): the player reversed left and right 9 to 25 times per rollout on the worst tasks, and in 4 of 6 out-of-sight rollouts the camera never returned to the start, so the judge graded no content. At the default rate one turn action is about 55 degrees, so a 90-degree turn is not a whole number of actions. Planned: pose-checked correction.",
-      links: [["#23", PR + "23"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: [],
+      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. At the default rate one closed-loop turn action is about 55 degrees, so a 90-degree turn is not a whole number of actions; with calibration it is 45. Merged with the setting off and unscored. It is tested only together with the player hint and re-anchor, which need it, not as a separate decision. smk-gc-hint-c10-v1 turns it on with the player hint on the capped smoke tier.",
+      links: [["#23", PR + "23"]], evidence: [],
       match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
-    { title: "C. Out-of-sight state tracker", status: "planned",
-      what: "Measures what the model still remembers after the camera looks away, with a look-away-and-back test.", fams: ["outsight"],
-      body: "On exit, save a crop and description of the target; advance its state with an LLM while unseen; on return, condition generation on the edited anchor. In review (#37): a model of what LingBot's KV cache still holds (a 6-latent sink plus the last 8 latents, about 2 s) and a GPU probe that turns away and back to test whether recall fails exactly when the view is evicted. The analysis in issue #48 finds that 31 of the 43 out-of-sight dataset trajectories, as commanded, end at the starting view (33 with turn calibration), which stays in the pinned latents, and that the rubric caps an unchanged return at 1.0. For those tasks the question is whether the scene progresses while unseen. That count is about commanded trajectories and says nothing about where the generated camera ends up with a live player. The first planned step has run: a failure census of the 24-task baseline (issue #49). With the AI player, in 4 of 6 out-of-sight rollouts the generated camera never returned to the start view, and on the two that did return, two scorings of the same video disagreed by up to 3 points. By the rule set before the census, work on hidden-state content waits until the player and turn control are fixed.", links: [["#37", PR + "37"]], evidence: [] },
-    { title: "D. Evaluation harness", status: "shipped",
+    { title: "Evaluation harness", status: "shipped",
       what: "Tools that run each experiment on rented GPUs, score it, log it, and publish this site.", fams: [],
-      body: "pwa CLI (gen, score, report, compare, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page.",
-      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"]], evidence: [] }
+      body: "pwa CLI (gen, score, report, compare, cells, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page. pwa cells shows the per-task scores of two runs side by side and counts the tasks that moved by a full point, the readout for keeping or dropping a change.",
+      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"], ["#64", PR + "64"]], evidence: [] },
+    { title: "Screening judge", status: "shipped",
+      what: "A second judge (gemini-4-hydrogen) for quick checks on practice tasks. Its scores never appear on this page.", fams: [],
+      body: "Scores from the screening judge go to their own folder and are never written to the results log, so they cannot reach the leaderboard. A calibration run against the official judge (Gemini 3.1 Pro at the benchmark's settings) on the 24 baseline videos was stopped before it finished, so how well the two agree is not measured. Capped smoke runs get one pass of it as a behaviour check, and their rows end as generated with no score. Every number we report comes from the official judge.",
+      links: [["#64", PR + "64"]], evidence: [] },
+    { title: "Capped smoke tier", status: "shipped",
+      what: "Quick behaviour checks: each rollout stops after 10 of its 30 chunks, on 2 or 3 chosen tasks, one GPU per task, one pass of the screening judge.", fams: [],
+      body: "Uses the benchmark's own --num-chunks 10 option, so a run finishes in a fraction of the time of a full one. A capped rollout covers a third of the task, so its numbers are not comparable with official scores; its row in the log carries no score and ends as generated. This page badges these rows \"capped smoke\" (name starting smk- or smk13- and similar, or notes saying capped smoke) and keeps them out of the headline, the ruler, the task-type scores, the Progress table and the best-so-far line. They are read for player behaviour and for whether each optional change fired.",
+      links: [], evidence: ["smk-gc-base-c10-v1", "smk-gc-hint-c10-v1"] },
+    { title: "Out-of-sight memory work", status: "dropped",
+      what: "Changes to what the model keeps in memory while the camera looks away. Not pursued before submission.", fams: ["outsight"],
+      body: "Studied: a model of what LingBot's cache still holds (a pinned start plus the last 2 s), a look-away-and-back GPU probe (#37), and proposals to change the pinned memory, rewrite it, or pick the best of several returns. A review ruled most of them unlikely to help or not buildable in time. The baseline then showed that in 4 of 6 out-of-sight rollouts the camera never came back to the start view, so memory changes could not be graded until the player and turn control work. Written up as a finding and future work.",
+      links: [["#37", PR + "37"]], evidence: [], doc: RESEARCH + "out-of-sight-evolution.md" },
+    { title: "Out-of-sight state tracker", status: "dropped",
+      what: "Save what the camera turned away from, update it with a language model, and show it again on return. Not built.", fams: ["outsight"],
+      body: "The plan was to save a crop and description of the target on exit, advance its state with an LLM while unseen, and condition generation on an edited image on return. It was cut for the same reason as the memory work: with the baseline player most out-of-sight rollouts never returned to the start view, so there was nothing to restore, and the build (an image editor plus writing into the model's memory) did not fit the time left.",
+      links: [], evidence: [], doc: RESEARCH + "red-team-and-plan.md" },
+    { title: "Insight progress scheduler", status: "dropped",
+      what: "A language model plans the stages of a process and re-prompts each chunk. Not built.", fams: ["insight"],
+      body: "Cut for time. The caption prompt in the method candidate is the insight change being tested instead. On the baseline, insight scored 1.58 on the 6 practice tasks (paper: 1.95): all six rollouts are 30 wait steps with no player involved, and four were marked static in at least one scoring.",
+      links: [], evidence: [], doc: RESEARCH + "baseline-census.md" },
+    { title: "Fine-tuning", status: "dropped",
+      what: "The track allows fine-tuning; we chose not to train before submission.", fams: [],
+      body: "LingBot-World v2 ships inference code only, and the weights we run are a distilled few-step model whose training loop is not released. A plain low-rank fine-tune would likely break its few-step sampler, and each debug cycle would take about an hour. Kept as future work.",
+      links: [["#58", "https://github.com/" + REPO + "/issues/58"]], evidence: [], doc: RESEARCH + "red-team-and-plan.md" }
   ];
-  var STATUS_LABEL = { shipped: "in use", testing: "built, not yet tested", planned: "in review" };
+  /* ---------- iteration speed (edit here as runs land; measured numbers only) ---------- */
+  // SPEED.runs: wall clock of real runs. SPEED.steps: where the time of one run went. SPEED.levers: status rows.
+  // lever status: in use | open PR | being built | testing
+  var SPEED = {
+    runs: [
+      { exp: "smk-gc-hint-c10-v1", what: "14B, 3 tasks on 3 GPUs, capped at 10 chunks, 1 screening-judge pass", time: "11 min 11 s", note: "end to end" },
+      { exp: "Earlier 1-task dispatch", what: "14B, 1 task on 1 GPU, full length (30 chunks)", time: "about 14.5 min", note: "end to end" }
+    ],
+    steps: [
+      ["Actions setup", "about 1 min"],
+      ["Model load", "289 s"],
+      ["First chunk", "97 s"],
+      ["Each later chunk", "about 11 s"]
+    ],
+    stepsOf: "smk-gc-hint-c10-v1",
+    levers: [
+      { name: "Chunk cap (10 of 30 chunks)", status: "in use" },
+      { name: "Several arms in one dispatch", status: "open PR", link: ["#67", PR + "67"] },
+      { name: "Warm GPU container between runs", status: "being built" },
+      { name: "Faster cold start (model load)", status: "being built" },
+      { name: "1.3B model for smoke runs", status: "testing", note: "speed test running" },
+      { name: "Less Actions overhead per run", status: "being built" }
+    ]
+  };
+  function renderSpeed() {
+    var box = $("speed"); if (!box) return; clear(box);
+    var runs = el("table", null, [el("thead", null, [el("tr", null, [
+      el("th", { class: "exp", scope: "col", text: "Run" }), el("th", { class: "num", scope: "col", text: "Wall clock" })])])]);
+    var rb = el("tbody");
+    SPEED.runs.forEach(function (r) {
+      rb.appendChild(el("tr", null, [
+        el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp }), el("div", { class: "meta-line", text: r.what })]),
+        el("td", { class: "num" }, [el("div", { text: r.time }), el("div", { class: "std", text: r.note })])]));
+    });
+    runs.appendChild(rb);
+    var steps = el("table", null, [el("thead", null, [el("tr", null, [
+      el("th", { class: "exp", scope: "col", text: "Step in " + SPEED.stepsOf }), el("th", { class: "num", scope: "col", text: "Time" })])])]);
+    var sb = el("tbody");
+    SPEED.steps.forEach(function (st) { sb.appendChild(el("tr", null, [el("td", { class: "exp", text: st[0] }), el("td", { class: "num", text: st[1] })])); });
+    steps.appendChild(sb);
+    var ul = el("ul", { class: "levers" });
+    SPEED.levers.forEach(function (l) {
+      var cls = { "in use": "ok", "open PR": "partial", "testing": "warn" }[l.status] || "";
+      var li = el("li", null, [el("span", { class: "nm", text: l.name }), el("span", { class: "badge " + cls, text: l.status })]);
+      if (l.note) li.appendChild(el("span", { class: "std", text: l.note }));
+      if (l.link) li.appendChild(el("a", { href: l.link[1], target: "_blank", rel: "noopener", text: "PR " + l.link[0] }));
+      ul.appendChild(li);
+    });
+    box.appendChild(el("div", { class: "speedgrid" }, [
+      el("div", { class: "scroll" }, [runs]), el("div", { class: "scroll" }, [steps])]));
+    box.appendChild(el("h3", { class: "levhead", text: "Speed changes" }));
+    box.appendChild(ul);
+  }
+
+  var STATUS_LABEL = { shipped: "in use", testing: "built, not yet tested", planned: "in review", dropped: "dropped" };
 
   /* ---------- protocol checks ---------- */
   var CHECKS = [
@@ -807,15 +908,23 @@
   // one row per change: name, status, measured result; description and PR links open on click
   function renderMethods() {
     var box = $("methods"); clear(box);
-    var order = { shipped: 0, testing: 1, planned: 2 };
+    var order = { shipped: 0, testing: 1, planned: 2, dropped: 3 };
     METHODS.slice().sort(function (a, b) { return order[a.status] - order[b.status]; }).forEach(function (mth) {
-      var ev = mth.evidence.map(rowByExp).filter(function (r) { return r && !isLive(r); });
-      if (mth.match) realRows().forEach(function (r) { if (!isLive(r) && mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
+      // evidence is a scored, uncapped run; capped smoke and status rows only feed the "running" note
+      var ev = mth.evidence.map(rowByExp).filter(function (r) { return r && !isLive(r) && !isCapped(r); });
+      if (mth.match) realRows().forEach(function (r) { if (!isLive(r) && !isCapped(r) && mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
+      // score-less rows still running or generated (capped smoke ends as generated); failed, cancelled and stale rows are not listed
+      var pend = function (r) { return r && isLive(r) && !isEnded(r); };
+      var inflight = mth.evidence.map(rowByExp).filter(pend);
+      if (mth.match) realRows().forEach(function (r) { if (pend(r) && mth.match(r) && inflight.indexOf(r) < 0) inflight.push(r); });
+      var anyRunning = inflight.some(function (r) { return r.status === "running"; });
       var st = mth.status === "testing" && ev.length ? "shipped" : mth.status;
       var stText = mth.status === "testing" && ev.length ? "measured" : STATUS_LABEL[mth.status];
       var result;
       if (ev.length) result = el("span", { class: "res" }, [el("b", { text: fmt(ev[0].overall) }), document.createTextNode(" on " + ev[0].n_tasks + " task" + (ev[0].n_tasks === 1 ? "" : "s"))]);
       else if (mth.status === "planned") result = el("span", { class: "res none", text: "in review" });
+      else if (mth.status === "dropped") result = el("span", { class: "res none", text: "not run" });
+      else if (inflight.length) result = el("span", { class: "res none", text: inflight.every(isCapped) ? (anyRunning ? "capped smoke running" : "capped smoke, no score") : (anyRunning ? "run in progress" : "generated, not scored") });
       else if (!mth.fams.length) result = el("span", { class: "res none", text: "tooling" });
       else result = el("span", { class: "res none", text: mth.baseline ? "no fair comparison yet" : "not tested yet" });
       var summary = el("summary", null, [
@@ -826,9 +935,11 @@
       var body = el("div", { class: "more" }, [el("p", { text: mth.what || mth.body })]);
       if (mth.what && mth.body) body.appendChild(el("p", { class: "std", text: mth.body }));
       if (ev.length) body.appendChild(el("p", { class: "std", text: "Runs: " + ev.map(function (r) { return r.exp + " (" + fmt(r.overall) + ", " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop") + ")"; }).join("; ") }));
+      else if (inflight.length) body.appendChild(el("p", { class: "std", text: "Logged without a score: " + inflight.map(function (r) { return r.exp + " (" + (isCapped(r) ? "capped smoke, " : "") + (r.status === "running" ? "running" : "generated") + ")"; }).join("; ") + "." }));
       else if (mth.baseline) { var br = rowByExp(mth.baseline); body.appendChild(el("p", { class: "std", text: "Baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + "." })); }
       var links = el("p", { class: "links" });
-      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: (/\/issues\//.test(l[1]) ? "Issue " : "PR ") + l[0] })); });
+      if (mth.doc) links.appendChild(el("a", { href: mth.doc, target: "_blank", rel: "noopener", text: "Research note" }));
       if (links.childNodes.length) body.appendChild(links);
       box.appendChild(el("li", null, [el("details", null, [summary, body])]));
     });
@@ -843,7 +954,7 @@
     });
     t.appendChild(el("thead", null, [hr]));
     var tb = el("tbody");
-    var rows = realRows().filter(function (r) { return isClosed(r) && r.overall !== null && r.t !== null; })
+    var rows = realRows().filter(function (r) { return isClosed(r) && !isCapped(r) && r.overall !== null && r.t !== null; })
       .sort(function (a, b) { return a.t - b.t || a.order - b.order; });
     var best = {}, recs = [];
     rows.forEach(function (r) {
@@ -1034,7 +1145,7 @@
   function renderAll() {
     var vis = visible();
     pruneSel(vis);
-    renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords();
+    renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords(); renderSpeed();
     renderTiles(); renderBoard(); renderBarChips(vis); renderBars(vis); renderLine(vis); renderCompare(vis);
     syncUrl();
     var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
@@ -1045,6 +1156,7 @@
     var q = new URLSearchParams(location.search);
     URLKEYS.forEach(function (k) { filt[k[1]] = q.get(k[0]) || ""; }); // unknown values are dropped by renderFilters
     filt.tests = q.get("tests") === "1";
+    filt.ended = q.get("ended") === "1";
     var sv = q.get("sort") || "", d = sv.charAt(0) === "-" ? -1 : 1, sk = sv.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
     scenesExp = q.get("scenes") || "";
@@ -1056,6 +1168,7 @@
       var q = new URLSearchParams(location.search);
       URLKEYS.forEach(function (k) { if (filt[k[1]]) q.set(k[0], filt[k[1]]); else q.delete(k[0]); });
       if (filt.tests) q.set("tests", "1"); else q.delete("tests");
+      if (filt.ended) q.set("ended", "1"); else q.delete("ended");
       if (sort.key === "overall" && sort.dir < 0) q.delete("sort"); else q.set("sort", (sort.dir < 0 ? "-" : "") + sort.key);
       if (cmpBase && cmpBase !== cmpAuto) q.set("base", cmpBase); else q.delete("base");
       if (scenesExp && (scenesExp !== scenesDefault || scenesTask)) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
@@ -1090,7 +1203,8 @@
     $("f-split").addEventListener("change", function (e) { filt.split = e.target.value; renderAll(); });
     $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
     $("f-branch").addEventListener("change", function (e) { filt.branch = e.target.value; renderAll(); });
-    $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderAll(); });
+    $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderFilters(); renderAll(); });
+    $("f-ended").addEventListener("change", function (e) { filt.ended = e.target.checked; renderAll(); });
     $("charts-wrap").addEventListener("toggle", function () { if ($("charts-wrap").open) { var v = visible(); renderBars(v); renderLine(v); } });
     $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); syncUrl(); });
     var rz = null, lastW = window.innerWidth;
