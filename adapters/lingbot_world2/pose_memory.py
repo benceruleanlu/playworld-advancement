@@ -1,14 +1,16 @@
 """Pose-indexed memory (opt-in, session only; numpy only, no torch import).
 
 `--lingbot-pose-memory` (LINGBOT_POSE_MEMORY=1) keeps a bank of every generated latent chunk of a rollout, keyed by
-its commanded camera pose (PoseTrack.latents, the intended track). Before a chunk is generated, the bank is
-searched for a chunk that (1) has left the KV cache (older than the rolling window and not part of the sink),
-(2) whose view the camera has left since (a later latent looked more than `leave_deg` away or moved more than
-`leave_trans` key units), and (3) whose view overlaps the upcoming chunk's (within `deg` degrees and `trans` key
-units). The most recent such sighting wins, so the scene state put back is the latest one seen, not frame 0.
+its camera pose (`--lingbot-pose-mem-track intended`, PoseTrack.latents, or `model`, PoseTrack.model_latents).
+Before a chunk is generated, the bank is searched for a chunk that (1) has left the KV cache (older than the rolling
+window and not pinned by `anchor`), (2) whose view the camera has left since (a later latent looked more than
+`leave_deg` away or moved more than `leave_trans` key units), and (3) whose view overlaps the upcoming chunk's (within
+`deg` degrees and `trans` key units, or via 3D focus-point projection when `--lingbot-pose-mem-focus Z` > 0). The most
+recent such sighting wins, so the scene state put back is the latest one seen, not frame 0.
 Its keys/values are recomputed (one clean t=0 forward of the stored x0 into the sink slots after the first
-`anchor` latents, session._mem_recompute) and stay there until the selection changes; when nothing matches the
-original sink is copied back (`fallback start`, default) or the last memory is kept (`fallback keep`).
+`anchor` latents, session._mem_recompute, with relative motion `--lingbot-pose-mem-rel stored|still|current`) and stay
+there until the selection changes; when nothing matches the original sink is copied back (`fallback start`, default) or
+the last memory is kept (`fallback keep`).
 
 Storage is option (b) of the feasibility study: only the clean latents x0 (16 x 4 x lat_h x lat_w fp32, about
 1.5 MB per chunk at 480p), on the host, capped by `max_mb` (oldest entries evicted first). Option (a), the
@@ -35,8 +37,11 @@ HFOV = math.degrees(2 * math.atan(P.INTRINSICS_480P[2] / P.INTRINSICS_480P[0])) 
 VFOV = math.degrees(2 * math.atan(P.INTRINSICS_480P[3] / P.INTRINSICS_480P[1]))  # 51.0
 TIMES = ("sink", "recent", "orig")
 FALLBACKS = ("start", "keep")
+TRACKS = ("intended", "model")
+RELS = ("stored", "still", "current")
 DEFAULTS = {"deg": 32.0, "trans": 4.0, "leave_deg": 59.0, "leave_trans": 8.0, "latents": 4, "anchor": 2,
-            "time": "sink", "fallback": "start", "tasks": "GC|OE", "max_mb": 512.0}
+            "time": "sink", "fallback": "start", "tasks": "GC|OE", "max_mb": 512.0,
+            "track": "intended", "focus": 0.0, "rel": "stored"}
 _ARGS = {  # flag -> (field, env var)
     "--lingbot-pose-mem-deg": ("deg", "LINGBOT_POSE_MEM_DEG"),
     "--lingbot-pose-mem-trans": ("trans", "LINGBOT_POSE_MEM_TRANS"),
@@ -48,6 +53,9 @@ _ARGS = {  # flag -> (field, env var)
     "--lingbot-pose-mem-fallback": ("fallback", "LINGBOT_POSE_MEM_FALLBACK"),
     "--lingbot-pose-mem-tasks": ("tasks", "LINGBOT_POSE_MEM_TASKS"),
     "--lingbot-pose-mem-max-mb": ("max_mb", "LINGBOT_POSE_MEM_MAX_MB"),
+    "--lingbot-pose-mem-track": ("track", "LINGBOT_POSE_MEM_TRACK"),
+    "--lingbot-pose-mem-focus": ("focus", "LINGBOT_POSE_MEM_FOCUS"),
+    "--lingbot-pose-mem-rel": ("rel", "LINGBOT_POSE_MEM_REL"),
 }
 
 
@@ -64,6 +72,9 @@ class PoseMemoryConfig:
     fallback: str = DEFAULTS["fallback"]
     tasks: str = DEFAULTS["tasks"]
     max_mb: float = DEFAULTS["max_mb"]
+    track: str = DEFAULTS["track"]
+    focus: float = DEFAULTS["focus"]
+    rel: str = DEFAULTS["rel"]
 
     @property
     def chunks(self) -> int:
@@ -85,7 +96,10 @@ class PoseMemoryConfig:
     def describe(self) -> str:
         return (f"pose memory {self.latents} latents after {self.anchor} anchor, match {self.deg:g} deg / "
                 f"{self.trans:g} units, leave {self.leave_deg:g} deg / {self.leave_trans:g} units, rope {self.time}, "
-                f"fallback {self.fallback}, cap {self.max_mb:g} MB, tasks {self.tasks!r}")
+                f"fallback {self.fallback}, cap {self.max_mb:g} MB, tasks {self.tasks!r}"
+                + (f", track {self.track}" if self.track != "intended" else "")
+                + (f", focus {self.focus:g}" if self.focus > 0 else "")
+                + (f", rel {self.rel}" if self.rel != "stored" else ""))
 
 
 def _take(argv: list[str]) -> tuple[dict, list[str]]:
@@ -125,7 +139,7 @@ def parse(argv: list[str], environ=os.environ) -> tuple[PoseMemoryConfig, list[s
     names = {f: arg for arg, (f, _) in _ARGS.items()}
     v = dict(DEFAULTS)
     for f, lo, hi in (("deg", 0.0, HFOV), ("leave_deg", 0.0, 360.0), ("trans", 0.0, 1e6), ("leave_trans", 0.0, 1e6),
-                      ("max_mb", 1.0, 1e6)):
+                      ("max_mb", 1.0, 1e6), ("focus", 0.0, 1e6)):
         if raw[f] is not None:
             v[f] = _num(names[f], raw[f], float, lo, hi)
     for f, lo in (("latents", CHUNK), ("anchor", 0)):
@@ -140,7 +154,7 @@ def parse(argv: list[str], environ=os.environ) -> tuple[PoseMemoryConfig, list[s
     if v["leave_deg"] <= v["deg"]:
         raise SystemExit(f"--lingbot-pose-mem-leave-deg ({v['leave_deg']:g}) must exceed --lingbot-pose-mem-deg "
                          f"({v['deg']:g}), or a view never counts as left")
-    for f, allowed in (("time", TIMES), ("fallback", FALLBACKS)):
+    for f, allowed in (("time", TIMES), ("fallback", FALLBACKS), ("track", TRACKS), ("rel", RELS)):
         if raw[f] is not None:
             if raw[f] not in allowed:
                 raise SystemExit(f"{names[f]} must be one of {allowed}, got {raw[f]!r}")
@@ -179,14 +193,36 @@ def overlap_of(dyaw: float, dpitch: float) -> float:
     return max(0.0, 1.0 - abs(dyaw) / HFOV) * max(0.0, 1.0 - abs(dpitch) / VFOV)
 
 
-def pose_diff(a: np.ndarray, b: np.ndarray) -> tuple[float, float, float, float]:
-    """(dyaw, dpitch, dpos, overlap) from pose a to pose b; dyaw wrapped to [-180, 180)."""
-    ya, pa = view_angles(a)
-    yb, pb = view_angles(b)
-    dyaw = (yb - ya + 180.0) % 360.0 - 180.0
-    dpitch = pb - pa
-    dpos = float(np.linalg.norm(np.asarray(b, dtype=np.float64)[:3, 3] - np.asarray(a, dtype=np.float64)[:3, 3]))
-    return dyaw, dpitch, dpos, overlap_of(dyaw, dpitch)
+def pose_diff(a: np.ndarray, b: np.ndarray, focus: float = 0.0) -> tuple[float, float, float, float]:
+    """(dyaw, dpitch, dpos, overlap) from pose a to pose b; dyaw wrapped to [-180, 180).
+    With focus > 0, projects 3D focus points X = p + focus * forward into each camera's frustum."""
+    ma = np.asarray(a, dtype=np.float64)
+    mb = np.asarray(b, dtype=np.float64)
+    if focus <= 0.0:
+        ya, pa = view_angles(ma)
+        yb, pb = view_angles(mb)
+        dyaw = (yb - ya + 180.0) % 360.0 - 180.0
+        dpitch = pb - pa
+        dpos = float(np.linalg.norm(mb[:3, 3] - ma[:3, 3]))
+        return dyaw, dpitch, dpos, overlap_of(dyaw, dpitch)
+    z = float(focus)
+    ra, pos_a = ma[:3, :3], ma[:3, 3]
+    rb, pos_b = mb[:3, :3], mb[:3, 3]
+    xa = pos_a + z * ra[:, 2]
+    xb = pos_b + z * rb[:, 2]
+    qb = rb.T @ (xa - pos_b)
+    qa = ra.T @ (xb - pos_a)
+    dpos = float(np.linalg.norm(xb - xa))
+    if qb[2] <= 1e-6 or qa[2] <= 1e-6:
+        return 180.0, 90.0, dpos, 0.0
+    yb = math.degrees(math.atan2(qb[0], qb[2]))
+    pb = math.degrees(math.atan2(-qb[1], math.hypot(qb[0], qb[2])))
+    ya = math.degrees(math.atan2(qa[0], qa[2]))
+    pa = math.degrees(math.atan2(-qa[1], math.hypot(qa[0], qa[2])))
+    o_ang = min(overlap_of(yb, pb), overlap_of(ya, pa))
+    scale_ratio = min(qb[2] / z, z / qb[2], qa[2] / z, z / qa[2])
+    o = o_ang * max(0.0, min(1.0, scale_ratio))
+    return yb, pb, dpos, o
 
 
 def centre(latent_c2ws) -> np.ndarray:
@@ -200,7 +236,7 @@ def centre(latent_c2ws) -> np.ndarray:
 @dataclass
 class Entry:
     cid: int                 # latent chunk index in the rollout
-    pose: np.ndarray         # centre latent c2w (intended track)
+    pose: np.ndarray         # centre latent c2w (selected track)
     x0: object               # clean latents [16, 4, h, w] on the host
     rel: np.ndarray          # the chunk's normalised relative poses [4, 4, 4] (its camera input)
     nbytes: int = 0
@@ -234,8 +270,8 @@ class PoseMemory:
         return sum(e.nbytes for e in self.entries)
 
     def in_cache(self, j: int, c: int) -> bool:
-        """True when chunk j still has latents in the cache (sink or rolling window) while chunk c is generated."""
-        return j * CHUNK < self.sink or (j + 1) * CHUNK > c * CHUNK - self.window
+        """True when chunk j still has latents in the cache (pinned anchor or rolling window) while chunk c is generated."""
+        return j * CHUNK < self.cfg.anchor or (j + 1) * CHUNK > c * CHUNK - self.window
 
     def add(self, entry: Entry) -> None:
         self.entries.append(entry)
@@ -250,20 +286,20 @@ class PoseMemory:
             if e.left:
                 continue
             for c2w in latent_c2ws:
-                _, _, dpos, o = pose_diff(e.pose, c2w)
+                _, _, dpos, o = pose_diff(e.pose, c2w, self.cfg.focus)
                 if o < self.cfg.leave_overlap or dpos > self.cfg.leave_trans:
                     e.left = True
                     break
 
     def select(self, latent_c2ws, c: int) -> list[Match] | None:
         """Up to cfg.chunks matches for chunk c (poses latent_c2ws), most recent first: evicted, left, overlapping.
-        The newest overlapping non-sink sighting shadows older ones: if it is still in the rolling window or has
+        The newest overlapping non-anchor sighting shadows older ones: if it is still in the rolling window or has
         not been left, the window already holds the view and this returns None (recall nothing, keep the sink)."""
         target = centre(latent_c2ws)
         out = []
         for e in reversed(self.entries):
-            dyaw, dpitch, dpos, o = pose_diff(e.pose, target)
-            if o < self.cfg.match_overlap or dpos > self.cfg.trans or e.cid * CHUNK < self.sink:
+            dyaw, dpitch, dpos, o = pose_diff(e.pose, target, self.cfg.focus)
+            if o < self.cfg.match_overlap or dpos > self.cfg.trans or e.cid * CHUNK < self.cfg.anchor:
                 continue
             if self.in_cache(e.cid, c) or not e.left:
                 if not out:

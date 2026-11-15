@@ -130,13 +130,13 @@ stateless path. Acts in dataset mode and on wait-only insight tasks (per latent 
 sink_scale.py.
 
 Pose-indexed memory (off by default, session only): `--lingbot-pose-memory` or LINGBOT_POSE_MEMORY=1 stores every
-generated latent chunk's clean latents keyed by its commanded camera pose and, before a chunk whose view matches a
-chunk that has left the KV cache and that the camera had looked away from, recomputes the most recent such chunk
-into the sink slots after the first --lingbot-pose-mem-anchor latents (one extra clean forward per change); the
-original sink is copied back when nothing matches. Knobs --lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,
-latents,anchor,time,fallback,tasks,max-mb}. Acts in dataset mode (per latent chunk inside one step). Refused with
---lingbot-stateless, sink 0 / local -1, a sink smaller than anchor + latents, --lingbot-reanchor and
---lingbot-sink-key-scale. See pose_memory.py.
+generated latent chunk's clean latents keyed by its camera pose and, before a chunk whose view matches a chunk that has
+left the KV cache (not pinned by --lingbot-pose-mem-anchor and older than the window) and that the camera had looked
+away from, recomputes the most recent such chunk into the sink slots after the first --lingbot-pose-mem-anchor latents
+(one extra clean forward per change); the original sink is copied back when nothing matches. Knobs
+--lingbot-pose-mem-{deg,trans,leave-deg,leave-trans,latents,anchor,time,fallback,tasks,max-mb,track,focus,rel}. Acts in
+dataset mode (per latent chunk inside one step). Refused with --lingbot-stateless, sink 0 / local -1, a sink smaller
+than anchor + latents, --lingbot-reanchor and --lingbot-sink-key-scale. See pose_memory.py.
 
 IF identity cue (off by default): `--lingbot-if-identity-cue` or LINGBOT_IF_IDENTITY_CUE=1 appends a fixed sentence
 group about keeping each subject's identity (if_identity.CUE) to the model prompt of third-person IF tasks that have
@@ -199,7 +199,7 @@ Env:
   LINGBOT_SINK_KEY_SCALE / LINGBOT_SINK_SCALE_AFTER / LINGBOT_SINK_SCALE_TASKS   same as --lingbot-sink-key-scale /
                     --lingbot-sink-scale-after / --lingbot-sink-scale-tasks (1.0 = off / 8 / ".*")
   LINGBOT_POSE_MEMORY  1 = same as --lingbot-pose-memory (knobs LINGBOT_POSE_MEM_DEG / _TRANS / _LEAVE_DEG /
-                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB)
+                    _LEAVE_TRANS / _LATENTS / _ANCHOR / _TIME / _FALLBACK / _TASKS / _MAX_MB / _TRACK / _FOCUS / _REL)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 

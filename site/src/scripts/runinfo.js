@@ -46,6 +46,9 @@ export const FLAG_NAMES = {
   "--lingbot-pose-mem-fallback": function (v) { return "no match: " + v; },
   "--lingbot-pose-mem-tasks": function (v) { return "tasks " + v; },
   "--lingbot-pose-mem-max-mb": function (v) { return "bank cap " + v + " MB"; },
+  "--lingbot-pose-mem-track": function (v) { return v + " pose track"; },
+  "--lingbot-pose-mem-focus": function (v) { return +v === 0 ? "focus depth off" : "focus depth " + v; },
+  "--lingbot-pose-mem-rel": function (v) { return "recall motion " + v; },
   "--lingbot-kv-noise": "noisy memory writes",
   "--lingbot-kv-noise-t": function (v) { return "noise level " + v; },
   "--lingbot-stg": "step-0 self-guidance",
@@ -71,6 +74,8 @@ var KNOB_OF = {
   "--lingbot-pose-mem-leave-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-latents": "--lingbot-pose-memory",
   "--lingbot-pose-mem-anchor": "--lingbot-pose-memory", "--lingbot-pose-mem-time": "--lingbot-pose-memory", "--lingbot-pose-mem-fallback": "--lingbot-pose-memory",
   "--lingbot-pose-mem-tasks": "--lingbot-pose-memory", "--lingbot-pose-mem-max-mb": "--lingbot-pose-memory",
+  "--lingbot-pose-mem-track": "--lingbot-pose-memory", "--lingbot-pose-mem-focus": "--lingbot-pose-memory",
+  "--lingbot-pose-mem-rel": "--lingbot-pose-memory",
   "--lingbot-stg-steps": "--lingbot-stg", "--lingbot-stg-blocks": "--lingbot-stg", "--lingbot-stg-w": "--lingbot-stg"
 };
 // what a value flag tests, for a group title ("Attention window test")
