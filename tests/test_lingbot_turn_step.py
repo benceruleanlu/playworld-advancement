@@ -74,6 +74,12 @@ def test_configure_parses_validates_and_implies_turn_cal():
     assert flags["turn_step"] == 90.0 and flags["turn_cal"] is True and argv == ["run.py", "--tasks", "GC033"]
     assert RUN.configure(["run.py", "--lingbot-turn-step=60"], environ={})[0]["turn_step"] == 60.0
     assert RUN.configure(["run.py"], environ={"LINGBOT_TURN_STEP_DEG": "60"})[0]["turn_step"] == 60.0
+    # an explicit 0 beats a step in the env, so a control arm stays at 45 degrees
+    flags, _ = RUN.configure(["run.py", "--lingbot-turn-cal", "--lingbot-turn-step", "0"],
+                             environ={"LINGBOT_TURN_STEP_DEG": "90"})
+    assert flags["turn_step"] == 0 and flags["turn_cal"] is True
+    src = (ROOT / "adapters" / "lingbot_world2" / "run.py").read_text()
+    assert '    P.CHUNK_YAW_DEG = flags["turn_step"]\n    if flags["turn_step"]:' in src  # applied unconditionally
     for bad in ("5", "200", "fast"):
         with pytest.raises(SystemExit):
             RUN.configure(["run.py", "--lingbot-turn-step", bad], environ={})

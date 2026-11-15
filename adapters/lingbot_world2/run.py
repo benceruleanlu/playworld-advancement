@@ -699,8 +699,10 @@ def main(argv: list[str] | None = None) -> int:
     if flags["if_slow"]:
         print("[lingbot] IF slow translation: on (gain=0.5, session only)", flush=True)
     P.reset()
-    if flags["turn_step"]:  # after reset(): the arg wins over the env, and a later arm without it starts clean
-        P.CHUNK_YAW_DEG = flags["turn_step"]
+    # after reset(): configure() already merged arg and env, so the parsed value is the whole answer; an
+    # explicit `--lingbot-turn-step 0` turns off a step set in the env, and a later arm without it starts clean
+    P.CHUNK_YAW_DEG = flags["turn_step"]
+    if flags["turn_step"]:
         print(f"[lingbot] turn step: {P.CHUNK_YAW_DEG:g} degrees of yaw per closed-loop chunk", flush=True)
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
