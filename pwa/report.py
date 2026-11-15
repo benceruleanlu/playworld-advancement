@@ -140,11 +140,11 @@ def f2(x, w=5) -> str:
 def render(rep: dict, meta: dict) -> str:
     out = io.StringIO()
     p = lambda s="": print(s, file=out)  # noqa: E731
+    if rep.get("judge"):  # first line, so a pasted screening or proxy report always says what it is
+        p(f"*** {rep['judge']['label']} ***")
     p(f"{rep['exp']}  runner={meta.get('runner')} action_source={meta.get('action_source')} "
       f"passes={len(rep['passes'])} tasks={rep['n_tasks']} missing={rep['n_missing']}"
       + ("  [strict]" if rep["strict"] else ""))
-    if rep.get("judge"):
-        p(f"*** {rep['judge']['label']} ***")
     if chunk_cap(meta):
         p(f"*** {cap_label(chunk_cap(meta))} ***")
     if scripted_player(meta):
@@ -181,10 +181,15 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
     """GitHub-flavoured markdown for $GITHUB_STEP_SUMMARY. The plain-text render() stays the default."""
     out = io.StringIO()
     p = lambda s="": print(s, file=out)  # noqa: E731
+    j = rep.get("judge")
+    if j and j.get("label", "").startswith("PROXY JUDGE"):  # first line, before the heading
+        p(f"**{_md_cell(j['label'])}.** A/B between runs scored by this same judge only; uncalibrated against "
+          f"Gemini 3.1 Pro. Written to results/proxy_experiments.csv, never results/experiments.csv.")
+        p()
     p(f"## {_md_cell(rep['exp'])}" + (" (strict)" if rep["strict"] else ""))
     p()
-    if rep.get("judge"):
-        p(f"> **{_md_cell(rep['judge']['label'])}.** Dev screening only; not written to results/experiments.csv.")
+    if j and not j.get("label", "").startswith("PROXY JUDGE"):
+        p(f"> **{_md_cell(j['label'])}.** Dev screening only; not written to results/experiments.csv.")
         p()
     if chunk_cap(meta):
         p(f"> **{_md_cell(cap_label(chunk_cap(meta)).capitalize())}.** Smoke tier only; never the site headline.")
@@ -271,10 +276,39 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
             rd = csv.DictReader(fh)
             rows, head = list(rd), [c for c in (rd.fieldnames or []) if c]
     head += [c for c in CSV_FIELDS if c not in head]  # keep columns this version does not know
+    new = _csv_row(rep, meta, split)
+    # replace the same exp+split, and exp's score-less live rows (mark_row) under any split label
+    rows = [r for r in rows if not (r.get("exp") == rep["exp"]
+                                    and (r.get("split") == split or r.get("status") in LIVE_STATUSES))] + [new]
+    _write_csv(RESULTS_CSV, head, [{k: v for k, v in r.items() if k in head} for r in rows])
+
+
+# Proxy judge (`--judge openai`): its rows go to results/proxy_experiments.csv next to the results csv, never into
+# it. Same columns plus `judge` (the judge spec); one row per exp, split and judge. The site does not read this file.
+PROXY_FIELDS = CSV_FIELDS + ["judge"]
+PROXY_KEYS = ("exp", "split", "judge")
+
+
+def proxy_csv():
+    from pathlib import Path
+    env = os.environ.get("PWA_PROXY_CSV")
+    return Path(env) if env else RESULTS_CSV.parent / "proxy_experiments.csv"
+
+
+def upsert_proxy_csv(rep: dict, meta: dict, split: str, judge: Judge) -> None:
+    dest = proxy_csv()
+    head, rows = _read_csv_strict(dest) if dest.is_file() and dest.stat().st_size else (list(PROXY_FIELDS), [])
+    head += [c for c in PROXY_FIELDS if c not in head]
+    new = {**_csv_row(rep, meta, split), "status": "proxy", "judge": judge.spec}
+    rows = [r for r in rows if tuple(r.get(k, "") for k in PROXY_KEYS) != tuple(new[k] for k in PROXY_KEYS)] + [new]
+    _write_csv(dest, head, rows)
+
+
+def _csv_row(rep: dict, meta: dict, split: str) -> dict:
     fam = rep["families"]
     cap = chunk_cap(meta)
     r4 = lambda x: "" if x is None else f"{x:.4f}"  # noqa: E731
-    new = {"exp": rep["exp"], "split": split, "timestamp": rep["generated"], "git_sha": meta.get("git_sha") or "",
+    return {"exp": rep["exp"], "split": split, "timestamp": rep["generated"], "git_sha": meta.get("git_sha") or "",
            "runner": meta.get("runner", ""), "action_source": meta.get("action_source", ""),
            **{f: r4(fam.get(f, {}).get("mean")) for f in FAMILIES},
            "overall": r4(rep["overall"]), "overall_std": r4(rep["overall_std"]), "passes": len(rep["passes"]),
@@ -284,10 +318,6 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
            "n_dropped": sum(f.get("dropped") or 0 for f in fam.values()),
            "status": "scored", "run_url": run_url(), "max_chunks": str(cap or "")}
-    # replace the same exp+split, and exp's score-less live rows (mark_row) under any split label
-    rows = [r for r in rows if not (r.get("exp") == rep["exp"]
-                                    and (r.get("split") == split or r.get("status") in LIVE_STATUSES))] + [new]
-    _write_csv(RESULTS_CSV, head, [{k: v for k, v in r.items() if k in head} for r in rows])
 
 
 def capped_notes(notes: str, cap: int | None) -> str:
@@ -383,9 +413,10 @@ def _read_csv_strict(path) -> tuple[list[str], list[dict]]:
     return head, rows
 
 
-def upsert_row_into(exp: str, src, dest) -> int:
-    """Copy exp's row(s) from csv `src` into csv `dest` (replace same exp+split, else append), matching columns
-    by name. Columns the destination lacks are added to its header; nothing is dropped. Returns rows written."""
+def upsert_row_into(exp: str, src, dest, keys: tuple[str, ...] = ("exp", "split")) -> int:
+    """Copy exp's row(s) from csv `src` into csv `dest` (replace rows with the same `keys`, default exp+split,
+    else append), matching columns by name. Columns the destination lacks are added to its header; nothing is
+    dropped. Returns rows written."""
     from pathlib import Path
     src, dest = Path(src), Path(dest)
     _, srows = _read_csv_strict(src)
@@ -401,9 +432,9 @@ def upsert_row_into(exp: str, src, dest) -> int:
         for col in r:
             if col not in head:
                 head.append(col)
-    keys = {(r["exp"], r.get("split", "")) for r in mine}
+    have = {tuple(r.get(k, "") for k in keys) for r in mine}
     # also drop exp's score-less live rows (mark_row), whatever split label they were launched with
-    rows = [r for r in rows if (r.get("exp"), r.get("split", "")) not in keys
+    rows = [r for r in rows if tuple(r.get(k, "") for k in keys) not in have
             and not (r.get("exp") == exp and r.get("status") in LIVE_STATUSES)] + mine
     _write_csv(dest, head, rows)
     return len(mine)
@@ -423,6 +454,8 @@ def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: boo
         # screening judge: never the official report.json, never the results csv
         if write and not strict:
             write_json(exp_dir(exp) / f"report.{judge.slug}.json", rep)
+            if judge.proxy:  # proxy judge: its own csv, never results/experiments.csv
+                upsert_proxy_csv(rep, read_meta(exp), split_label, judge)
     elif write and not strict:
         write_json(exp_dir(exp) / "report.json", rep)
         upsert_csv(rep, read_meta(exp), split_label)

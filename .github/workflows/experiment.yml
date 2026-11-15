@@ -51,7 +51,7 @@ on:
         description: Verifier passes
         default: "2"
       judge_model:
-        description: "Screening judge(s) for dev loops, comma-separated [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna. Empty = official judge. Never writes the results csv row."
+        description: "Screening judge(s) for dev loops, comma-separated [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna. openai:gpt-4.1 = PROXY judge (key PLAYER_API_KEY unless JUDGE_API_KEY), its rows go to results/proxy_experiments.csv. Empty = official judge. Never writes the results csv row."
         default: ""
       notes:
         default: ""
@@ -370,10 +370,15 @@ jobs:
 
       - name: Commit screening report
         # Screening judge: results/reports/EXP.<slug>.md and the run's unscored scenes reach main; never the
-        # results csv row, and never the screening scores in the scenes manifest.
+        # results csv row, and never the screening scores in the scenes manifest. An openai: (proxy) judge also
+        # records its rows in results/proxy_experiments.csv, which the site does not read.
         if: inputs.stage != 'gen-only' && inputs.judge_model != ''
         run: |
           .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUGS" '
+            if [[ " $JUDGE_SLUGS" == *" openai-"* ]]; then
+              pwa upsert-row "$EXP" --proxy --into "$MAIN_DIR/results/proxy_experiments.csv" \
+                || echo "::warning::proxy csv row not committed"
+            fi
             mkdir -p "$MAIN_DIR/results/reports"
             for slug in $JUDGE_SLUGS; do
               dest="$MAIN_DIR/results/reports/$EXP.$slug.md"

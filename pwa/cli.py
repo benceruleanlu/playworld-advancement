@@ -22,6 +22,9 @@ screening judge (dev loops only; never the csv, never a reported number):
   pwa score anchor-v1-dev --judge-model openai:gpt-6-luna          # OpenAI-compatible API, JUDGE_API_KEY
   pwa cells base-sana-dev anchor-v1-dev --judge-model gemini-4-hydrogen:low --judge-model openai:gpt-6-luna
   pwa judges base-sana-dev --judge-model gemini-4-hydrogen:low --judge-model openai:gpt-6-luna   # calibration
+proxy judge while Gemini credits are out (A/B only; results/proxy_experiments.csv, never a final number):
+  pwa score anchor-v1-dev --judge openai [--judge-model gpt-4.1]   # OpenAI key: JUDGE_API_KEY else PLAYER_API_KEY
+  pwa compare base-sana-dev anchor-v1-dev --judge openai
 extra runner args go after `--`, e.g.  pwa gen X --runner sana -- --num-chunks 20 --seed 1
 exit codes: 0 ok, 1 failure (some task failed / check failed), 2 usage error.
 config/env.sh is sourced automatically (existing env vars win).
@@ -64,6 +67,11 @@ def _judge_args(p, panel: bool = False, required: bool = False):
                         "written to results/experiments.csv. No prefix = Gemini; openai: = OpenAI-compatible chat API "
                         "(JUDGE_API_URL/JUDGE_API_KEY, else PLAYER_API_*); :THINKING = minimal|low|medium|high"
                         + more + " (default: official judge, $GEMINI_MODEL, eval/)")
+    p.add_argument("--judge", default=None, choices=["gemini", "openai"],
+                   help="openai = PROXY judge for A/B while Gemini cannot be called: --judge-model openai:MODEL, "
+                        "MODEL from --judge-model (prefix optional) else $PWA_PROXY_JUDGE_MODEL else gpt-4.1; "
+                        "runs/EXP/eval-openai-MODEL/, rows in results/proxy_experiments.csv. Uncalibrated against "
+                        "Gemini: same-run control vs treatment only. gemini (default) = unchanged")
     p.add_argument("--judge-thinking", default=None, choices=["minimal", "low", "medium", "high"],
                    help="one screening judge only: thinking level (Gemini thinking_level, OpenAI reasoning_effort; "
                         "upstream sets none); part of the dir slug")
@@ -164,6 +172,8 @@ def parser() -> argparse.ArgumentParser:
     p = mk("upsert-row", "copy EXP's row from this checkout's results csv into another csv (used by the workflow)")
     p.add_argument("exp")
     p.add_argument("--into", required=True, help="destination experiments.csv (e.g. a checkout of main)")
+    p.add_argument("--proxy", action="store_true",
+                   help="copy EXP's proxy-judge rows from results/proxy_experiments.csv instead (keyed by exp, split, judge)")
 
     p = mk("mark", "record a run's live status (running|generated|failed|cancelled) in a results csv (used by the workflow)")
     p.add_argument("exp")
@@ -399,7 +409,8 @@ def dispatch(a) -> int:  # noqa: C901
 
     if a.cmd == "upsert-row":
         try:
-            n = report.upsert_row_into(a.exp, core.RESULTS_CSV, a.into)
+            n = (report.upsert_row_into(a.exp, report.proxy_csv(), a.into, keys=report.PROXY_KEYS) if a.proxy
+                 else report.upsert_row_into(a.exp, core.RESULTS_CSV, a.into))
         except (ValueError, OSError) as e:
             raise PwaError(str(e)) from e
         log(f"[pwa] upserted {n} row(s) for {a.exp} into {a.into}")

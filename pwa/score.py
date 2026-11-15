@@ -1,6 +1,7 @@
 """pwa score / preview: run the official Rubric Verifier as subprocesses."""
 from __future__ import annotations
 
+import math
 import os
 import re
 import subprocess
@@ -20,6 +21,13 @@ THINKING_LEVELS = ("minimal", "low", "medium", "high")
 
 
 PROVIDERS = ("gemini", "openai")
+# `--judge openai` with no --judge-model: a vision-capable non-reasoning chat model (it takes upstream's
+# temperature 0.1). Override per call with --judge-model, or for every call with PWA_PROXY_JUDGE_MODEL.
+PROXY_DEFAULT_MODEL = "gpt-4.1"
+
+
+def proxy_default_model() -> str:
+    return (os.environ.get("PWA_PROXY_JUDGE_MODEL") or "").strip() or PROXY_DEFAULT_MODEL
 
 
 @dataclass(frozen=True)
@@ -81,7 +89,14 @@ class Judge:
         return self.upstream_model + (f", thinking {self.thinking}" if self.thinking else "")
 
     @property
+    def proxy(self) -> bool:
+        """An OpenAI judge stands in for Gemini while Gemini cannot be called: a proxy, uncalibrated."""
+        return self.provider == "openai"
+
+    @property
     def label(self) -> str:
+        if self.proxy:
+            return f"PROXY JUDGE ({self.name}), not comparable to the leaderboard"
         return f"screening judge: {self.name}, not comparable to the leaderboard"
 
 
@@ -91,6 +106,8 @@ def judges_of(a) -> list[Judge]:
     models = getattr(a, "judge_model", None) or []
     if isinstance(models, str):
         models = [models]
+    if getattr(a, "judge", None) == "openai":  # proxy judge: every model is an openai: one
+        models = [proxy_spec(m) for m in models] or ["openai:" + proxy_default_model()]
     thinking = getattr(a, "judge_thinking", None)
     if not models:
         if thinking:
@@ -103,6 +120,14 @@ def judges_of(a) -> list[Judge]:
     if len(set(slugs)) != len(slugs):
         raise PwaError(f"duplicate screening judge in {' '.join(models)}")
     return judges
+
+
+def proxy_spec(model: str) -> str:
+    """`--judge openai --judge-model M`: M with the openai: prefix (added when missing)."""
+    m = model.strip()
+    if m.startswith("gemini:"):
+        raise PwaError(f"--judge openai with --judge-model {model!r}: drop --judge or the gemini: prefix")
+    return m if m.startswith("openai:") else "openai:" + m
 
 
 def judge_of(a) -> Judge | None:
@@ -242,6 +267,63 @@ def check_keys(judge: Judge | None) -> None:
         raise PwaError("GEMINI_API_KEY is not set (config/env.sh); use --dry-run to test sampling only")
 
 
+def _upstream_specs():
+    """Upstream's two sampling specs (metrics.vqa.sampling), imported, or None when the submodule is absent."""
+    import importlib  # noqa: PLC0415
+    if str(PLAYWORLD) not in sys.path:
+        sys.path.append(str(PLAYWORLD))
+    try:
+        mod = importlib.import_module("metrics.vqa.sampling")
+        return (mod.PRIMARY_SPEC, mod.DETAIL_SPEC)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def video_seconds(video: Path) -> float | None:
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                            str(video)], capture_output=True, text=True, timeout=60)
+        return float(r.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def estimate_images(info: dict, video: Path, specs=None) -> dict | None:
+    """Images one pass sends for one task: upstream's contact sheets per call (primary + detail stream, frames at
+    each spec's fps, frames_per_sheet per sheet), the reference image on the score call, and the gate call for
+    GC (out-of-sight gates only when the score reply lacks its embedded check; counted as 0 here). An estimate:
+    upstream's ffmpeg fps filter may differ by a frame. None when the duration or the specs are unknown."""
+    specs = specs or _upstream_specs()
+    secs = video_seconds(video) if specs else None
+    if not specs or secs is None:
+        return None
+    sheets = sum(math.ceil(max(1, math.ceil(secs * sp.fps)) / sp.frames_per_sheet) for sp in specs)
+    ref = 1 if Path(info["image"]).is_file() else 0
+    gate = sheets if info["family"] == "gc" else 0
+    return {"score": sheets + ref, "gate": gate, "total": sheets + ref + gate, "calls": 1 + (gate > 0)}
+
+
+def cost_guard(sel: list[dict], exp: str, passes: int, judge: Judge) -> int | None:
+    """Print the estimated image count per task and in total before any proxy call. Returns the total."""
+    specs = _upstream_specs()
+    total, calls, unknown = 0, 0, []
+    detail = os.environ.get("JUDGE_IMAGE_DETAIL", "high")
+    log(f"[pwa] cost guard ({judge.name}, image detail {detail}): estimated images per task per pass")
+    for t in sel:
+        est = estimate_images(t, video_path(exp, t["task_id"]), specs)
+        if est is None:
+            unknown.append(t["task_id"])
+            continue
+        total, calls = total + est["total"], calls + est["calls"]
+        log(f"[pwa]   {t['task_id']}: ~{est['total']} images in {est['calls']} call(s) "
+            f"(score {est['score']}" + (f" + gate {est['gate']}" if est["gate"] else "") + ")")
+    if unknown:
+        log(f"[pwa]   no estimate (no ffprobe duration or upstream specs): {' '.join(unknown)}")
+    log(f"[pwa] cost guard: ~{total * passes} images in ~{calls * passes} calls over {len(sel) - len(unknown)} "
+        f"tasks x {passes} passes (retries not counted)")
+    return total * passes
+
+
 def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
     if judge:
         log(f"[pwa] {judge.label}; writing {eval_dir(a.exp, a.dry_run, judge)}")
@@ -255,6 +337,8 @@ def score_one(a, sel: list[dict], judge: Judge | None) -> dict:
     if missing_img:
         log(f"[pwa] WARNING: no reference image for {len(missing_img)} tasks (scored without it): "
             f"{' '.join(missing_img)}. Run ./setup.sh to fetch images.")
+    if judge and judge.proxy and not a.dry_run and with_video:
+        cost_guard(with_video, a.exp, a.passes, judge)
     jobs = [(t, k) for k in range(1, a.passes + 1) for t in with_video]
     events: list[dict] = []
     with ThreadPoolExecutor(max_workers=max(1, a.workers)) as pool:

@@ -250,7 +250,7 @@ def test_judge_spec_parsing():
     j = score.Judge.parse("openai:gpt-6-luna")
     assert (j.provider, j.model, j.thinking, j.slug) == ("openai", "gpt-6-luna", None, "openai-gpt-6-luna")
     assert j.upstream_model == "openai:gpt-6-luna" and j.spec == "openai:gpt-6-luna" and j.needs_shim
-    assert "openai:gpt-6-luna, not comparable to the leaderboard" in j.label
+    assert j.label == "PROXY JUDGE (openai:gpt-6-luna), not comparable to the leaderboard"
     j = score.Judge.parse("openai:gpt-6-luna:high")
     assert (j.thinking, j.slug) == ("high", "openai-gpt-6-luna-think-high")
     g = score.Judge.parse("gemini-4-hydrogen:low")
