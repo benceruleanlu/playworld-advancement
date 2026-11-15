@@ -1,39 +1,73 @@
 {
  "runs": [
   {
-   "exp": "ins14-fx-v2-a3",
-   "generated": "2026-11-15T05:29:23Z",
-   "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-fx-v2-a3",
-   "scored": false,
+   "exp": "win14-fx-v1-a3",
+   "generated": "2026-11-15T05:43:23Z",
+   "n_tasks": 9,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a3",
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 3/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-insight-director"
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "win14-fx-v1-a1",
+   "generated": "2026-11-15T05:43:17Z",
+   "n_tasks": 9,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a1",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "win14-fx-v1-a2",
+   "generated": "2026-11-15T05:43:15Z",
+   "n_tasks": 9,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a2",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "win14-fx-v1-a4",
+   "generated": "2026-11-15T05:43:09Z",
+   "n_tasks": 9,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a4",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
    "exp": "ins14-fx-v2-a2",
-   "generated": "2026-11-15T05:29:01Z",
+   "generated": "2026-11-15T05:36:16Z",
    "n_tasks": 6,
    "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-fx-v2-a2",
-   "scored": false,
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 2/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt"
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
+   "exp": "ins14-fx-v2-a3",
+   "generated": "2026-11-15T05:36:11Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-fx-v2-a3",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
    "exp": "ins14-fx-v2-a1",
-   "generated": "2026-11-15T05:28:38Z",
+   "generated": "2026-11-15T05:35:57Z",
    "n_tasks": 6,
    "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-fx-v2-a1",
-   "scored": false,
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 1/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {

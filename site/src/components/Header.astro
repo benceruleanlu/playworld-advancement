@@ -1,13 +1,15 @@
 <header class="hero">
   <div class="hero-text">
-    <p class="eyebrow">Iterate hackathon, Track 4: World Models</p>
     <h1>Can inference-time changes lift an open world model past Genie 3 on PlayWorld?</h1>
-    <p class="lede">We run <a href="https://github.com/Robbyant/lingbot-world-v2" target="_blank" rel="noopener">LingBot-World v2</a> (14B; 1.3B for some player-side A/Bs) without retraining it, change how it is conditioned while it generates, and score runs with the <a href="https://kxding.github.io/project/PlayWorld/" target="_blank" rel="noopener">PlayWorld</a> benchmark's own judge (1 to 5, higher is better). This page reads the results log live.</p>
+    <p class="lede"><a href="https://github.com/Robbyant/lingbot-world-v2" target="_blank" rel="noopener">LingBot-World v2</a>, not retrained. We change how it runs and score it with <a href="https://kxding.github.io/project/PlayWorld/" target="_blank" rel="noopener">PlayWorld</a>'s own judge, 1 to 5.</p>
     <p class="verdict" id="verdict" hidden></p>
-    <p class="cta"><button type="button" class="cvbtn primary" id="hero-tour">Start the guided tour</button> <a href="#story">or read the findings</a> <span class="keys">Arrow keys step, Esc exits.</span></p>
+    <p class="cta"><button type="button" class="cvbtn primary" id="hero-tour">Start the tour</button> <a href="#story">Findings</a></p>
   </div>
-  <div class="scorecard card" id="status" role="status" aria-live="polite" aria-label="Headline score">
-    <div class="sk" style="height:132px"></div>
+  <div class="hero-side">
+    <figure class="heroclip" id="heroclip" hidden></figure>
+    <div class="scorecard card" id="status" role="status" aria-live="polite" aria-label="Headline score">
+      <div class="sk" style="height:132px"></div>
+    </div>
   </div>
 </header>
-<ul class="glance" id="glance" aria-label="The project in numbers"></ul>
+<p class="glance" id="glance"></p>

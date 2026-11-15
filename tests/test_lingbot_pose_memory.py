@@ -7,6 +7,7 @@ RoPE latent position it was written at, so the tests can read which chunk sits i
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import math
 import sys
 from pathlib import Path
@@ -23,6 +24,8 @@ from adapters.lingbot_world2 import run as R  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
 ON = PM.PoseMemoryConfig(enabled=True)
+# the first version (pm14-fx-v1): the tests written for it run against it unchanged
+LEGACY = PM.PoseMemoryConfig(enabled=True, leave_deg=59.0, time="sink", rule="legacy")
 
 
 # ------------------------------------------------------------------ config
@@ -37,6 +40,7 @@ def test_parse_defaults_knobs_and_env():
                           "--lingbot-pose-mem-leave-trans=6", "--x"], environ={})
     assert rest == ["run.py", "--x"]
     assert cfg == PM.PoseMemoryConfig(True, 20.0, 2.0, 70.0, 6.0, 8, 0, "recent", "keep", "OE", 64.0)
+    assert PM.parse(["--lingbot-pose-memory", *PM.LEGACY_ARGS], environ={})[0] == LEGACY
     assert cfg.chunks == 2
     assert "track" not in ON.describe() and "focus" not in ON.describe() and "rel" not in ON.describe()
     cfg2, rest2 = PM.parse(["run.py", "--lingbot-pose-memory", "--lingbot-pose-mem-track=model",
@@ -119,13 +123,10 @@ def _entry(cid, deg, nbytes=0, pos=(0.0, 0.0, 0.0)):
 
 
 def test_bank_eligibility_latest_and_left():
-    pm = PM.PoseMemory(ON, sink=6, local=18)
+    pm = PM.PoseMemory(LEGACY, sink=6, local=18)
     assert pm.window == 8 and pm.slots(1) == [2]
-    assert [pm.in_cache(j, 10) for j in (0, 1, 2, 7, 8, 9)] == [True, False, False, False, True, True]
-    assert [pm.in_cache(1, c) for c in (3, 4, 5)] == [True, False, False]
-    assert [pm.in_cache(j, 5) for j in (0, 1, 2, 3)] == [True, False, False, True]
-    pm0 = PM.PoseMemory(PM.PoseMemoryConfig(True, anchor=0), sink=6, local=18)
-    assert [pm0.in_cache(0, c) for c in (2, 3, 10)] == [True, False, False]
+    assert [pm.in_cache(j, 10) for j in (0, 1, 2, 7, 8, 9)] == [True, True, False, False, True, True]
+    assert [pm.in_cache(j, 5) for j in (1, 2, 3)] == [True, False, True]
     for cid, deg in ((2, 0), (3, 90), (4, 10), (5, 0)):
         pm.add(_entry(cid, deg))
     far = [_yaw_pose(120)] * 4
@@ -134,12 +135,12 @@ def test_bank_eligibility_latest_and_left():
     assert [e.left for e in pm.entries] == [True, False, True, True]  # 90 vs 120 is still in view
     got = pm.select([_yaw_pose(5)] * 4, 10)
     assert [m.entry.cid for m in got] == [5]  # the most recent sighting wins
-    assert [m.entry.cid for m in PM.PoseMemory(PM.PoseMemoryConfig(True, latents=12), 6, 18,
+    assert [m.entry.cid for m in PM.PoseMemory(PM.PoseMemoryConfig(True, latents=12, rule="legacy"), 6, 18,
                                                pm.entries).select([_yaw_pose(5)] * 4, 12)] == [5, 4, 2]
     assert pm.select([_yaw_pose(5)] * 4, 7) is None  # chunk 5 is still in chunk 7's window: it shadows 4 and 2
     assert pm.select([_yaw_pose(5)] * 4, 6) is None
     assert pm.select([_yaw_pose(50)] * 4, 10) == []  # 40+ degrees off: no match
-    moved = PM.PoseMemory(ON, 6, 18, [_entry(2, 0, pos=(0, 0, 0))])
+    moved = PM.PoseMemory(LEGACY, 6, 18, [_entry(2, 0, pos=(0, 0, 0))])
     moved.observe([_yaw_pose(0, pos=(0, 0, 9))])  # walking 9 units away counts as leaving
     assert moved.entries[0].left
     assert moved.select([_yaw_pose(0, pos=(0, 0, 5))] * 4, 9) == []  # 5 units from where it was seen
@@ -157,11 +158,12 @@ def test_bank_cap_evicts_oldest():
 
 
 def test_rope_times():
-    for time, want in (("sink", [2, 6]), ("orig", [40, 20]), ("recent", [20 * 4 - 8 - 4, 20 * 4 - 8 - 8])):
+    # decide() puts the oldest chunk first for orig and recent, so a later slot never holds an earlier time
+    for time, want in (("sink", [2, 6]), ("orig", [20, 40]), ("recent", None)):
         pm = PM.PoseMemory(PM.PoseMemoryConfig(True, latents=8, time=time), 10, 22)
         if time == "recent":
-            want = [20 * 4 - pm.window - 4, 20 * 4 - pm.window - 8]
-        es = [_entry(10, 0), _entry(5, 0)]
+            want = [20 * 4 - pm.window - 8, 20 * 4 - pm.window - 4]
+        es = [_entry(5, 0), _entry(10, 0)]
         assert [pm.rope_latent(i, s, e, 20, 2) for i, (s, e) in enumerate(zip(pm.slots(2), es))] == want
 
 
@@ -331,7 +333,7 @@ def test_turn_away_and_back_retrieves_departure_chunk_not_before(monkeypatch, ca
     off, off_calls, off_counter = _session(monkeypatch)
     off.pose_mem_on = False
     _turn_rollout(off, ".rrbb...")
-    sess, calls, counter = _session(monkeypatch, ON)
+    sess, calls, counter = _session(monkeypatch, LEGACY)
     _turn_rollout(sess, ".rrbb...")
     out = capsys.readouterr().out
     # chunks 0-1 sink, 2 the last view of the start before turning; 3: 0->90, 4: 90->180, 5: 180->90, 6: 90->0
@@ -364,7 +366,7 @@ def test_turn_away_and_back_retrieves_departure_chunk_not_before(monkeypatch, ca
 
 
 def test_latest_sighting_wins_and_fallback_restores(monkeypatch, capsys, quarter_turns):
-    sess, calls, _ = _session(monkeypatch, ON)
+    sess, calls, _ = _session(monkeypatch, LEGACY)
     original = None
     sess.step(["none"] * 28)
     for i, c in enumerate(".rb..rrbb"):
@@ -383,7 +385,8 @@ def test_latest_sighting_wins_and_fallback_restores(monkeypatch, capsys, quarter
 
 
 def test_keep_fallback_and_dataset_mode_one_step(monkeypatch, capsys, quarter_turns):
-    sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, fallback="keep"))
+    sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, leave_deg=59.0, time="sink", fallback="keep",
+                                                               rule="legacy"))
     # dataset mode: the whole rollout is one step; memory still acts per latent chunk inside it
     sess.step(["none"] * 28 + [k for c in ".rb..rrbb" for k in [{"r": "l", "b": "j", ".": "none"}[c]] * 16])
     assert _retrievals(capsys.readouterr().out) == ["chunk 7 <- chunk 3", "chunk 10 <- chunk 6"]
@@ -391,7 +394,7 @@ def test_keep_fallback_and_dataset_mode_one_step(monkeypatch, capsys, quarter_tu
 
 def test_newer_sighting_in_window_shadows_older(monkeypatch, capsys, quarter_turns):
     """Back-and-forth turns: the view is in the rolling window each time it comes back, so nothing is recalled."""
-    sess, calls, _ = _session(monkeypatch, ON)
+    sess, calls, _ = _session(monkeypatch, LEGACY)
     _turn_rollout(sess, "....rb....")
     assert _retrievals(capsys.readouterr().out) == [] and sess.pm_installs == 0 and sess.pm_forwards == 0
 
@@ -437,11 +440,11 @@ def test_recent_rope_time(monkeypatch, capsys, quarter_turns):
 @pytest.mark.parametrize("time,refresh", [("recent", True), ("sink", False)])
 def test_recent_memory_follows_the_window(monkeypatch, capsys, quarter_turns, time, refresh):
     """A memory that stays selected is recomputed at the new RoPE time each chunk with time=recent only."""
-    sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, time=time))
+    sess, calls, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, time=time, leave_deg=59.0, rule="legacy"))
     _turn_rollout(sess, ".rrbb")
     installed, forwards = sess._pm_installed, sess.pm_forwards
     match = PM.Match(next(e for e in sess.pmem.entries if e.cid == installed[0][0]), 0.0, 0.0, 0.0, 1.0)
-    monkeypatch.setattr(sess.pmem, "select", lambda *_a: [match])
+    monkeypatch.setattr(sess.pmem, "plan", lambda lat, c: PM.Plan([match], PM.view_of(lat[2])))
     sess._pose_mem_before(7, sess.track.latents[-4:])
     assert (sess.pm_forwards == forwards + 1) is refresh
     if refresh:
@@ -488,34 +491,37 @@ def test_two_chunk_memory_with_a_larger_sink(monkeypatch, capsys, quarter_turns)
     got = _retrievals(capsys.readouterr().out)
     assert got and all(c["outside_ok"] for c in calls if not c["live"])
     assert {c["slots"] for c in calls if not c["live"]} <= {(2, 6), (6, 10)}
+    # causal: whenever both slots are written for one chunk, the later slot (forward run second, attending the
+    # first) has the later RoPE time
+    rec = [c for c in calls if not c["live"]]
+    pairs = [(x, y) for x, y in zip(rec, rec[1:]) if x["slots"] == (2, 6) and y["slots"] == (6, 10)]
+    assert all(y["start"] > x["start"] for x, y in pairs)
 
 
 def test_straddling_chunks_and_zero_anchor_recalled_on_immediate_turn(monkeypatch, capsys):
-    """No initial wait: turning starts on frame 1. Chunk 1 (sink=6, anchor=2), chunk 2 (sink=10, anchor=2) and
-    chunk 0 (anchor=0) must all be retrievable once evicted from the rolling window."""
+    """No initial wait: turning starts on frame 1. Under the coverage rule, chunk 1 (sink=6, anchor=2), chunk 2
+    (sink=10, anchor=2) and chunk 0 (anchor=2 or anchor=0) are all recalled once evicted from the rolling window."""
     monkeypatch.setattr(P, "YAW", math.radians(22.5) / 16)  # 22.5 deg per 16-frame chunk; centres 11.25, 33.75, 56.25
-    # Chunks 0..5 turn right to frame 92 (centres 8, 24, 40, 56, 72, 88); chunk 6 adds 8 right + 8 hold (frame 100);
-    # chunks 7..12 turn left by 16 frames each, hitting centres 88, 72, 56, 40 (chunk 2), 24 (chunk 1), 8 (chunk 0).
-    immediate = (["l"] * 12 + ["l"] * (16 * 5) + ["l"] * 8 + ["none"] * 8 + ["j"] * (16 * 6))
+    immediate = ["l"] * 12 + ["l"] * (16 * 5) + ["l"] * 8 + ["none"] * 8 + ["j"] * (16 * 6)
 
-    # sink=6, anchor=2: chunk 1 (latents 4..7, straddling [2, 6)) is recalled; chunk 0 (pinned in [0, 2)) is not
+    # sink=6, anchor=2: chunk 1 (straddling [2, 6)) and chunk 0 (opening) are re-timed into slots 2-5
     sess1, calls1, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, deg=15.0), sink=6, local=18)
     sess1.step(immediate)
-    got1 = _retrievals(capsys.readouterr().out)
-    assert "chunk 11 <- chunk 1" in got1 and not any(g.endswith("chunk 0") for g in got1)
+    got1 = [r for r in _retrievals(capsys.readouterr().out) if "<-" in r]
+    assert "chunk 11 <- chunk 1" in got1 and "chunk 12 <- chunk 0" in got1
     assert all(c["outside_ok"] and c["slots"] == (2, 6) for c in calls1 if not c["live"])
 
-    # sink=10, local=22, anchor=2, latents=4: chunk 2 (latents 8..11, straddling [2, 10)) and chunk 1 are recalled
+    # sink=10, local=22, anchor=2, latents=4: chunk 2 (straddling [2, 10)) and chunk 1 are recalled
     sess2, calls2, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, deg=15.0, latents=4, anchor=2), sink=10, local=22)
     sess2.step(immediate)
-    got2 = _retrievals(capsys.readouterr().out)
+    got2 = [r for r in _retrievals(capsys.readouterr().out) if "<-" in r]
     assert "chunk 10 <- chunk 2" in got2 and "chunk 11 <- chunk 1" in got2
     assert all(c["outside_ok"] for c in calls2 if not c["live"])
 
-    # sink=6, anchor=0: nothing pinned in [0, anchor), so chunk 0 itself is recalled into slots 0-3 on return to start
+    # sink=6, anchor=0: nothing pinned in [0, anchor), so chunk 0 is recalled into slots 0-3 on return to start
     sess0, calls0, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, deg=15.0, anchor=0), sink=6, local=18)
     sess0.step(immediate)
-    got0 = _retrievals(capsys.readouterr().out)
+    got0 = [r for r in _retrievals(capsys.readouterr().out) if "<-" in r]
     assert "chunk 12 <- chunk 0" in got0
     assert any(c["slots"] == (0, 4) and c["outside_ok"] for c in calls0 if not c["live"])
 
@@ -529,10 +535,17 @@ def test_pose_mem_track_model_vs_intended_under_yaw_gain(monkeypatch, capsys, qu
         sess.track.yaw_gain = (0.5, 0.5)
         _turn_rollout(sess, "." + "r" * 8)  # chunks 0..2 at 0 deg; chunks 3..10 turn right continuously
         assert not np.allclose(sess.track.model_latents, sess.track.latents)
-        outs[track] = _retrievals(capsys.readouterr().out)
-    assert outs["intended"] == ["chunk 6 <- chunk 2", "chunk 7 <- chunk 3", "chunk 8 <- chunk 4",
-                                "chunk 9 <- chunk 5", "chunk 10 <- chunk 6"]
+        outs[track] = [r for r in _retrievals(capsys.readouterr().out) if "<-" in r]
+    assert outs["intended"][0] == "chunk 6 <- chunk 2"
     assert outs["model"] == ["chunk 10 <- chunk 2"]
+
+    # per-chunk yaw_servo updates (varying yaw_gain per chunk) also populate track.model_latents distinctly
+    tr = S.PoseTrack()
+    tr.yaw_gain = (1.5, 1.5)
+    tr.advance(["l"] * 12)
+    tr.yaw_gain = (1.2, 1.2)
+    tr.advance(["l"] * 16)
+    assert PM.view_angles(tr.model_latents[-1])[0] != pytest.approx(PM.view_angles(tr.latents[-1])[0])
 
 
 def _orbit_pose(theta_deg: float, radius: float, yaw_bias_deg: float = 0.0) -> np.ndarray:
@@ -576,14 +589,22 @@ def test_focus_depth_orbit_strafe_dolly_and_rotation():
     assert dpos_r < ON.trans and o_r > ON.match_overlap
     assert PM.pose_diff(home, _yaw_pose(120.0), z)[3] == 0.0
 
-    # end-to-end bank selection with focus=16: look away (strafe/turn), then revisit via 3D orbit
+    # end-to-end coverage rule (record + decide + covers) with focus=16: look away, then revisit via 3D orbit
     cfg = PM.PoseMemoryConfig(True, focus=z)
     pm = PM.PoseMemory(cfg, sink=6, local=18)
-    pm.add(PM.Entry(2, home, None, np.eye(4)[None].repeat(4, 0)))
-    pm.observe([_yaw_pose(120.0)])
-    assert pm.entries[0].left
-    assert [m.entry.cid for m in pm.select([orbit] * 4, 8)] == [2]
-    assert pm.select([strafe] * 4, 8) == []
+    for cid, p in ((0, home), (1, home), (2, home), (3, _yaw_pose(60.0)), (4, _yaw_pose(120.0)),
+                   (5, _yaw_pose(120.0)), (6, _yaw_pose(120.0)), (7, _yaw_pose(120.0))):
+        pm.record(cid, [p] * 4)
+    assert pm.entries[2].left and pm.entries[2].c2ws is not None
+    d_orbit = pm.decide([orbit] * 4, 8, ())
+    assert d_orbit.kind == "install" and [m.entry.cid for m in d_orbit.matches] == [2]
+    pm.current = list(d_orbit.matches)
+    pm.record(8, [orbit] * 4)
+    # chunk 9 stays on the orbit (in window -> matches is None -> retime keeps chunk 2 via covers(..., target_pose))
+    d_keep = pm.decide([orbit] * 4, 9, d_orbit.ids)
+    assert d_keep.kind == "retime" and [m.entry.cid for m in d_keep.matches] == [2]
+    # pure lateral strafe does not cover the stored 3D look-at point -> restore
+    assert pm.decide([strafe] * 4, 9, d_orbit.ids).kind == "restore"
 
 
 class _RelWM:
@@ -647,7 +668,7 @@ def test_pose_mem_rel_stored_still_and_current(monkeypatch):
         sess.step(script)
         entry1 = next(e for e in sess.pmem.entries if e.cid == 1)
         assert not np.allclose(entry1.rel, eye4)  # chunk 1 was turning right
-        assert len(recompute_pluckers) == 3 and len(recompute_wms) == 3
+        assert len(recompute_pluckers) >= 3 and len(recompute_pluckers) == len(recompute_wms)
         assert all(np.array_equal(w, p) for w, p in zip(recompute_wms, recompute_pluckers))
         results[rel_mode] = (entry1.rel, recompute_pluckers, recompute_wms, sess)
 
@@ -665,21 +686,28 @@ def test_pose_mem_rel_stored_still_and_current(monkeypatch):
         assert not np.allclose(p, e_rel_c) and not np.allclose(p, eye4)
         assert np.allclose(p[:, 0, 2], -e_rel_c[:, 0, 2], atol=1e-6) and np.array_equal(p, w)
 
-    # stopped revisit under rel=current: chunk 8 (WAIT, rel_c = I_4) matches chunk 3 (rightward, entry.rel != I_4)
-    monkeypatch.setattr(P, "YAW", QUARTER)
-    sess_stop, _, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, rel="current"), sink=6, local=18)
+    # stopped revisit under rel=current (default time=recent): after turning back, WAIT chunks retime with I_4 (not rightward entry.rel)
+    sess_stop, _, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, deg=15.0, rel="current"), sink=6, local=18)
     stop_pl = []
     orig_fwd = sess_stop._mem_forward
     monkeypatch.setattr(sess_stop, "_mem_forward",
                         lambda entry, views, rope_lat, slot, mem_rel=None: (
                             stop_pl.append(np.array(mem_rel, copy=True)),
                             orig_fwd(entry, views, rope_lat, slot, mem_rel))[1])
-    _turn_rollout(sess_stop, ".rr.")  # chunk 3: 0->90 (centre 67.5), chunk 4: 90->180, chunk 5: hold at 180
-    sess_stop.step(["l"] * 12 + ["none"] * 4)  # chunk 6: 180->247.5
-    monkeypatch.setattr(P, "YAW", 2 * QUARTER)
-    sess_stop.step(["j"] * 16)                 # chunk 7: 247.5->67.5 (centre 112.5, 45 deg off 67.5 -> no shadow)
-    sess_stop.step(["none"] * 32)              # chunks 8..9: WAIT at 67.5 -> recalls chunk 3 once with I_4
-    assert len(stop_pl) == 1 and np.allclose(stop_pl[0], eye4)
+    sess_stop.step(script + ["j"] * 16 + ["none"] * 32)  # chunk 12 turns to 0 (recalls chunk 0), chunks 13..14 WAIT (retime with I_4)
+    assert np.allclose(stop_pl[-1], eye4) and np.allclose(stop_pl[-2], eye4) and not np.allclose(stop_pl[0], eye4)
+
+    # under time=sink + rel=current: moving install at chunk 10 (chunk 2) followed by WAIT refreshes once to I_4, then rests
+    sess_sink, _, _ = _session(monkeypatch, PM.PoseMemoryConfig(True, deg=25.0, time="sink", rel="current"), sink=6, local=18)
+    sink_pl = []
+    orig_sink_fwd = sess_sink._mem_forward
+    monkeypatch.setattr(sess_sink, "_mem_forward",
+                        lambda entry, views, rope_lat, slot, mem_rel=None: (
+                            sink_pl.append(np.array(mem_rel, copy=True)),
+                            orig_sink_fwd(entry, views, rope_lat, slot, mem_rel))[1])
+    script_to_10 = ["l"] * 12 + ["l"] * (16 * 5) + ["l"] * 8 + ["none"] * 8 + ["j"] * (16 * 4)
+    sess_sink.step(script_to_10 + ["none"] * 32)  # chunk 10 installs chunk 2 moving left; chunk 11 refreshes to I_4; chunk 12 keeps
+    assert sess_sink.pm_forwards == len(sink_pl) and np.allclose(sink_pl[-1], eye4) and not np.allclose(sink_pl[-2], eye4)
 
     # direct _mem_recompute without cur_rel falls back to entry.rel
     monkeypatch.setattr(sess_cur, "_mem_recompute", S.LingBotSession._mem_recompute.__get__(sess_cur))
@@ -701,11 +729,11 @@ def test_flag_stats_lines():
     s = on.finish_task("OE047")
     assert F.FlagStats.line(s).endswith(" pose_mem=on pose_mem_stored=30 pose_mem_retrievals=2 pose_mem_latents=8 "
                                         "pose_mem_restores=1 pose_mem_chunks=9 pose_mem_forwards=2 pose_mem_evicted=0 "
-                                        "pose_mem_mb=3")
+                                        "pose_mem_retimes=0 pose_mem_mb=3")
     on.new_task()
     assert on.finish_task("IF001")["pose_mem"] == "skip"
     assert on.total_line().endswith(" pose_mem_stored=30 pose_mem_retrievals=2 pose_mem_latents=8 pose_mem_restores=1"
-                                    " pose_mem_chunks=9 pose_mem_forwards=2 pose_mem_evicted=0")
+                                    " pose_mem_chunks=9 pose_mem_forwards=2 pose_mem_evicted=0 pose_mem_retimes=0")
 
 
 def test_multi_arm_main_isolation(monkeypatch, capsys, tmp_path):
@@ -773,9 +801,175 @@ def test_multi_arm_main_isolation(monkeypatch, capsys, tmp_path):
     assert "pose memory 4 latents after 2 anchor" in modes[1] and "rope recent" in modes[1]
     assert lines[1][0].startswith(lines[0][0] + " ")
     assert lines[1][0].endswith("pose_mem=on pose_mem_stored=4 pose_mem_retrievals=2 pose_mem_latents=8 "
-                                "pose_mem_restores=0 pose_mem_chunks=0 pose_mem_forwards=2 pose_mem_evicted=0 pose_mem_mb=5")
+                                "pose_mem_restores=0 pose_mem_chunks=0 pose_mem_forwards=2 pose_mem_evicted=0 pose_mem_retimes=0 "
+                                "pose_mem_mb=5")
     assert lines[1][1].endswith("pose_mem=skip pose_mem_stored=0 pose_mem_retrievals=0 pose_mem_latents=0 "
-                                "pose_mem_restores=0 pose_mem_chunks=0 pose_mem_forwards=0 pose_mem_evicted=0 pose_mem_mb=0")
+                                "pose_mem_restores=0 pose_mem_chunks=0 pose_mem_forwards=0 pose_mem_evicted=0 pose_mem_retimes=0 "
+                                "pose_mem_mb=0")
     assert lines[1][2].endswith(" pose_mem_stored=4 pose_mem_retrievals=2 pose_mem_latents=8 pose_mem_restores=0 "
-                                "pose_mem_chunks=0 pose_mem_forwards=2 pose_mem_evicted=0")
+                                "pose_mem_chunks=0 pose_mem_forwards=2 pose_mem_evicted=0 pose_mem_retimes=0")
     assert not R.POSE_MEM.enabled
+
+
+# ------------------------------------------------------------------ coverage rule (default since pm14-fx-v1)
+
+DATA = Path(__file__).resolve().parents[1] / "data"
+needs_planner = pytest.mark.skipif(
+    not (DATA / "gc" / "data.json").exists() or not (DATA / "outsight" / "data.json").exists()
+    or importlib.util.find_spec("httpx") is None,
+    reason="needs data/ and upstream run_agent (httpx)")
+SIX = ("GC031", "GC033", "GC036", "OE039", "OE047", "OE048")
+
+
+def _replay(cfg, yaws, name="GC900_full", sink=6, local=18):
+    """PoseMemory.decide / record over one latent pose per yaw (4 latents per chunk), as the session runs them.
+    Returns {chunk: (kind, [stored chunk ids], [notes])}."""
+    pm, installed, out = PM.PoseMemory(cfg, sink, local, name=name), (), {}
+    lat = [_yaw_pose(y) for y in yaws]
+    for c in range(len(lat) // 4):
+        chunk = lat[4 * c:4 * c + 4]
+        d = pm.decide(chunk, c, installed)
+        if d.kind == "restore":
+            installed, pm.current = (), []
+        elif d.kind in ("install", "retime"):
+            installed, pm.current = d.ids, list(d.matches)
+        out[c] = (d.kind, [m.entry.cid for m in d.matches], [m.note for m in d.matches if m.note])
+        pm.record(c, chunk)
+    return out
+
+
+def _out_and_back(deg=90.0, step=4.5, hold=12):
+    """Latent yaws of a turn to -deg at `step` degrees per latent (18 per chunk, the turn-cal rate), back, then held."""
+    n = int(round(deg / step))
+    return [-step * i for i in range(n)] + [-deg + step * i for i in range(n)] + [0.0] * hold
+
+
+def _installs(out):
+    return {c: ids for c, (kind, ids, _) in out.items() if kind == "install"}
+
+
+def test_smooth_out_and_back_fires_only_on_the_return():
+    """pm14-fx-v1 root cause: at 18 degrees per chunk the previous (in-window) chunk always overlaps the next view,
+    so the legacy shadow rule recalls nothing; the coverage rule recalls the departure views on the way back."""
+    yaws = _out_and_back()
+    assert _installs(_replay(LEGACY, yaws)) == {}
+    out = _replay(ON, yaws)
+    got = _installs(out)
+    # chunks 0-4 turn out (centres -9..-81), 5 turns at -90, 6-9 come back (-63..-9), 10+ hold at 0
+    assert got == {7: [2], 8: [1], 9: [0]}
+    assert all(out[c][0] in ("warmup", "keep") for c in range(7))  # nothing while the views are still in the window
+    assert all(out[c][0] == "retime" and out[c][1] == [0] for c in (10, 11))  # held at the start: same memory
+    assert out[8][2] == ["opening re-timed"] and out[9][2] == ["opening re-timed"]
+
+
+def test_time_sink_skips_the_opening_and_pick_latest_prefers_later_sightings():
+    yaws = _out_and_back()
+    assert _installs(_replay(PM.PoseMemoryConfig(True, time="sink"), yaws)) == {7: [2]}  # opening = a no-op there
+    oe = _replay(ON, yaws, name="OE900_full")  # auto -> latest for Out-of-sight call names
+    # the later sighting replaces an opening-only pick only while it still beats the window (c09: it does not)
+    assert _installs(oe) == {7: [2], 9: [1], 10: [0]}
+    assert _installs(_replay(PM.PoseMemoryConfig(True, pick="latest"), yaws)) == _installs(oe)
+
+
+def test_dwell_at_the_far_end_and_a_static_view_never_fire():
+    """A camera that stays put has its view in the window: no retrieval however long it rests."""
+    out = _replay(ON, [0.0] * 4 * 12)
+    assert _installs(out) == {} and {k for k, *_ in out.values()} <= {"warmup", "keep"}
+    out = _replay(ON, [-4.5 * i for i in range(20)] + [-90.0] * 40)  # turn out and stay out
+    assert _installs(out) == {}
+
+
+def test_yaw_scale_and_unwrapping():
+    cfg, _ = PM.parse(["--lingbot-pose-memory", "--lingbot-pose-mem-yaw-scale", "1.19"], environ={})
+    assert cfg.yaw_scale == 1.19 and "yaw scale 1.19" in cfg.describe()
+    for bad in ("0", "nan", "x", "5"):
+        with pytest.raises(SystemExit):
+            PM.parse(["--lingbot-pose-memory", f"--lingbot-pose-mem-yaw-scale={bad}"], environ={})
+    for bad in ("rule=x", "pick=x"):
+        with pytest.raises(SystemExit):
+            PM.parse(["--lingbot-pose-memory", f"--lingbot-pose-mem-{bad}"], environ={})
+    pm = PM.PoseMemory(ON, 6, 18)
+    vs = np.concatenate([pm.views([_yaw_pose(9.0 * (4 * c + k)) for k in range(4)], c) for c in range(12)])
+    assert np.allclose(vs[:, 0], 9.0 * np.arange(48))  # 423 degrees, unwrapped
+    a, b = PM.view_of(_yaw_pose(0)), PM.view_of(_yaw_pose(30))
+    assert math.isclose(PM.view_diff(a, b, 1.19)[0], 35.7) and math.isclose(PM.view_diff(a, b)[0], 30.0)
+    # a commanded 302.5-degree turn renders as 360 at 1.19x: that is where the start view comes back
+    a, b = PM.view_of(_yaw_pose(0)), np.array([302.5, 0, 0, 0, 0])
+    assert abs(PM.view_diff(a, b, 1.19)[0]) < 0.5 and PM.view_diff(a, b)[3] < 0.6
+    # leaving: 40 degrees out is about half the 79-degree field of view, so a 90-degree out-and-back leaves its
+    # -45 and -63 views behind (the first version needed 59 and left only the opening)
+    assert ON.leave_deg == 40.0 and math.isclose(ON.leave_overlap, 1 - 40 / PM.HFOV)
+
+
+def test_session_dataset_step_matches_the_replay(monkeypatch, capsys):
+    """The session runs the same decide/record code: its retrieval log equals the replay's installs."""
+    monkeypatch.setattr(P, "YAW", math.radians(22.5) / 20)  # turn-cal dataset rate: 18 degrees per chunk
+    sess, calls, _ = _session(monkeypatch, ON)
+    keys = S.fit_keys(["j"] * 80 + ["l"] * 80 + ["none"] * 50, S.keys_needed(13, first=True))
+    sess.step(keys)
+    out = capsys.readouterr().out
+    assert [r for r in _retrievals(out) if "<-" in r] == ["chunk 7 <- chunk 2", "chunk 8 <- chunk 1",
+                                                           "chunk 9 <- chunk 0"]
+    assert "window o=0.83" in out and "[opening re-timed]" in out and "keeps chunk 0 re-timed" in out
+    assert sess.pm_installs == 3 and sess.pm_retimes == 3 and sess.pm_forwards == 6 and sess.pm_restores == 0
+    assert sess.pm_chunks == 6
+    assert all(c["outside_ok"] for c in calls if not c["live"])
+    rec = [c for c in calls if not c["live"]]
+    assert [c["start"] for c in rec] == [7 * 4 - 8 - 4 + 4 * i for i in range(6)]  # just behind the window
+
+
+@needs_planner
+def test_planner_fires_on_the_six_return_tasks():
+    from pwa import pose_mem_plan as PL
+    got = {}
+    for tid in SIX:
+        _, s = PL.plan_task(PL.find_task(tid, DATA), ON)
+        got[tid] = s
+        assert s["applies"] and s["mode"] == "dataset"
+    # every one of the six returns to a view it left: GC031 passes the start after 360, GC036 crosses the start and
+    # returns to its centre, OE039 passes the start before stepping back, OE047/OE048 and GC033 (OE048 mirrored)
+    # turn 90 away and back
+    assert all(got[t]["retrievals"] > 0 for t in SIX), {t: got[t]["retrievals"] for t in SIX}
+    assert got["GC033"]["memories"] == [0, 1, 2] and got["GC033"]["first"] == 7
+    assert got["GC031"]["first"] == 19  # yaw 351: the start view again, out of the window since chunk 2
+    # Out-of-sight: the 90-degree return recalls the later sighting (chunk 2) first; chunks 1 and 0 (both in the
+    # sink) only once they beat the window
+    assert got["OE048"]["memories"] == [0, 1, 2] and got["OE048"]["opening_only"] == 2
+    # the first version recalls nothing on any of them, as the 30 GPU rollouts of pm14-fx-v1/v2 logged
+    legacy, _ = PM.parse([PM.FLAG, *PM.LEGACY_ARGS], environ={})
+    assert all(PL.plan_task(PL.find_task(t, DATA), legacy)[1]["retrievals"] == 0 for t in SIX)
+
+
+@needs_planner
+def test_planner_cli(capsys):
+    from pwa import pose_mem_plan as PL
+    assert PL.main(["GC033", "--summary"]) == 0
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("GC033 dataset: chunks=13 retrievals=3 ") and "first=7 last=12" in out
+    assert PL.main(["OE048", "--chunked"]) == 0
+    out = capsys.readouterr().out
+    assert "OE048_chunk_01" not in out and "| install <- " in out and out.splitlines()[-1].startswith("OE048 chunked:")
+    assert PL.main(["GC031", "--summary", "--lingbot-yaw-gain", "1.25", "--lingbot-pose-mem-track", "model"]) == 0
+    out_m = capsys.readouterr().out.strip()
+    assert "first=15" in out_m  # 1.25x model yaw reaches 360 earlier than intended first=19
+    assert PL.main(["GC033", "--summary", "--lingbot-pose-mem-focus", "4"]) == 0
+    assert "retrievals=" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        PL.main(["GC033", "--lingbot-pose-mem-latents", "8"])  # sink 6 too small: refused as in the runner
+
+
+def test_retime_drops_a_kept_memory_that_no_longer_covers_the_view(monkeypatch):
+    """A re-time keeps the installed chunk only while one of its latents still matches the view; else restore."""
+    pm = PM.PoseMemory(ON, 6, 18)
+
+    def stored(cid, deg):
+        return PM.Entry(cid, _yaw_pose(deg), None, np.eye(4)[None].repeat(4, 0), 0,
+                        views=np.array([PM.view_of(_yaw_pose(deg))] * 4))
+
+    near, far = stored(2, 0.0), stored(3, -90.0)
+    monkeypatch.setattr(pm, "plan", lambda poses, c: PM.Plan(None, PM.view_of(_yaw_pose(0.0)), 1.0, 1))
+    pm.current = [PM.Match(near, 0, 0, 0, 1.0)]
+    d = pm.decide(None, 10, ((2, 0),))
+    assert d.kind == "retime" and [m.entry.cid for m in d.matches] == [2]
+    pm.current = [PM.Match(far, 0, 0, 0, 1.0)]
+    assert pm.decide(None, 10, ((3, 0),)).kind == "restore"

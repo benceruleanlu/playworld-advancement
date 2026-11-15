@@ -2,12 +2,12 @@
  "exp": "ins14-fx-v2-a1",
  "release_tag": "run-ins14-fx-v2-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-fx-v2-a1",
- "generated": "2026-11-15T05:28:38Z",
+ "generated": "2026-11-15T05:35:57Z",
  "git_sha": "0f70d08a7c60f35033e3d339ece658e2a05a44b6",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -18,9 +18,7 @@
  "player_model": "",
  "notes": "insight, all six dev tasks: goal prompt vs caption prompt vs caption + insight director; wait-only tasks so the rollout equals the closed-loop one [arm 1/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 1/3 of ins14-fx-v2: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "ins14-fx-v2-a1.md",
  "model": {
@@ -37,13 +35,18 @@
   {
    "task_id": "OE001",
    "family": "insight",
-   "mean": null,
+   "mean": 2.25,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.0,
+    1.0,
+    2.0,
+    3.0
+   ],
+   "reason": "视频中婴儿车和左侧男子在首帧即消失，女子和儿童全程僵立，且后期手中凭空生成蓝色物体，演变和物理合理性差。",
+   "reason_en": "In the video, the stroller and the man on the left disappear in the very first frame. The woman and child stand stiffly throughout, and a blue object appears out of thin air in hand later on, showing poor progression and physical plausibility.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -53,13 +56,18 @@
   {
    "task_id": "OE005",
    "family": "insight",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    2.0
+   ],
+   "reason": "视频前20秒完全静止，随后发生严重的硬重置，孩子们瞬间消失并被一个拿手机的男子替换，完全缺乏合理的场景演进。",
+   "reason_en": "The first 20 seconds of the video are completely static, followed by a severe hard reset where the children instantly vanish and are replaced by a man holding a phone, completely lacking plausible scene progression.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -69,13 +77,18 @@
   {
    "task_id": "OE018",
    "family": "insight",
-   "mean": null,
+   "mean": 2.2,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    2.0,
+    2.0,
+    2.8,
+    2.0
+   ],
+   "reason": "视频初期展示了倒水的过程，但随后迅速退化为物理上不合理的幻觉，包括木盖消失、漂浮的蓝色颗粒、无源的白色液体以及突然出现的绿色颗粒。",
+   "reason_en": "The video initially shows water being poured, but quickly degrades into physically implausible hallucinations, including a disappearing wooden lid, floating blue particles, white liquid with no source, and green particles appearing suddenly.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -85,13 +98,18 @@
   {
    "task_id": "OE035",
    "family": "insight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "score_1.0"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频完全静止，工人没有执行任何抬起木框的动作，且后半段出现了严重的颜色漂移，缺乏有意义的时间演变。",
+   "reason_en": "The video is completely static. The worker does not perform any action to lift the wooden frame, and severe color drift occurs in the second half, lacking meaningful temporal evolution.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -101,13 +119,18 @@
   {
    "task_id": "OE064",
    "family": "insight",
-   "mean": null,
+   "mean": 1.75,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    2.0,
+    2.0,
+    2.0
+   ],
+   "reason": "视频未能展示厨师使用锅铲炒肉的过程，锅铲消失，肉片不符合物理规律地变形为红色固体块，且凭空出现了绿色棍子。",
+   "reason_en": "The video fails to show the chef stir-frying meat with a spatula. The spatula disappears, the meat slices morph into a red solid block in a physically implausible way, and a green stick appears out of thin air.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -117,13 +140,18 @@
   {
    "task_id": "OE074",
    "family": "insight",
-   "mean": null,
+   "mean": 2.1,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    2.4,
+    2.0,
+    2.0,
+    2.0
+   ],
+   "reason": "视频未能展示合理的进餐过程，手中的包子变成了杯子，且场景光线和桌上食物发生了不符合物理规律的剧烈变化。",
+   "reason_en": "The video fails to show a plausible eating process. The steamed bun in hand turns into a cup, and the scene lighting and food on the table undergo drastic, physically implausible changes.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
