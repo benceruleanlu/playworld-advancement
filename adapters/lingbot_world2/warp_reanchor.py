@@ -97,10 +97,12 @@ def _num(name: str, raw: str, kind: type, lo: float, hi: float = math.inf, open_
 
 def parse(argv: list[str], environ=os.environ) -> tuple[WarpReanchorConfig, list[str]]:
     """Extract --lingbot-warp-reanchor and its knobs from argv (env fallback), returning (cfg, rest).
-    Knobs passed without --lingbot-warp-reanchor are validated and stripped while leaving enabled=False."""
+    A knob arg without the flag (or LINGBOT_WARP_REANCHOR=1) is refused: that arm would silently run without it."""
     enabled = FLAG in argv or environ.get("LINGBOT_WARP_REANCHOR", "0") == "1"
     argv = [a for a in argv if a != FLAG]
     seen, rest = _take(argv)
+    if seen and not enabled:
+        raise SystemExit(f"{', '.join(sorted(seen))} without {FLAG}: the arm would run without warp re-anchoring")
     raw = {
         f: (seen[arg] if arg in seen else (environ.get(env, "").strip() or None))
         for arg, (f, env) in _ARGS.items()

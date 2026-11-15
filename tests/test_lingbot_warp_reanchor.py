@@ -69,9 +69,12 @@ def test_parse_env_and_knob_without_enable():
     assert cfg.leave_deg == 28.0 and cfg.leave_trans == 5.0 and cfg.erode == 0
     assert "focus inf" in cfg.describe()
 
-    # Knobs passed without --lingbot-warp-reanchor validate & strip while keeping enabled=False.
-    cfg_dark, rest_dark = WR.parse(["--lingbot-warp-max-deg", "30", "--other"], {})
-    assert not cfg_dark.enabled and cfg_dark.max_deg == 30.0 and rest_dark == ["--other"]
+    # A knob arg without --lingbot-warp-reanchor is refused (the arm would silently run without it).
+    with pytest.raises(SystemExit, match="without --lingbot-warp-reanchor"):
+        WR.parse(["--lingbot-warp-max-deg", "30", "--other"], {})
+    # Knob env vars alone stay inert.
+    cfg_dark, rest_dark = WR.parse(["--other"], {"LINGBOT_WARP_MAX_DEG": "30"})
+    assert not cfg_dark.enabled and rest_dark == ["--other"]
     assert not cfg_dark.applies("GC033_chunk_01")
 
 
