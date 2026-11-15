@@ -2,12 +2,12 @@
  "exp": "rs13-arms-v1-a1",
  "release_tag": "run-rs13-arms-v1-a1",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-rs13-arms-v1-a1",
- "generated": "2026-11-15T02:08:58Z",
+ "generated": "2026-11-15T02:19:58Z",
  "git_sha": "b5d40d1900dfa056baf9bde93138081e7cdc1491",
  "branch": "main",
  "runner": "lingbot_world2_1p3b",
  "action_source": "agent",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-turn-cal",
@@ -17,10 +17,7 @@
  ],
  "player_model": "gpt-6-luna",
  "notes": "1.3B, full length: return stop vs control (both with player hint and turn-cal); OE047 is the negative control [arm 1/2 of rs13-arms-v1: --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-player-hint]",
- "labels": [
-  "not scored",
-  "arm 1/2 of rs13-arms-v1: --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-player-hint"
- ],
+ "labels": [],
  "report": "rs13-arms-v1-a1.md",
  "model": {
   "name": "LingBot-World v2",
@@ -36,66 +33,66 @@
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 3.5500000000000003,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头旋转角度过小，未能完成360度旋转，也未能回到初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC031.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC031.jpg"
   },
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 2.1,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "镜头执行了向左和向右的运动轨迹，但在返回过程中场景内容发生了严重突变，未能真实呈现原始的展示窗，因此仅算作部分完成。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC033.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC033.jpg"
   },
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "视频仅展示了持续向左平移的动作，未能执行向右平移以及回到中心的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/GC036.jpg"
   },
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "reason": "",
+   "reason": "视频在镜头移动过程中发生了灾难性的变形和场景替换，斑马完全失去了原有形态，鸵鸟和生菜消失，未能展现任何合理的隐藏状态演进或场景一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE034.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE034.jpg"
   },
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "score_1.0"
    ],
-   "reason": "",
+   "reason": "视频在镜头转回后发生了灾难性的场景重置，自动扶梯完全消失，男子的服装也发生了改变，没有任何有意义的隐藏状态进展。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE047.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE047.jpg"
   },
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "reason": "",
+   "reason": "未执行向左转回的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE058.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-rs13-arms-v1-a1/OE058.jpg"
   }
