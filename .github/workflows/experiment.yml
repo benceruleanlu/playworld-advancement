@@ -1,6 +1,6 @@
 name: experiment
 # Shown in the Actions list and the API, so a run can be identified while it is still in progress.
-run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.judge_model && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
+run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.judge_model && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.max_chunks && format(' · SMOKE capped {0} chunks', inputs.max_chunks) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
 
 # Manual: Actions tab -> experiment -> Run workflow.
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
@@ -58,6 +58,9 @@ on:
       player_model:
         description: Player (agent) model for closed-loop runs; passed to the runner as --agent-model
         default: "gpt-6-luna"
+      max_chunks:
+        description: "Smoke tier: cap each closed-loop rollout at N agent chunks (official 30; upstream --num-chunks). Empty = uncapped. Capped runs are labelled smoke everywhere and never an official score."
+        default: ""
 
 concurrency:
   group: experiment-${{ inputs.exp }}
@@ -92,8 +95,17 @@ jobs:
       - name: Validate experiment name
         env:
           JUDGE_IN: ${{ inputs.judge_model }}
+          CAP_IN: ${{ inputs.max_chunks }}
+          ACTION_SOURCE: ${{ inputs.action_source }}
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+          # max_chunks: empty, or a positive integer for a closed-loop run; exported to later steps as MAX_CHUNKS
+          if [[ -n "$CAP_IN" ]]; then
+            [[ "$CAP_IN" =~ ^[1-9][0-9]*$ ]] || { echo "max_chunks must be empty or a positive integer" >&2; exit 2; }
+            [[ "$ACTION_SOURCE" != "dataset" ]] || { echo "max_chunks caps closed-loop agent chunks; use action_source agent or refined" >&2; exit 2; }
+            echo "MAX_CHUNKS=$CAP_IN" >> "$GITHUB_ENV"
+            echo "::notice title=capped smoke run::$CAP_IN agent chunks per rollout (official 30); not comparable to official scores"
+          fi
           # judge_model: MODEL or MODEL:THINKING (minimal|low|medium|high); exported to later steps as JUDGE_MODEL / JUDGE_THINKING
           [[ "$JUDGE_IN" =~ ^[A-Za-z0-9._:-]*$ ]] || { echo "judge_model must match [A-Za-z0-9._:-]*" >&2; exit 2; }
           if [[ -n "$JUDGE_IN" ]]; then
@@ -115,7 +127,9 @@ jobs:
           [[ "$PLAYER_MODEL" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "player_model must match [A-Za-z0-9._:-]+" >&2; exit 2; }
           timeout 30s python -m adapters.common.agent_api
       - name: Install FFmpeg
-        if: inputs.backend != 'modal' || inputs.stage != 'gen-only'
+        # Every stage needs it: the verifier, and pwa media for the scenes. On a Modal gen-only run only the scenes
+        # need it, and a failure there must not fail the job.
+        continue-on-error: ${{ inputs.backend == 'modal' && inputs.stage == 'gen-only' }}
         run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
       - name: Install dataset client
         run: pip install -q huggingface_hub
@@ -128,6 +142,11 @@ jobs:
           pip install -q -e third_party/PlayWorld
           pip install -q -r third_party/PlayWorld/Agent_player/SANA-WM/requirements.txt
           pip install -q -e .
+      - name: Install pwa for scenes
+        # Modal gen-only: the scenes step runs pwa media here (stdlib only, no verifier dependencies).
+        if: inputs.backend == 'modal' && inputs.stage == 'gen-only'
+        continue-on-error: true
+        run: pip install -q -e .
       - uses: actions/cache@v4
         with:
           path: data
@@ -145,10 +164,11 @@ jobs:
           RUNNER: ${{ inputs.stage != 'score-only' && inputs.runner || '' }}
           ACTION_SOURCE: ${{ inputs.stage != 'score-only' && inputs.action_source || '' }}
           NOTES: ${{ inputs.stage != 'score-only' && inputs.notes || '' }}
+          MARK_CAP: ${{ inputs.stage != 'score-only' && inputs.max_chunks || '' }}
         run: |
-          echo "::notice title=experiment::$EXP runner=$RUNNER tasks=$LABEL action_source=$ACTION_SOURCE stage=${{ inputs.stage }}"
+          echo "::notice title=experiment::$EXP runner=$RUNNER tasks=$LABEL action_source=$ACTION_SOURCE stage=${{ inputs.stage }}${MARK_CAP:+ max_chunks=$MARK_CAP}"
           .github/scripts/push_results.sh "results: $EXP running" \
-            'python -m pwa.cli mark "$EXP" --status running --into "$MAIN_DIR/results/experiments.csv" --split="$LABEL" --runner="$RUNNER" --action-source="$ACTION_SOURCE" --notes="$NOTES"'
+            'python -m pwa.cli mark "$EXP" --status running --into "$MAIN_DIR/results/experiments.csv" --split="$LABEL" --runner="$RUNNER" --action-source="$ACTION_SOURCE" --notes="$NOTES" ${MARK_CAP:+--max-chunks "$MARK_CAP"}'
 
       - name: Sync Modal secret
         if: inputs.backend == 'modal' && inputs.stage != 'score-only'
@@ -184,7 +204,7 @@ jobs:
           fi
           modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
             --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
-            --extra="$EXTRA"
+            --max-chunks "${MAX_CHUNKS:-0}" --extra="$EXTRA"
 
       - name: Generate (local)
         if: inputs.backend == 'local' && inputs.stage != 'score-only'
@@ -196,10 +216,17 @@ jobs:
           NOTES: ${{ inputs.notes }}
         run: |
           sel=(--split "$SPLIT"); [[ -n "$TASKS" ]] && sel=(--tasks ${TASKS//,/ })
-          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes="$NOTES"
+          pwa gen "$EXP" "${sel[@]}" --runner "$RUNNER" --action-source "$ACTION_SOURCE" --notes="$NOTES" \
+            ${MAX_CHUNKS:+--max-chunks "$MAX_CHUNKS"}
 
       - name: Fetch rollouts from Modal
         if: inputs.backend == 'modal' && inputs.stage != 'gen-only'
+        run: mkdir -p runs && modal volume get pwa-runs "/$EXP" runs/ --force
+
+      - name: Fetch rollouts from Modal for scenes (gen-only)
+        # gen-only skips scoring but still publishes the clips; a failure here never fails the job
+        if: inputs.backend == 'modal' && inputs.stage == 'gen-only'
+        continue-on-error: true
         run: mkdir -p runs && modal volume get pwa-runs "/$EXP" runs/ --force
 
       - name: Score
@@ -231,16 +258,26 @@ jobs:
 
       - name: Publish scenes (GitHub Release run-EXP)
         # Small web copies of every rollout go to a release; the manifest the site reads is committed below.
-        # A failure here must not lose the scored row, so it never fails the job. Skipped for screening-judge runs.
-        if: inputs.stage != 'gen-only' && inputs.judge_model == ''
+        # Every run that generated videos publishes them: scored, gen-only, capped smoke and screening-judge runs
+        # (the manifest labels the unofficial ones; screening scores are never published). Pipeline tests publish
+        # nothing. A failure here must not lose the scored row, so it never fails the job.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          STAGE: ${{ inputs.stage }}
+          JUDGE_IN: ${{ inputs.judge_model }}
+          RUNNER_IN: ${{ inputs.runner }}
+          ACTION_SOURCE: ${{ inputs.action_source }}
         run: |
           tag="run-$EXP"
           repo="https://github.com/$GITHUB_REPOSITORY"
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
           out="$RUNNER_TEMP/media"
-          pwa media "$EXP" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag"
+          [[ -d "runs/$EXP" ]] || { echo "no rollouts on this runner"; exit 0; }
+          report_name="$EXP.md"; screening=()
+          if [[ -n "$JUDGE_IN" && "$STAGE" != "gen-only" ]]; then report_name="$EXP.$JUDGE_SLUG.md"; screening=(--screening "$JUDGE_IN"); fi
+          pwa media "$EXP" --out "$out" --base-url "$repo/releases/download/$tag/" --release-url "$repo/releases/tag/$tag" \
+            --report-name "$report_name" --site-url "$site" "${screening[@]}"
           shopt -s nullglob
           files=("$out"/*.mp4 "$out"/*.jpg)
           # pipeline tests and runs without rollouts publish nothing (pwa media writes no clips for them)
@@ -254,14 +291,34 @@ jobs:
           fi
           # reached only if every upload above succeeded (bash -e); the commit step publishes the manifest only then
           touch "$out/.published"
+          # every task with a play link, in the step summary and in the results/reports/ entry committed below
+          if [[ "$STAGE" == "gen-only" ]]; then
+            { echo "## $EXP (generated, not scored)"; echo
+              echo "runner \`$RUNNER_IN\` | action source \`$ACTION_SOURCE\` | stage gen-only"; echo; } > "$RUNNER_TEMP/report.md"
+          fi
+          { echo; cat "$out/SCENES.md"; } | tee -a "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit screening report
-        # Screening judge: only results/reports/EXP.<slug>.md reaches main; never the results csv row or media.
+        # Screening judge: results/reports/EXP.<slug>.md and the run's unscored scenes reach main; never the
+        # results csv row, and never the screening scores in the scenes manifest.
         if: inputs.stage != 'gen-only' && inputs.judge_model != ''
         run: |
           .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUG" '
             mkdir -p "$MAIN_DIR/results/reports"
-            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.$JUDGE_SLUG.md"'
+            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.$JUDGE_SLUG.md"
+            .github/scripts/scenes_to_main.sh || echo "::warning::scenes manifest not committed"'
+
+      - name: Commit scenes (gen-only)
+        # gen-only (including capped smoke runs): the scenes manifest and results/reports/EXP.md (task list with
+        # play links) reach main. No csv row beyond the status marker. Never fails the job.
+        if: inputs.stage == 'gen-only'
+        continue-on-error: true
+        run: |
+          [[ -f "$RUNNER_TEMP/media/.published" ]] || { echo "no published scenes"; exit 0; }
+          .github/scripts/push_results.sh "results: $EXP scenes" '
+            mkdir -p "$MAIN_DIR/results/reports"
+            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"
+            .github/scripts/scenes_to_main.sh'
 
       - name: Commit experiment log
         if: inputs.stage != 'gen-only' && inputs.judge_model == ''
@@ -272,12 +329,7 @@ jobs:
             pwa upsert-row "$EXP" --into "$MAIN_DIR/results/experiments.csv"
             mkdir -p "$MAIN_DIR/results/reports"
             cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.md"
-            if [[ -f "$RUNNER_TEMP/media/.published" && -f "$RUNNER_TEMP/media/$EXP.json" ]]; then
-              mkdir -p "$MAIN_DIR/results/media"
-              cp "$RUNNER_TEMP/media/$EXP.json" "$MAIN_DIR/results/media/$EXP.json"
-              python -c "import json, pathlib, sys; from pwa import media; media.update_index(pathlib.Path(sys.argv[1]), json.load(open(sys.argv[2])))" \
-                "$MAIN_DIR/results/media/index.json" "$RUNNER_TEMP/media/$EXP.json"
-            fi'
+            .github/scripts/scenes_to_main.sh || echo "::warning::scenes manifest not committed"'
 
       - name: Mark final status on main
         # gen-only or screening-judge success -> generated (no official score); a failed or cancelled job (any

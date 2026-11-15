@@ -40,6 +40,9 @@ def _gen_args(p):
     p.add_argument("--num-shards", type=int, default=1)
     p.add_argument("--resume", action="store_true", help="reuse an existing runs/EXP (upstream skips tasks whose mp4 exists)")
     p.add_argument("--notes", default="", help="free text stored in meta.json and results/experiments.csv")
+    p.add_argument("--max-chunks", type=int, default=None, metavar="N",
+                   help="smoke tier: cap each closed-loop rollout at N agent chunks (passed to the runner as upstream "
+                        "--num-chunks, default 30). Labelled a capped smoke run everywhere; never an official score")
 
 
 def _judge_args(p):
@@ -137,8 +140,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--runner", default="")
     p.add_argument("--action-source", default="")
     p.add_argument("--notes", default="")
+    p.add_argument("--max-chunks", type=int, default=None, help="agent-chunk cap of a capped smoke run (labels the row)")
 
-    p = mk("media", "small web copies of a run's rollouts plus a manifest for the results site (used by the workflow)")
+    p = mk("media", "small web copies of a run's rollouts, a manifest for the results site and SCENES.md play links "
+                    "(any run with videos, scored or not; used by the workflow)")
     p.add_argument("exp")
     _sel_args(p)
     p.add_argument("--out", required=True, help="directory for the clips, posters and EXP.json")
@@ -146,6 +151,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--release-url", default="", help="page that lists all of the run's files")
     p.add_argument("--index", default="", help="index.json to add this run to (e.g. results/media/index.json in a checkout of main)")
     p.add_argument("--height", type=int, default=480)
+    p.add_argument("--screening", default="", metavar="JUDGE",
+                   help="screening run: name of its screening judge, shown as a label (its scores are never published)")
+    p.add_argument("--report-name", default="", help="file under results/reports/ the release notes link to (default EXP.md)")
+    p.add_argument("--site-url", default="", help="results site for the play links in SCENES.md (default: the public site)")
 
     p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason")
     p.add_argument("exp")
@@ -269,6 +278,10 @@ def dispatch(a) -> int:  # noqa: C901
         common = {t["task_id"] for t in sa} & {t["task_id"] for t in sb}
         if len(common) < max(len(sa), len(sb)):
             log(f"[pwa] task lists differ; comparing on the {len(common)} common tasks")
+        caps = [core.chunk_cap(core.read_meta(e)) for e in (a.exp_a, a.exp_b)]
+        if caps[0] != caps[1]:
+            log(f"[pwa] WARNING: chunk caps differ (A={caps[0] or 'none'}, B={caps[1] or 'none'}); rollouts have "
+                f"different lengths, so the delta mixes the method with the horizon")
         ra = report.build(a.exp_a, [t for t in sa if t["task_id"] in common], judge=judge)
         rb = report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=judge)
         if not ra["passes"] or not rb["passes"]:
@@ -293,7 +306,7 @@ def dispatch(a) -> int:  # noqa: C901
     if a.cmd == "mark":
         try:
             n = report.mark_row(a.exp, a.into, a.status, a.split, a.runner, a.action_source, a.notes,
-                                core.provenance().get("git_sha") or "")
+                                core.provenance().get("git_sha") or "", a.max_chunks)
         except (ValueError, OSError) as e:
             raise PwaError(str(e)) from e
         log(f"[pwa] marked {a.exp} {a.status} in {a.into} ({n} row(s))")
@@ -302,7 +315,8 @@ def dispatch(a) -> int:  # noqa: C901
     if a.cmd == "media":
         from . import media
         man = media.build(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), Path(a.out), a.base_url,
-                          a.release_url, a.height)
+                          a.release_url, a.height, screening=a.screening, report_name=a.report_name,
+                          site_url=a.site_url or media.SITE_URL)
         if man is None:
             emit({"exp": a.exp, "skipped": "pipeline test"}, True)
             return 0
