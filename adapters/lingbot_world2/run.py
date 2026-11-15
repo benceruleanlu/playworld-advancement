@@ -19,6 +19,9 @@ arrow-key rates so one dataset token turns 22.5 deg (yaw) / 20 deg (pitch); see 
 Caption prompt (off by default): `--lingbot-caption-prompt` or LINGBOT_PROMPT_MODE=auto conditions
 the model on the task's scene caption instead of the agent goal ("wait and observe" for Insight);
 see adapters/common/prompts.py. The agent player still gets the goal.
+Re-anchoring (off by default, session mode only): `--lingbot-reanchor` or LINGBOT_REANCHOR=1.
+When the commanded camera track of a GC task returns to the start pose, the input image is
+given to the model again at that latent; see session.ReturnDetector.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -29,6 +32,9 @@ Env:
   LINGBOT_TURN_CAL  1 = same as --lingbot-turn-cal (overrides the two rates above)
   LINGBOT_UNIT_YAW_DEG / LINGBOT_UNIT_PITCH_DEG / LINGBOT_CHUNK_UNITS   turn-cal angles (22.5 / 20 / 2)
   LINGBOT_PROMPT_MODE  goal (default) | caption | auto (= --lingbot-caption-prompt)
+  LINGBOT_REANCHOR  1 = same as --lingbot-reanchor
+  LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
+  LINGBOT_REANCHOR_DEG / LINGBOT_REANCHOR_TRANS   return tolerance: degrees / key units (6 / 2)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 """
@@ -50,7 +56,9 @@ TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL"
 PROMPT_MODE = "auto" if "--lingbot-caption-prompt" in sys.argv else os.environ.get("LINGBOT_PROMPT_MODE", "goal")
 if PROMPT_MODE not in prompts.MODES:
     raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {PROMPT_MODE!r}")
-sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt")]
+REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR", "0") == "1"
+sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
+                                              "--lingbot-reanchor")]
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -94,7 +102,9 @@ class LingBotWorld2Engine:
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
-              + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}"), flush=True)
+              + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
+              + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else ""),
+              flush=True)
 
     def _calibrate(self, name, n_keys):
         """--lingbot-turn-cal: arrow-key rates from dataset token angles (poses.calibrate)."""
@@ -130,7 +140,8 @@ class LingBotWorld2Engine:
         if not cont:
             horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
-                               int(self.args.seed), horizon_frames=horizon)
+                               int(self.args.seed), horizon_frames=horizon,
+                               reanchor=REANCHOR and S.reanchor_task(name))
         start = self.session.chunk_id
         frames = self.session.step(keys)
         output_dir = Path(output_dir)
