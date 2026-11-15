@@ -816,11 +816,21 @@ import * as RunInfo from "./runinfo.js";
     var head = el("div", { class: "gc-head" }, [el("span", { class: "cvlab " + (role === "highest" ? "good" : "bad"), text: role === "highest" ? "Highest" : "Lowest" }),
       el("b", { text: t.task_id }), el("span", { class: "sc", title: passesText(t), text: fmt(t.mean) + " / 5" })]);
     var quote = el("blockquote", { class: "gc-q", text: t.reason_en || t.reason });
+    // the judge's own text is authoritative: a translated quote always carries it behind "show original"
+    var orig = null, tog = null;
+    if (t.reason_en) {
+      orig = el("p", { class: "jorig", text: t.reason }); orig.hidden = true;
+      tog = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
+      tog.addEventListener("click", function () {
+        orig.hidden = !orig.hidden; tog.textContent = orig.hidden ? "show original" : "hide original";
+        tog.setAttribute("aria-expanded", String(!orig.hidden));
+      });
+    }
     var foot = el("div", { class: "badges" }, [driverBadge(c.row), np ? el("span", { class: "badge", text: np + " judge passes" }) : null,
       (t.status || []).indexOf("gate_fail") >= 0 ? el("span", { class: "badge bad", title: "Failed a gate in at least one judge pass", text: "gate failed" }) : null]);
     var link = el("a", { class: "sclink", href: sceneLink(c.exp, t.task_id), text: "Open in Scenes" });
     link.addEventListener("click", function (e) { e.preventDefault(); openScene(c.exp, t.task_id); });
-    return el("article", { class: "scene gc" }, [head, media, quote, foot,
+    return el("article", { class: "scene gc" }, [head, media, quote, tog, orig, foot,
       el("div", { class: "row" }, [el("code", { class: "rawid", text: c.exp }), link])]);
   }
   function renderGallery() {
