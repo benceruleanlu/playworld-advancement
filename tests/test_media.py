@@ -117,6 +117,12 @@ def test_manifest_carries_runner_args_player_and_notes(tmp_path, monkeypatch):
     assert man["player_model"] == "gpt-6-luna" and man["notes"] == "player hint"
 
 
+def test_arm_label_follows_the_run_labels(tmp_path, monkeypatch):
+    sel = _unscored(tmp_path, monkeypatch, {"runner": "lingbot_world2", "action_source": "agent", "max_chunks": 4})
+    man = media.build("g-a2", sel, tmp_path / "out", "https://example.test/dl/", "", extra_labels=["arm 2/2 of g: --x", ""])
+    assert man["labels"][-2:] == ["not scored", "arm 2/2 of g: --x"] and "capped smoke run" in man["labels"][0]
+
+
 def test_screening_run_labels_judge_and_hides_its_scores(tmp_path, monkeypatch):
     sel = _unscored(tmp_path, monkeypatch, {"runner": "sana", "action_source": "dataset"})
     man = media.build("scr", sel, tmp_path / "out", "https://example.test/dl/", "", screening="gemini-x:low",

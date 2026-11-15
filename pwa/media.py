@@ -108,11 +108,13 @@ def watch_url(site_url: str, exp: str, task_id: str | None = None) -> str:
 
 
 def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: str, height: int = 480,
-          screening: str = "", report_name: str = "", site_url: str = SITE_URL) -> dict | None:
+          screening: str = "", report_name: str = "", site_url: str = SITE_URL,
+          extra_labels: list[str] | None = None) -> dict | None:
     """Encode every task video of EXP into out_dir and write out_dir/EXP.json, RELEASE_NOTES.md and SCENES.md.
     Asset URLs are base_url + file name. Works for unscored runs too (gen-only, capped smoke, screening judge):
     the manifest then says so in `scored` and `labels`, and its tasks carry no score. `screening` names the
-    screening judge of a screening run; its scores never enter the manifest."""
+    screening judge of a screening run; its scores never enter the manifest. `extra_labels` are appended to the
+    labels (the arms workflow adds "arm i/N of EXP: ARGS")."""
     out_dir.mkdir(parents=True, exist_ok=True)
     if base_url and not base_url.endswith("/"):
         base_url += "/"
@@ -141,7 +143,7 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
            "action_source": meta.get("action_source") or "", "scored": scored, "max_chunks": cap,
            # shown under each clip in the site's Compare view: runner flags, AI player, the run's notes
            "runner_args": args, "player_model": player_model(args), "notes": meta.get("notes") or "",
-           "labels": run_labels(meta, scored, screening), "report": report_name or f"{exp}.md",
+           "labels": run_labels(meta, scored, screening) + [x for x in extra_labels or [] if x], "report": report_name or f"{exp}.md",
            "model": model_for(meta.get("runner") or ""), "license": LICENSE, "tasks": tasks}
     (out_dir / f"{exp}.json").write_text(json.dumps(man, indent=1, ensure_ascii=False) + "\n")
     (out_dir / "RELEASE_NOTES.md").write_text(release_notes(man))
@@ -149,6 +151,34 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
     n = sum(1 for x in tasks if x["video"])
     log(f"[pwa] media {exp}: {n}/{len(tasks)} clips -> {out_dir}" + (f" ({'; '.join(man['labels'])})" if man["labels"] else ""))
     return man
+
+
+def compare_url(site_url: str, task_id: str, exps: list[str]) -> str:
+    """Deep link into the site's Compare view: task_id from up to three runs (a = baseline, then b, c)."""
+    q = {"compare": task_id, **dict(zip("abc", exps[:3]))}
+    return f"{site_url.rstrip('/')}/?{urlencode(q)}#compare-clips"
+
+
+def arms_md(site_url: str, mans: list[dict]) -> str:
+    """Markdown for the arms step summary: per task a play link for every arm with a clip and, when 2+ arms have
+    one, compare links with the first such arm (arm 1 unless it has no clip) as the baseline a= and the others as
+    b= / c=, two per link (the Compare view has three slots). `mans` are the arms' manifests in arm order."""
+    tasks: dict[str, list[str]] = {}
+    for m in mans:
+        for t in m["tasks"]:
+            row = tasks.setdefault(t["task_id"], [])
+            if t.get("video"):
+                row.append(m["exp"])
+    out = ["### Arm scenes on the results site", "",
+           "Live once the arm manifests are on main. **play** opens one arm's rollout in the site's Scenes view; "
+           "**compare** plays the arms side by side, the first arm as the baseline.", "",
+           "| task | play | compare |", "|---|---|---|"]
+    for tid, exps in tasks.items():
+        play = " · ".join(f"[{e}]({watch_url(site_url, e, tid)})" for e in exps) or "no video"
+        groups = [[exps[0], *exps[1:][i:i + 2]] for i in range(0, len(exps) - 1, 2)]
+        cmp_ = " · ".join(f"[{' vs '.join(g)}]({compare_url(site_url, tid, g)})" for g in groups) or "-"
+        out.append(f"| {tid} | {play} | {cmp_} |")
+    return "\n".join(out) + "\n"
 
 
 def _index_with(data: dict, man: dict) -> dict:
@@ -254,7 +284,11 @@ def release_notes(man: dict) -> str:
 def _main(argv: list[str]) -> int:
     """Workflow helpers (no dataset needed):
     python -m pwa.media to-main MEDIA_DIR MANIFEST   publish MANIFEST into MEDIA_DIR (exit 0 also when skipped)
-    python -m pwa.media keeps-official MAIN_MANIFEST NEW_MANIFEST   exit 0 if NEW would downgrade MAIN, else 1"""
+    python -m pwa.media keeps-official MAIN_MANIFEST NEW_MANIFEST   exit 0 if NEW would downgrade MAIN, else 1
+    python -m pwa.media arms-md SITE_URL MANIFEST...   play and compare links for arms (arm order), as Markdown"""
+    if len(argv) >= 2 and argv[0] == "arms-md":
+        print(arms_md(argv[1], [json.loads(Path(x).read_text()) for x in argv[2:]]), end="")
+        return 0
     if len(argv) == 3 and argv[0] == "to-main":
         to_main(Path(argv[1]), Path(argv[2]))
         return 0
