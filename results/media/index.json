@@ -2,14 +2,12 @@
  "runs": [
   {
    "exp": "dec14-ins-v1-a2",
-   "generated": "2026-11-15T04:06:22Z",
+   "generated": "2026-11-15T04:31:14Z",
    "n_tasks": 2,
    "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-dec14-ins-v1-a2",
-   "scored": false,
+   "scored": true,
    "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 2/2 of dec14-ins-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule"
+    "replayed dataset moves (open loop), A/B only"
    ]
   },
   {
