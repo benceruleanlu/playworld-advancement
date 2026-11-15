@@ -52,13 +52,15 @@
   // ended without a result: failed, cancelled, or a stale running row. Hidden by default.
   function isEnded(r) { return isLive(r) && (r.status === "failed" || r.status === "cancelled" || isStale(r)); }
   function isOpen(r) { return r.action_source === "dataset"; }
-  function isClosed(r) { return r.action_source === "agent" || r.action_source === "refined"; }
+  // scripted player (--lingbot-scripted-player): closed-loop harness but moves replayed from the dataset, no AI player; A/B only
+  function isScripted(r) { return /scripted player/i.test(r.notes || ""); }
+  function isClosed(r) { return (r.action_source === "agent" || r.action_source === "refined") && !isScripted(r); }
   function isPartial(r) { return r.split !== "all" || (r.n_tasks !== null && r.n_tasks < FULL_TASKS); }
   // capped smoke tier, a behaviour check only: each rollout was cut to fewer agent chunks than the official 30 (csv max_chunks, or for rows from
   // before that column an smk-/smkNN- name or notes saying capped smoke); never comparable to a real score
   function isCapped(r) { return (typeof r.max_chunks === "number" && r.max_chunks > 0) || /^smk\d*-/.test(r.exp) || /capped smoke/i.test(r.notes || ""); }
   // real run too small to estimate a score: fewer than a dev split of tasks, or a single verifier pass
-  function isSmoke(r) { return !isTest(r) && (isCapped(r) || (r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
+  function isSmoke(r) { return !isTest(r) && (isCapped(r) || isScripted(r) || (r.n_tasks !== null && r.n_tasks < DEV_TASKS) || (r.passes !== null && r.passes < 2)); }
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   function fmtTime(t) {
@@ -124,7 +126,7 @@
     return ALL.filter(function (r) {
       if (!filt.tests && isTest(r)) return false;
       if (!filt.capped && isCapped(r)) return false;
-      if (!filt.ended && isEnded(r)) return false;
+      if (!filt.ended && isLive(r)) return false;
       return true;
     });
   }
@@ -143,12 +145,13 @@
       text: isStale(r) ? "! no result, stale" : r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status + ", no result" }));
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
     if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "Fixed action scripts from the dataset, no AI player. Used for A/B tests only, never for final scores.", text: "open loop, A/B only" }));
+    else if (isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "The scripted player replayed the dataset moves chunk by chunk; no AI player chose them. For A/B of model-side changes only, never a final score.", text: "scripted moves, test only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", title: "An AI player chose every move while the world was being generated (closed loop).", text: "AI played" }));
     if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run from branch " + r.branch + ". The code behind this row is not merged into main yet.", text: "code not merged" }));
     if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Fewer than all " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
     if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: "Each rollout was cut short. A behaviour check, never comparable to a real score.",
       text: typeof r.max_chunks === "number" && r.max_chunks > 0 ? "capped smoke, " + r.max_chunks + " chunks" : "capped smoke" }));
-    else if (isSmoke(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: too small to estimate a score.", text: "tiny test run" }));
+    else if (isSmoke(r) && !isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: too small to estimate a score.", text: "tiny test run" }));
     return b;
   }
 
@@ -216,6 +219,9 @@
     });
     t.appendChild(el("thead", null, [hr]));
     var rows = visible().slice().sort(function (a, b) {
+      // runs big enough to estimate a score first, tiny and scripted test runs after
+      var sm = /^(overall|gc|if|insight|outsight)$/.test(sort.key) ? (isSmoke(a) ? 1 : 0) - (isSmoke(b) ? 1 : 0) : 0;
+      if (sm) return sm;
       var x = sortVal(a, sort.key), y = sortVal(b, sort.key);
       if (x === null && y === null) return a.order - b.order;
       if (x === null) return 1; if (y === null) return -1;
@@ -234,7 +240,7 @@
   function renderToggles() {
     function count(id, pred) { var n = ALL.filter(pred).length; $(id).textContent = "(" + n + ")"; }
     count("capped-count", function (r) { return !isTest(r) && isCapped(r); });
-    count("ended-count", function (r) { return !isTest(r) && isEnded(r); });
+    count("ended-count", function (r) { return !isTest(r) && !isCapped(r) && isLive(r); });
     count("tests-count", isTest);
     $("f-capped").checked = filt.capped; $("f-ended").checked = filt.ended; $("f-tests").checked = filt.tests;
   }
@@ -257,6 +263,8 @@
     realRows().forEach(function (r) { if (isFinal(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
     return best;
   }
+  // runs whose AI player differs from every run compared since
+  var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "Older AI player than every run compared since, so this is a diagnostic, not the starting-model number." };
   function renderStatus() {
     var box = $("status"), fin = bestFinal(), shown = fin || bestClosed();
     box.className = "scorecard card" + (fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD) ? " ok" : "");
@@ -275,6 +283,7 @@
       if (shown.branch && shown.branch !== "main") badge("warn", "code not merged");
       box.appendChild(b);
       box.appendChild(el("p", { class: "vs" }, [el("b", { text: shown.exp }), document.createTextNode(shown.notes ? ": " + shown.notes : "")]));
+      if (PLAYER_NOTE[shown.exp]) box.appendChild(el("p", { class: "vs", text: PLAYER_NOTE[shown.exp] }));
     } else box.appendChild(el("p", { class: "vs", text: "No run big enough to estimate a score yet (24 or more tasks, 2 or more judge passes)." }));
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
     box.appendChild(el("p", { class: "vs", text: "Paper, all 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
@@ -362,33 +371,45 @@
       body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11.",
       links: [["#23", PR + "23"]] },
     { group: "now", title: "Caption prompt", arms: [["off", "fx14-model-dev-v2-a2"], ["on", "fx14-model-dev-v2-a3"]], also: ["ins14-base-v2", "ins14-caption-v1"],
-      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. The ins14 pair tests it on the insight tasks with the AI player.",
+      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. Earlier ins14 runs (closed-loop harness, but insight tasks are wait-only, so the player is never called): the control ins14-base-v2 was generated, and the caption arm ins14-caption-v1 was cancelled.",
       links: [["#32", PR + "32"], ["#63", PR + "63"]] },
-    { group: "now", title: "Re-anchor, insight director, IF slow translation", arms: [["without", "fx14-model-dev-v2-a3"], ["with", "fx14-model-dev-v2-a4"]],
-      body: "Three model-side flags tested together on top of the caption prompt: re-anchoring to the input image when the camera returns to the start (GC only), an insight prompt cue, and half-speed camera translation on IF tasks.",
+    { group: "now", title: "Insight director, IF slow translation (re-anchor on, cannot fire with fixed actions)", arms: [["without", "fx14-model-dev-v2-a3"], ["with", "fx14-model-dev-v2-a4"]],
+      body: "Adds an insight prompt cue and half-speed camera translation on IF tasks, on top of the caption prompt. Re-anchoring is switched on in the second arm, but fixed action scripts replay each task as one call, so it never fires there; its test is the scripted-player GC A/B below.",
       links: [["#46", PR + "46"], ["#90", PR + "90"]] },
     { group: "now", title: "Conditioning strength per denoising step", arms: [["control", "cs14-fx-v1-a1"], ["schedule", "cs14-fx-v1-a2"], ["+ text 1.0", "cs14-fx-v1-a3"], ["early 4", "cs14-fx-v1-a4"]],
       body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on.",
       links: [["#101", PR + "101"]] },
+    { group: "now", title: "Camera-conditioning weight modulation", arms: [["control", "wm14-fx-v1-a1"], ["weight-mod", "wm14-fx-v1-a2"]], also: ["wm14-ctl-c10-v1", "wm14-arm-c10-v1"],
+      body: "Scales how strongly the model follows the camera command, per chunk: off on still chunks, slightly lower on moving third-person chunks. Both arms have the caption prompt and turn calibration on. The earlier c10 runs were capped smoke checks from the PR branch.",
+      links: [["#87", PR + "87"], ["#104", PR + "104"]] },
+    { group: "now", title: "IF identity cue", arms: [["control", "wm14-fx-v1-a1"], ["cue", "wm14-fx-v1-a3"]],
+      body: "Appends a fixed sentence about keeping each subject's identity to the model prompt on third-person IF tasks.",
+      links: [["#104", PR + "104"]] },
+    { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
+      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Aimed at insight.",
+      links: [["#104", PR + "104"]] },
+    { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
+      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. Not a closed-loop score.",
+      links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
       links: [["#75", PR + "75"]] },
     { group: "parked", title: "GC completion hint", arms: [["off", "gch13-arms-v1-a1"], ["on", "gch13-arms-v1-a2"]], cells: "2 of 3 tasks down a full point",
       body: "Tells the player to run the camera path once and end. 1.3B model, one run per side. It ran before the player's empty-reply fix (#89).",
       links: [["#78", PR + "78"], ["#89", PR + "89"]] },
-    { group: "parked", title: "Player hint", arms: [["off", "smk14-arms-gc-v2-a1"], ["on", "smk14-arms-gc-v2-a2"]],
-      body: "Tells the player how far one action turns the camera and where the commanded camera is. Only capped smoke runs exist, which never count as scores.",
+    { group: "parked", title: "Player hint", arms: [["no flags", "smk14-arms-gc-v2-a1"], ["turn cal + hint", "smk14-arms-gc-v2-a2"]],
+      body: "Tells the player how far one action turns the camera and where the commanded camera is. Turn calibration is also on in the second arm. Only capped smoke runs exist, which never count as scores.",
       links: [["#59", PR + "59"]] },
     { group: "cand", title: "Proposal batch 2: IF horizon, IF camera hint, history endpoints, IF repeat check",
-      body: "Merged behind opt-in flags. Its insight director and IF slow translation are in the model-side bundle above.", links: [["#90", PR + "90"]] },
-    { group: "cand", title: "Proposal batch 3: GC chunk director, GC ease turns, IF subject director",
-      body: "Merged behind opt-in flags.", links: [["#100", PR + "100"]] },
-    { group: "cand", title: "Camera-conditioning weight modulation", arms: [["control", "wm14-ctl-c10-v1"], ["arm", "wm14-arm-c10-v1"]],
-      body: "Scales how strongly the model follows the camera command, per chunk. Open PR, not merged; capped smoke runs only.", links: [["#87", PR + "87"]] }
+      body: "Merged behind opt-in flags. Its insight director and IF slow translation are in the model-side runs above.", links: [["#90", PR + "90"]] },
+    { group: "cand", title: "Proposal batch 3: IF subject director",
+      body: "Merged behind opt-in flags. The batch's GC chunk director and GC ease turns are in the scripted-player GC A/B above.", links: [["#100", PR + "100"]] },
+    { group: "cand", title: "Proposal batch 4: weight-modulation knobs, measured turn",
+      body: "Merged behind opt-in flags and not run yet. Weight modulation, the IF identity cue and the attention window are under test above.", links: [["#104", PR + "104"]] }
   ];
   var GROUPS = [
-    ["now", "Testing now: model-side", "Fixed action scripts (no AI player), 14B model, 24 dev tasks, official judge, 4 passes."],
-    ["parked", "Tried and parked: player-side", "Official judge, 4 passes, small task sets. Not adopted."],
+    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes."],
+    ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. Not adopted."],
     ["cand", "Candidates, not yet scored", "Off by default. Not results."]
   ];
   function rowText(r) {
@@ -442,7 +463,7 @@
     function T(t) { return document.createTextNode(t); }
     f.appendChild(el("h2", { class: "credhead", text: "Method" }));
     f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown." }));
-    f.appendChild(el("p", { text: "A/B runs use fixed action scripts and 4 judge passes; a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
+    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
     f.appendChild(el("p", null, [T("Rows come from "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "results/experiments.csv"), T(" (" + source + "). "), A("https://github.com/" + REPO, "Repository"), T(".")]));
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
     var ul = el("ul", { class: "credits", "aria-label": "Credits" });
@@ -450,7 +471,7 @@
     li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., “PlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives”, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources’ terms.")]);
     li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, “Infinite Worlds with Versatile Interactions”, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/" + REPO + "/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
     li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
-    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the first practice-task baseline used gpt-4.1-mini.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the 24-task baseline lb14-session-agent-dev-v1 used gpt-4.1-mini.")]);
     li([T("Team: "), A("https://github.com/benceruleanlu", "Benjamin Lu"), T(", "), A("https://github.com/Hcoder10", "Hari Gangadharan"), T(", "), A("https://github.com/jpoehnelt", "Justin Poehnelt"), T(", "), A("https://github.com/kevvzhang", "Kevv"), T(". Built at the "), A("https://iterate.inc/ai-research", "Iterate AI Research Hackathon"), T(", San Francisco, November 2026. Site built with "), A("https://astro.build", "Astro"), T(".")]);
     f.appendChild(ul);
   }
@@ -462,6 +483,7 @@
     [["compare", "tab-compare", "compare-clips"], ["scenes", "tab-scenes", "scenes"]].forEach(function (x) {
       var on = x[0] === m;
       $(x[1]).setAttribute("aria-selected", String(on));
+      $(x[1]).setAttribute("tabindex", on ? "0" : "-1");
       $(x[2]).hidden = !on;
       if (!on) Array.prototype.forEach.call($(x[2]).querySelectorAll("video"), function (v) { if (!v.paused) v.pause(); });
     });
@@ -480,6 +502,15 @@
     setMode(q.has("compare") ? "compare" : (q.has("scenes") || location.hash === "#scenes") ? "scenes" : "compare", false);
     $("tab-compare").addEventListener("click", function () { setMode("compare", true); });
     $("tab-scenes").addEventListener("click", function () { setMode("scenes", true); });
+    ["tab-compare", "tab-scenes"].forEach(function (id) {
+      $(id).addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+        e.preventDefault();
+        var next = mode === "compare" ? "scenes" : "compare";
+        if (e.key === "Home") next = "compare"; else if (e.key === "End") next = "scenes";
+        setMode(next, true); $(next === "scenes" ? "tab-scenes" : "tab-compare").focus();
+      });
+    });
   }
 
   /* ---------- scenes ---------- */
@@ -725,7 +756,7 @@
   // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
   function shareData() {
     window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
-      isCapped: isCapped, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
+      isCapped: isCapped, isScripted: isScripted, isSmoke: isSmoke, isOpen: isOpen, isClosed: isClosed, fmt: fmt };
     document.dispatchEvent(new CustomEvent("pwa:data"));
   }
 })();

@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlencode
 
-from .core import PwaError, cap_label, chunk_cap, log, now, read_meta, video_path
+from .core import SCRIPTED_LABEL, PwaError, cap_label, chunk_cap, log, now, read_meta, scripted_player, video_path
 from .report import failures
 from .score import passes_present
 
@@ -87,6 +87,8 @@ def run_labels(meta: dict, scored: bool, screening: str = "") -> list[str]:
                       if screening else "not scored")
     if meta.get("action_source") == "dataset":
         labels.append("replayed dataset moves (open loop), A/B only")
+    elif scripted_player(meta):
+        labels.append(SCRIPTED_LABEL)
     return labels
 
 
@@ -142,7 +144,7 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
            "git_sha": meta.get("git_sha") or "", "branch": meta.get("branch") or "", "runner": meta.get("runner") or "",
            "action_source": meta.get("action_source") or "", "scored": scored, "max_chunks": cap,
            # shown under each clip in the site's Compare view: runner flags, AI player, the run's notes
-           "runner_args": args, "player_model": player_model(args), "notes": meta.get("notes") or "",
+           "runner_args": args, "player_model": "" if scripted_player(meta) else player_model(args), "notes": meta.get("notes") or "",
            "labels": run_labels(meta, scored, screening) + [x for x in extra_labels or [] if x], "report": report_name or f"{exp}.md",
            "model": model_for(meta.get("runner") or ""), "license": LICENSE, "tasks": tasks}
     (out_dir / f"{exp}.json").write_text(json.dumps(man, indent=1, ensure_ascii=False) + "\n")

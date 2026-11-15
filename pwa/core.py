@@ -222,6 +222,22 @@ def chunk_cap(meta: dict) -> int | None:
     return n if n is not None and n < UPSTREAM_NUM_CHUNKS else None
 
 
+SCRIPTED_FLAG = "--lingbot-scripted-player"
+SCRIPTED_LABEL = "scripted dataset moves (no AI player), A/B only"
+SCRIPTED_TAG = "[scripted player: dataset moves, no AI player]"
+
+
+def scripted_runner(args, environ=None) -> bool:
+    """True when runner args (or LINGBOT_SCRIPTED_PLAYER=1 in environ) turn on the LingBot scripted player."""
+    return SCRIPTED_FLAG in [str(x) for x in args or []] or (environ or {}).get("LINGBOT_SCRIPTED_PLAYER") == "1"
+
+
+def scripted_player(meta: dict) -> bool:
+    """True for a run whose closed-loop moves were replayed by the scripted player, not chosen by an AI player.
+    Such a run is an A/B of model-side flags only, never a closed-loop score."""
+    return bool(meta.get("scripted_player")) or scripted_runner(meta.get("runner_args"))
+
+
 def cap_label(cap: int | None) -> str:
     """One label for a capped run, used in meta notes, the csv, reports and the site."""
     return f"capped smoke run: {cap} agent chunk{'s' if cap != 1 else ''} per rollout (official {UPSTREAM_NUM_CHUNKS}), " \

@@ -73,14 +73,57 @@ caption prompt; requires caption prompting (--lingbot-caption-prompt or LINGBOT_
 Its counter if_subject_prompts counts generate() calls (about 30 per closed-loop rollout), not T5 encodes
 (one per session reset). See if_subject.py.
 
+Scripted player (off by default, closed loop only): `--lingbot-scripted-player` or LINGBOT_SCRIPTED_PLAYER=1
+answers every closed-loop decision from the task's dataset action, cut into chunks (upstream parse_segments;
+poses.CHUNK_UNITS rotation tokens or (chunk_frames - 1) / action_frame_unit translation tokens per chunk, rounded
+on each axis's running total), then WAIT for the dataset-mode tail and END; the LLM is never called. Angles match
+the dataset only with --lingbot-turn-cal. Outermost decide_action wrapper, so the player-side wrappers and player
+history endpoints are not reached. For A/B of model-side flags only, not final numbers. Needs --action-source
+agent or refined. See scripted_player.py.
+
+Conditioning schedule (off by default, session only): `--lingbot-cond-schedule` or LINGBOT_COND_SCHEDULE=1
+scales DiT camera FiLM and cross-attention output on early denoising steps of stationary and third-person
+chunks, restoring (1, 1) on late steps and the t=0 KV write (--lingbot-cond-early/cam/3p/text; cond_schedule.py).
+Refused together with --lingbot-weight-mod: both wrap the same layers.
+
+Weight modulation (off by default): `--lingbot-weight-mod` or LINGBOT_WEIGHT_MOD=1 multiplies the outputs of
+every DiT block's cam_scale_layer / cam_shift_layer (camera FiLM) and cross_attn.o (text cross-attention) by a
+scale picked per latent chunk: LINGBOT_CAM_WEIGHT_STATIC (0.0) on still chunks (every relative latent pose within
+1e-5 of identity), LINGBOT_CAM_WEIGHT_3P (0.85) on moving chunks of third-person tasks (task JSON "perspective"),
+LINGBOT_CAM_WEIGHT_MOVE (1.0) on other moving chunks; text LINGBOT_TEXT_WEIGHT_SCALE (1.0) on still and third-person
+chunks, LINGBOT_TEXT_WEIGHT_MOVE (1.0) on first-person moving ones, LINGBOT_TEXT_WEIGHT_STATIC (default: the text
+scale) on still chunks only. Session mode also takes a late-step camera schedule: LINGBOT_CAM_LATE_STEPS (0 = off)
+last denoising steps of a still / third-person chunk use LINGBOT_CAM_WEIGHT_STATIC_LATE / LINGBOT_CAM_WEIGHT_3P_LATE
+(default: the base scales); the clean KV-write pass always uses the base scale. Cam scale 0 is out of distribution for
+these weights (always trained with Plucker input), not a "base" no-camera DiT. Acts in dataset mode (the per-chunk
+choice runs inside the one long step); stateless classifies the whole rollout once. See weight_mod.py.
+
+Attention window (off by default): `--lingbot-sink-size N` / `--lingbot-local-attn N` (LINGBOT_SINK_SIZE /
+LINGBOT_LOCAL_ATTN_SIZE, defaults 6 / 18, the README causal-fast settings). Set on the loaded pipe and its modules
+at every main() call (read at forward time), so pwa gen-arms reuses one pipe. Requires local >= sink + 4 (one
+latent chunk) unless local is -1 (full attention, then sink must be 0).
+
+IF identity cue (off by default): `--lingbot-if-identity-cue` or LINGBOT_IF_IDENTITY_CUE=1 appends a fixed sentence
+group about keeping each subject's identity (if_identity.CUE) to the model prompt of third-person IF tasks that have
+an image_caption; requires LINGBOT_PROMPT_MODE=auto (--lingbot-caption-prompt), so the IF goal is in the prompt.
+Its counter if_identity_prompts counts prompts that are encoded with the cue: one per session reset (chunk 01 or
+`<task>_full`), every call on the stateless path. See if_identity.py.
+
+Measured turn (off by default, player-side): `--lingbot-measured-turn` or LINGBOT_MEASURED_TURN=1 measures the
+rotation each finished turn/tilt chunk shows in the video (phase correlation, measured_turn.py), logs it next to the
+command and, on GC tasks only (LINGBOT_MEASURED_TURN_TELL, a regex, default GC), adds one sentence with both totals
+to the player's goal. No effect with --action-source dataset (decide_action is never called there).
+
 Model prompt composition, in order: caption prompt (prompts.model_prompt), insight director (insight
 tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
-replaces the prompt with its structured form). Each applies to one family, so at most one rewrites a task.
+replaces the prompt with its structured form), IF identity cue (third-person IF; appends to whatever the
+prompt is by then, so it survives the subject director). Only the two IF ones can touch the same task.
 
-decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
-return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
-IF repeat) + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
+decide_action wrappers, innermost first: player hint, measured turn, IF repeat check, IF camera hint, GC completion hint,
+return stop, IF horizon, scripted player. The goal the player reads is therefore goal + GC completion | (IF camera, then
+IF repeat) + measured turn + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
 replies never reach the hints or their counters.
+The scripted player answers every decision itself, so with it on none of the others is reached.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -109,6 +152,12 @@ Env:
   LINGBOT_GC_CHUNK_DIRECTOR  1 = same as --lingbot-gc-chunk-director
   LINGBOT_GC_EASE_TURNS  1 = same as --lingbot-gc-ease-turns
   LINGBOT_IF_SUBJECT_DIRECTOR  1 = same as --lingbot-if-subject-director
+  LINGBOT_SCRIPTED_PLAYER  1 = same as --lingbot-scripted-player
+  LINGBOT_SCRIPTED_TAIL  WAIT chunks after the script (default ceil(--tail-frames / (--chunk-frames - 1)) = 2)
+  LINGBOT_MEASURED_TURN  1 = same as --lingbot-measured-turn; LINGBOT_MEASURED_TURN_TELL  task-id regex told (GC)
+  LINGBOT_IF_IDENTITY_CUE  1 = same as --lingbot-if-identity-cue
+  LINGBOT_WEIGHT_MOD  1 = same as --lingbot-weight-mod (scale knobs above)
+  LINGBOT_SINK_SIZE / LINGBOT_LOCAL_ATTN_SIZE   attention window (6 / 18)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -138,8 +187,9 @@ reset and first step of every rollout, always on. Opt-in, all off by default:
 
 In-process use (pwa gen-arms): main(argv) can be called several times in one process. Each call re-reads
 the flags and env, resets poses' turn rates, the flag counters and prompts' current task, and imports a
-fresh upstream run_agent (so no patch stacks); only the loaded pipe (_PIPES, keyed by checkpoint, T5
-placement and KV window) is shared, and each call's engine builds its own session.
+fresh upstream run_agent (so no patch stacks); only the loaded pipe (_PIPES, keyed by checkpoint and T5
+placement) is shared; each call's engine sets its own KV window on it, detaches an earlier arm's weight-mod
+wrappers, and builds its own session.
 The fast-start flags are per call too: --lingbot-fast-y / --lingbot-fast-t5's disk cache follow each call's
 flags, while the load-time parts (read-ahead, meta T5, lazy T5) only apply to the call that loads the pipe;
 the loader patches are undone after that load, so they never stack.
@@ -151,6 +201,7 @@ Player counters (adapters/common/agent_api.py, every runner): `[agent] player ta
 retries= errors= fallbacks=` per task, `[agent] player total ...` at the end, "player" in <task>_result.json.
 The --player-* args (completion budget, reasoning effort, empty-reply retries) are read there too.
 """
+import contextlib
 import os
 import sys
 import time
@@ -159,27 +210,87 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import cond_schedule as CS  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_director as D  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import if_camera as IC  # noqa: E402
 from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
+from adapters.lingbot_world2 import if_identity as IFI  # noqa: E402
 from adapters.lingbot_world2 import if_repeat as IR  # noqa: E402
+from adapters.lingbot_world2 import measured_turn as MT  # noqa: E402
 from adapters.lingbot_world2 import if_subject as IFS  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
+from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
+from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
               "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
-              "--lingbot-if-subject-director")
+              "--lingbot-if-subject-director", "--lingbot-weight-mod", "--lingbot-if-identity-cue",
+              "--lingbot-measured-turn", "--lingbot-scripted-player")
+
+
+def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
+    """`--name V` / `--name=V` out of argv: the last value given, and argv without the flag."""
+    out, rest, i = None, [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a == name:
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                raise SystemExit(f"{name} needs an integer value")
+            out, i = argv[i + 1], i + 2
+        elif a.startswith(name + "="):
+            out, i = a.split("=", 1)[1], i + 1
+        else:
+            rest.append(a)
+            i += 1
+    return out, rest
+
+
+def _window(argv: list[str], environ) -> tuple[dict, list[str]]:
+    """Attention window sizes: --lingbot-local-attn / --lingbot-sink-size (env LINGBOT_LOCAL_ATTN_SIZE /
+    LINGBOT_SINK_SIZE). Defaults are the README causal-fast settings (18 local, 6 sink). Checked here, before
+    any load: upstream's eviction needs local >= sink + one latent chunk, and ignores sink with full attention."""
+    local_v, argv = _take_value(argv, "--lingbot-local-attn")
+    sink_v, argv = _take_value(argv, "--lingbot-sink-size")
+    local_v = environ.get("LINGBOT_LOCAL_ATTN_SIZE") if local_v is None else local_v
+    sink_v = environ.get("LINGBOT_SINK_SIZE") if sink_v is None else sink_v
+    try:
+        local = LOCAL_ATTN_DEFAULT if local_v in (None, "") else int(local_v)
+        sink = SINK_DEFAULT if sink_v in (None, "") else int(sink_v)
+    except ValueError:
+        raise SystemExit(f"window sizes must be integers, got local={local_v!r} sink={sink_v!r}") from None
+    if sink < 0 or local == 0 or local < -1:
+        raise SystemExit(f"window sizes must be sink >= 0 and local >= 1 (or -1 for full), got local={local} sink={sink}")
+    if local == -1 and sink > 0:
+        raise SystemExit(f"--lingbot-sink-size {sink} has no effect with full attention (local -1); use sink 0")
+    if local != -1 and local < sink + P.LATENT_CHUNK:
+        raise SystemExit(f"--lingbot-local-attn {local} must be >= sink ({sink}) + {P.LATENT_CHUNK} (one latent chunk)")
+    return {"local_attn": local, "sink": sink}, argv
+
+
+def set_window(pipe, local_attn: int, sink: int) -> int:
+    """Set the KV window on a loaded pipe and every module that carries one (all read at forward time; the
+    session sizes its cache from pipe.local_attn_size at reset). Returns how many modules were set."""
+    pipe.local_attn_size, pipe.sink_size = local_attn, sink
+    n = 0
+    model = getattr(pipe, "model", None)
+    for m in (model.modules() if hasattr(model, "modules") else ()):
+        if hasattr(m, "local_attn_size") and hasattr(m, "sink_size"):
+            m.local_attn_size, m.sink_size = local_attn, sink
+            n += 1
+    if not n and (local_attn, sink) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT):
+        raise SystemExit("[lingbot] window: no module exposes local_attn_size / sink_size; upstream layout changed")
+    return n
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -208,15 +319,29 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "gc_director": "--lingbot-gc-chunk-director" in argv or environ.get("LINGBOT_GC_CHUNK_DIRECTOR", "0") == "1",
         "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
         "if_subject": "--lingbot-if-subject-director" in argv or environ.get("LINGBOT_IF_SUBJECT_DIRECTOR", "0") == "1",
+        "scripted": "--lingbot-scripted-player" in argv or environ.get("LINGBOT_SCRIPTED_PLAYER", "0") == "1",
+        "if_identity": "--lingbot-if-identity-cue" in argv or environ.get("LINGBOT_IF_IDENTITY_CUE", "0") == "1",
+        "measured_turn": "--lingbot-measured-turn" in argv or environ.get("LINGBOT_MEASURED_TURN", "0") == "1",
+        "weight_mod": "--lingbot-weight-mod" in argv or environ.get("LINGBOT_WEIGHT_MOD", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    if flags["scripted"]:
+        SP.check_action_source(argv)
+        SP.validate(environ)
     if flags["gc_director"] and (mode == "goal" or flags["stateless"]):
         raise SystemExit("--lingbot-gc-chunk-director requires caption prompting and session mode")
     if flags["gc_ease_turns"] and flags["stateless"]:
         raise SystemExit("--lingbot-gc-ease-turns requires session mode")
     if flags["if_subject"] and mode == "goal":
         raise SystemExit("--lingbot-if-subject-director requires caption prompting")
+    if flags["if_identity"] and mode != "auto":
+        raise SystemExit("--lingbot-if-identity-cue requires auto caption prompting (scene plus IF goal)")
     flags["stall"], argv = W.parse(argv, environ)
+    flags["cond_sched"], argv = CS.parse(argv, environ)
+    if flags["cond_sched"].enabled and flags["weight_mod"]:
+        raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
+    window, argv = _window(argv, environ)
+    flags.update(window)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     flags["player"], argv = agent_api.configure(argv, environ)
@@ -227,17 +352,21 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 GC_DIRECTOR = False  # --lingbot-gc-chunk-director / LINGBOT_GC_CHUNK_DIRECTOR=1 (requires caption + session)
 GC_EASE_TURNS = False  # --lingbot-gc-ease-turns / LINGBOT_GC_EASE_TURNS=1; session-only, off by default
 IF_SUBJECT = False  # --lingbot-if-subject-director / LINGBOT_IF_SUBJECT_DIRECTOR=1, off by default
+WEIGHT_MOD = False  # --lingbot-weight-mod / LINGBOT_WEIGHT_MOD=1, off by default
+IF_IDENTITY = False  # --lingbot-if-identity-cue / LINGBOT_IF_IDENTITY_CUE=1, off by default
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = IF_HORIZON = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
 CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
 STALL = W.Limits()
+COND_SCHED = CS.ScheduleConfig()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
-LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
+LOCAL_ATTN_DEFAULT, SINK_DEFAULT = 18, 6  # README settings for causal-fast (the pipe is loaded with these)
+LOCAL_ATTN, SINK = LOCAL_ATTN_DEFAULT, SINK_DEFAULT  # this call's window (--lingbot-local-attn / --lingbot-sink-size)
 DEFAULT_PROMPT = "A photo-realistic scene with rich details."
-_PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
+_PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and T5 placement (the window is set per call)
 
 
 def _print_cpu():
@@ -291,7 +420,7 @@ def load_pipe(environ=os.environ):
     FS.log("load.import_wan", time.time() - t0)
 
     cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
-    key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
+    key = (root, str(ckpt), str(assets), t5_cpu)
     if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
         print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
         _print_cpu()
@@ -304,7 +433,7 @@ def load_pipe(environ=os.environ):
             t0 = time.time()
             _PIPES[key] = wan.WanI2VCausal(
                 config=cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-                local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
+                local_attn_size=LOCAL_ATTN_DEFAULT, sink_size=SINK_DEFAULT, infer_mode="causal_fast",
                 assets_dir=str(assets) if assets else None)
             timer.rest(time.time() - t0)
         print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
@@ -319,23 +448,41 @@ def load_pipe(environ=os.environ):
 class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
+    weight_mod = None  # --lingbot-weight-mod: a WeightModulator, set in __init__
+
     def __init__(self, args):
         self.args = args
         self.cfg, self.pipe, weights, t5_cpu = load_pipe()
         # upstream's in-memory embeddings are keyed by prompt only: drop them when the CPU T5 thread count changed
         FS.partition_t5_memory(self.pipe, CPU_THREADS if t5_cpu else "gpu")
+        set_window(self.pipe, LOCAL_ATTN, SINK)  # every call: an earlier arm in this process may have changed it
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
+        CS.detach_model(getattr(self.pipe, "model", None))
+        WM.detach_model(getattr(self.pipe, "model", None))  # an earlier arm's modulator in this process
+        sched = (CS.CondScheduler(self.pipe.model, COND_SCHED)
+                 if COND_SCHED.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
+        self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
+        if self.weight_mod is not None:
+            STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
                                             horizon_frames=int(getattr(args, "max_total_frames", 961) or 961),
-                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache)
+                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache,
+                                            weight_mod=self.weight_mod,
+                                            **({"cond_sched": sched} if sched is not None else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
+              + ("" if (LOCAL_ATTN, SINK) == (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
+                 else f", window local_attn={LOCAL_ATTN} sink={SINK}")
+              + ((", cond-schedule ignored (stateless)" if STATELESS else f", {COND_SCHED.describe()}")
+                 if COND_SCHED.enabled else "")
+              + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
+                 else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
               + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else "")
@@ -348,6 +495,10 @@ class LingBotWorld2Engine:
               + (", GC chunk director on" if GC_DIRECTOR else "")
               + (", GC ease turns on" if GC_EASE_TURNS else "")
               + (", IF subject director on" if IF_SUBJECT else "")
+              + (", IF identity cue on" if IF_IDENTITY else "")
+              + (", measured turn on" if STATS.measured_turn else "")
+              + (f", scripted player on ({SP.units():g} tokens per chunk"
+                 + ("" if TURN_CAL else ", angles uncalibrated: turn-cal off") + ")" if STATS.scripted else "")
               + f", stall watchdog {STALL.describe()}",
               flush=True)
 
@@ -395,6 +546,15 @@ class LingBotWorld2Engine:
                 STATS.subject_prompt()
                 if (S.parse_chunk_name(name) or (name, 1))[1] == 1:
                     print(f"[lingbot] {name}: IF subject director: {prompt!r}", flush=True)
+        if IF_IDENTITY:  # last: appends to the prompt the model gets, whichever composer built it
+            directed = IFI.compose(prompts._current.get("task"), prompt, name)
+            if directed is not None:
+                prompt = directed
+                first = (S.parse_chunk_name(name) or (name, 1))[1] == 1
+                if self.session is None or first:  # counts encodes: session encodes at reset only
+                    STATS.if_identity_prompts += 1
+                if first:
+                    print(f"[lingbot] {name}: IF identity cue: {prompt!r}", flush=True)
         with W.watch(name, STALL):
             if self.session is None:
                 return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
@@ -424,9 +584,12 @@ class LingBotWorld2Engine:
         if not cont:
             horizon = max(int(num_frames), int(getattr(self.args, "max_total_frames", 961) or 961))
             reanchor = REANCHOR and S.reanchor_task(name)
+            # only with the flag, so the no-flag reset call stays main's
+            mod = {"third_person": WM.is_third_person(prompts._current.get("task"), name)} if self.weight_mod else {}
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
-                               reanchor=reanchor)
+                               reanchor=reanchor, **mod)
+            self.session.third_person = CS.is_third_person(prompts._current.get("task"), name)
             if reanchor:
                 STATS.armed()
         self._configure_if_motion(name, keys)
@@ -434,10 +597,17 @@ class LingBotWorld2Engine:
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
+        modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks) if self.weight_mod is not None else None
+        cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
+        cs_calls = getattr(self.session, "cond_sched_calls", 0)
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
         STATS.reanchored(self.session.reanchor_events - anchored)
+        STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
+                             getattr(self.session, "cond_sched_calls", 0) - cs_calls)
+        if self.weight_mod is not None:
+            STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
@@ -473,10 +643,16 @@ class LingBotWorld2Engine:
         S.encode_prompt(self.pipe, prompt or DEFAULT_PROMPT, self.t5_cache)  # fills pipe._t5_cache as upstream would
         t0 = time.time()
         torch.cuda.reset_peak_memory_stats()
-        video = self.pipe.generate(
-            prompt or DEFAULT_PROMPT, Image.open(image_path).convert("RGB"), action_path=str(action_dir),
-            chunk_size=P.LATENT_CHUNK, max_area=MAX_AREA, frame_num=len(c2ws),
-            shift=self.cfg.sample_shift, seed=int(self.args.seed), offload_model=False)
+        with (self.weight_mod or contextlib.nullcontext()):
+            # stateless: one classification for the whole rollout (still only if every latent pose is identity)
+            if self.weight_mod is not None and self.weight_mod.step(
+                    S.normalise_translation(S.relative_latent_poses(c2ws[::4])),
+                    third_person=WM.is_third_person(prompts._current.get("task"), name)):
+                STATS.modulated(1, 1)
+            video = self.pipe.generate(
+                prompt or DEFAULT_PROMPT, Image.open(image_path).convert("RGB"), action_path=str(action_dir),
+                chunk_size=P.LATENT_CHUNK, max_area=MAX_AREA, frame_num=len(c2ws),
+                shift=self.cfg.sample_shift, seed=int(self.args.seed), offload_model=False)
         frames = ((video.clamp(-1, 1) + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 3, 0).cpu().numpy()
         del video
         out = output_dir / f"{name}.mp4"
@@ -492,13 +668,20 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT
+    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
+    global IF_IDENTITY, COND_SCHED
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
+    LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
+    window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
+    if window:
+        print(f"[lingbot] window: local_attn={LOCAL_ATTN} sink={SINK}", flush=True)
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
-    IF_SUBJECT = flags["if_subject"]
+    IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
+    COND_SCHED = flags["cond_sched"]
+    cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
@@ -506,7 +689,9 @@ def main(argv: list[str] | None = None) -> int:
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
-                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT)
+                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
+                                 measured_turn=flags["measured_turn"], cond_sched=cs_mode,
+                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"])
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
@@ -528,6 +713,11 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
                                          turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
         print("[lingbot] player hint: on", flush=True)
+    if flags["measured_turn"]:  # its sentence sits just before the player hint's pose summary
+        run_agent.decide_action = MT.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                          turn_cal=TURN_CAL, on_event=STATS.measured_turn_event,
+                                          tell_tasks=os.environ.get("LINGBOT_MEASURED_TURN_TELL", "GC"))
+        print("[lingbot] measured turn: on", flush=True)
     if flags["if_repeat"]:  # conditional IF reminder, after the fixed IF camera reminder
         run_agent.decide_action = IR.wrap(run_agent.decide_action, STATS.if_repeat_hint)
         print("[lingbot] IF repeat check: on", flush=True)
@@ -545,6 +735,16 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = IH.wrap(run_agent.decide_action, run_agent.parse_segments,
                                           on_event=STATS.if_horizon_event)
         print("[lingbot] IF horizon: on", flush=True)
+    if flags["scripted"]:  # outermost: answers every decision, so no wrapper inside it and no LLM is reached
+        run_agent.decide_action = SP.wrap(run_agent.decide_action, run_agent.parse_segments,
+                                          run_agent.VALID_ACTIONS, on_event=STATS.scripted_event)
+        inert = [n for n, on in (("player hint", PLAYER_HINT), ("IF repeat check", flags["if_repeat"]),
+                                 ("IF camera hint", flags["if_camera"]), ("GC completion hint", GC_COMPLETION),
+                                 ("return stop", RETURN_STOP), ("IF horizon", IF_HORIZON),
+                                 ("player history endpoints", flags["history_endpoints"]),
+                                 ("measured turn", flags["measured_turn"])) if on]
+        print(f"[lingbot] scripted player: on ({SP.units():g} rotation tokens per chunk, then WAIT tail and END; "
+              f"LLM player not called)" + (f"; not reached: {', '.join(inert)}" if inert else ""), flush=True)
     rc = run_agent.main()
     agent_api.finish(run_agent)
     print(STATS.total_line(), flush=True)

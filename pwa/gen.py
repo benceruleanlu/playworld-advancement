@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 from .core import (DATA, FAMILIES, ROOT, SANA_RUNNER, PLAYWORLD, PwaError, cap_label, exp_dir, log, now,
-                   provenance, read_json, runner_num_chunks, split_label, records, video_path, write_json)
+                   provenance, read_json, runner_num_chunks, scripted_runner, split_label, records, video_path,
+                   write_json)
 
 
 def resolve_runner(runner: str) -> Path:
@@ -75,7 +76,8 @@ def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = 
         if clash:
             raise PwaError(f"{d} already exists. Pick a new experiment name, or pass --resume to reuse its "
                            f"videos (upstream skip-done keeps any existing mp4).")
-    if a.action_source in ("agent", "refined") and not os.environ.get("PLAYER_API_KEY"):
+    scripted = scripted_runner(a.extra, os.environ)
+    if a.action_source in ("agent", "refined") and not scripted and not os.environ.get("PLAYER_API_KEY"):
         raise PwaError(f"--action-source {a.action_source} needs PLAYER_API_KEY. Without it upstream silently "
                        f"falls back to dataset/WAIT actions and the rollout is open loop.")
     cap = getattr(a, "max_chunks", None)
@@ -106,6 +108,8 @@ def gen(a, sel: list[dict], launch=subprocess_launch, meta_extra: dict | None = 
         if cap:
             meta["max_chunks"] = cap
             meta["label"] = cap_label(cap)
+        if scripted:
+            meta["scripted_player"] = True
     if (cap or meta.get("max_chunks")) and meta.get("max_chunks") != cap:
         raise PwaError(f"{a.exp} was generated with max_chunks={meta.get('max_chunks')}; resume it with the same cap", 2)
     write_json(meta_path, meta)

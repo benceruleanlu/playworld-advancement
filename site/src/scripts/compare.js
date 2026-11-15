@@ -93,7 +93,23 @@
         || c.filter(function (e) { return !used[e] && official14b(mans[e]); }).slice(-1)[0] || "";
       if (b) out[0] = take(b);
     }
-    var rest = c.filter(function (e) { return !used[e]; }); // newest first
+    // newest first, but runs with an official score and no cap ahead of capped or unscored ones
+    var rest = c.filter(function (e) { return !used[e]; });
+    function good(e) { var r = csvRow(e); return !capOf(mans[e], r) && (runScored(mans[e]) || !!(r && r.overall != null)); }
+    rest = rest.filter(good).concat(rest.filter(function (e) { return !good(e); }));
+    // two arms of one A/B (shared prefix, -a1 / -a2): control as Before, arm as After
+    if (!out[1] && !out[2]) {
+      for (var i = 0; i < rest.length; i++) {
+        var mm = /^(.*-a)(\d+)$/.exec(rest[i]); if (!mm || !good(rest[i])) continue;
+        var sib = rest.filter(function (e) { var k = /^(.*-a)(\d+)$/.exec(e); return k && k[1] === mm[1] && e !== rest[i] && good(e); });
+        if (sib.length) {
+          var pair = [rest[i]].concat(sib).sort(function (a, b) { return +/(\d+)$/.exec(a)[1] - +/(\d+)$/.exec(b)[1]; });
+          out[1] = take(pair[0]); out[2] = take(pair[pair.length - 1]);
+          rest = rest.filter(function (e) { return !used[e]; });
+          break;
+        }
+      }
+    }
     if (!out[2] && rest.length) out[2] = take(rest.shift());
     if (!out[1] && rest.length) out[1] = take(rest.shift());
     if (!out[0] && rest.length) out[0] = take(rest.pop());
@@ -246,9 +262,11 @@
     var branch = (m && m.branch) || (row && row.branch) || "";
     if (branch && branch !== "main") badge("warn", "code not merged", "Run from branch " + branch + ". The code behind it is not merged into main yet.");
     var src = (m && m.action_source) || (row && row.action_source) || "";
-    if (src === "dataset") badge("warn", "replayed moves, test only", "The moves were replayed from the dataset instead of chosen by the AI player.");
+    var scripted = (row && api.isScripted(row)) || /--lingbot-scripted-player/.test(flagsOf(m));
+    if (src === "dataset") badge("warn", "open loop, A/B only", "Fixed action scripts from the dataset, no AI player. Used for A/B tests only, never for final scores.");
+    else if (scripted) badge("warn", "scripted moves, test only", "The scripted player replayed the dataset moves chunk by chunk; no AI player chose them.");
     else if (src === "agent" || src === "refined") badge("ok", "AI played", "An AI player chose every move while the world was being generated.");
-    if (!cap && row && runScored(m) && api.isSmoke(row)) badge("warn", "tiny test run", "Too few tasks or a single scoring pass to estimate a score.");
+    if (!cap && !scripted && row && runScored(m) && api.isSmoke(row)) badge("warn", "tiny test run", "Too few tasks or a single scoring pass to estimate a score.");
 
     var model = m && m.model, runner = (m && m.runner) || (row && row.runner) || "";
     var lenEl = el("dd", { text: "loading" });
