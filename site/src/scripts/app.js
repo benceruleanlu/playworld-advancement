@@ -612,7 +612,10 @@ import * as RunInfo from "./runinfo.js";
   }
   // clips play inside the finding's own card: one clip, or control and treatment started together and restarted together
   function taskOf(exp, task) { var m = MANS[exp]; return m ? (m.tasks || []).filter(function (t) { return t.task_id === task; })[0] || null : null; }
+  // closing a player also cancels its pending start, so a closed player never begins playing detached videos
+  var inlineStop = null;
   function closeInline() {
+    if (inlineStop) { inlineStop(); inlineStop = null; }
     Array.prototype.forEach.call(document.querySelectorAll(".st-play"), function (n) {
       Array.prototype.forEach.call(n.querySelectorAll("video"), function (v) { v.pause(); });
       n.parentNode.removeChild(n);
@@ -634,13 +637,14 @@ import * as RunInfo from "./runinfo.js";
         el("code", { class: "rawid", text: p.exp })])]);
     });
     // start together once every clip can play; when all have ended, start again
-    var ready = 0, started = false;
-    function startAll() { if (started) return; started = true; vids.forEach(function (v) { try { v.currentTime = 0; } catch (e) { /* not seekable yet */ } var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); }); }
+    var ready = 0, started = false, closed = false;
+    function startAll() { if (started || closed) return; started = true; vids.forEach(function (v) { try { v.currentTime = 0; } catch (e) { /* not seekable yet */ } var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); }); }
     vids.forEach(function (v) {
       v.addEventListener("canplay", function once() { v.removeEventListener("canplay", once); if (++ready >= vids.length) startAll(); });
-      v.addEventListener("ended", function () { if (vids.every(function (x) { return x.ended; })) { started = false; startAll(); } });
+      v.addEventListener("ended", function () { if (!closed && vids.every(function (x) { return x.ended; })) { started = false; startAll(); } });
     });
-    setTimeout(startAll, 4000);
+    var startTimer = setTimeout(startAll, 4000);
+    inlineStop = function () { closed = true; clearTimeout(startTimer); };
     var close = el("button", { type: "button", class: "linkbtn", text: "Close" }); close.addEventListener("click", closeInline);
     var bar = el("p", { class: "sp-bar" }, [el("b", { text: sel.task }), close]);
     if (sel.c) { var full = el("button", { type: "button", class: "linkbtn", text: "Frame by frame in the compare player" }); full.addEventListener("click", function () { closeInline(); watch(sel); }); bar.insertBefore(full, close); }
