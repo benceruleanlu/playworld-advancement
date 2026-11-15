@@ -23,7 +23,10 @@ no files. Differences from upstream, all deliberate:
     instead of for the whole horizon at reset (same encoder calls on the same inputs);
   * opt-in re-anchoring (reset(reanchor=True), off by default): when the commanded
     camera track returns to the start pose, that latent of `y` is set to the input
-    image again (ReturnDetector, _anchor_y).
+    image again (ReturnDetector, _anchor_y);
+  * opt-in noisy KV writes (kv_noise=KVNoise, --lingbot-kv-noise, off by default): the
+    KV-write forward of a generated chunk sees add_noise(x0, eps, t_kv) at t_kv instead of
+    x0 at t=0, eps from its own generator (kv_noise.py); chunks with an image latent stay clean.
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -247,7 +250,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None):
+                 cond_sched=None, kv_noise=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -264,6 +267,7 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        self.kv_noise, self.kv_noise_chunks = kv_noise, 0  # --lingbot-kv-noise (flag_stats reads deltas)
         self._free()
 
     def _free(self):
@@ -273,6 +277,7 @@ class LingBotSession:
         self._all_lat = []
         self._last_frame = None
         self._anchor = None
+        self._anchored = set()  # latents re-anchored to the input image (kv_noise keeps their chunk clean)
         self.detector = None
 
     # -- reset -------------------------------------------------------------
@@ -343,6 +348,8 @@ class LingBotSession:
             self.weight_mod.reset()
         if self.cond_sched is not None:
             self.cond_sched.reset()
+        if self.kv_noise is not None:
+            self.kv_noise.reset(pipe.scheduler, seed, dev)
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -423,6 +430,7 @@ class LingBotSession:
         self.y[:4, g] = 1
         self.y[4:, g] = self._anchor.to(self.y.dtype)
         self.reanchor_events += 1
+        self._anchored.add(g)
         print(f"[lingbot] session: re-anchored latent {g} (frame {4 * g}) to the input image", flush=True)
 
     def _plucker(self, rel: np.ndarray):
@@ -532,9 +540,16 @@ class LingBotSession:
                     self.cond_sched.reset()
                 if chunk_hit:
                     self.cond_sched_chunks += 1
-                # write clean keys/values for this chunk into the KV cache
-                t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
-                pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
+                if self.kv_noise is not None and cid > 0 and not self._anchored.intersection(
+                        range(cid * CHUNK, (cid + 1) * CHUNK)):
+                    # --lingbot-kv-noise: write keys/values of a lightly re-noised x0 at t_kv
+                    x_kv, t_kv = self.kv_noise.kv_input(x0, pipe.scheduler)
+                    self.kv_noise_chunks += 1
+                    pipe.model(x=[x_kv], t=torch.stack([t_kv]).to(pipe.device), cross_attn_first_call=False, **kwargs)
+                else:
+                    # write clean keys/values for this chunk into the KV cache
+                    t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
+                    pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
                 self.chunk_id += 1
             lat = torch.cat(new, dim=1)
             mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")
