@@ -78,7 +78,8 @@ generates the rollout one latent chunk at a time, measures the yaw each chunk's 
 and sets the next chunk's left / right pose gain so the rendered heading follows the intended one: a per-rollout,
 per-direction estimate of rendered / commanded is divided out and the heading error so far is added back, each
 chunk's gain within 0.5 to 2.0. Same keys and frame counts; only pure LEFT / RIGHT runs are measured and corrected,
-and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates. Refused with
+and runs whose image motion is not one rigid shift (a subject moving) do not update the estimates; after two of
+them in a rollout the servo locks and the rest of the rollout runs at gain 1 (yaw_servo=locked). Refused with
 --lingbot-yaw-gain (both set the model-track gain) and --lingbot-gc-ease-turns. See yaw_servo.py and
 research/camera-response.md.
 
@@ -767,6 +768,7 @@ class LingBotWorld2Engine:
             frames = YSV.step(self.session, self.yaw_servo, keys, math.degrees(P.YAW), MT.chunk_turn)
             STATS.yaw_servo_chunks += self.yaw_servo.chunks - before[0]
             STATS.yaw_servo_untrusted += self.yaw_servo.untrusted - before[1]
+            STATS.yaw_servo_locked = self.yaw_servo.locked
             print(f"[lingbot] yaw servo: {name} {self.yaw_servo.describe()}", flush=True)
         else:
             frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)

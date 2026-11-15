@@ -312,7 +312,7 @@ class Workspace:
                     "seed": int(seed), "chunks": n, "script": [[k, a] for k, a in segments],
                     "servo": {"adapt": True, "k": servo.k, "beta": servo.beta, "est": {k: round(v, 3) for k, v in servo.est.items()},
                               "heading": round(servo.heading, 2), "intended": round(servo.intended, 2),
-                              "chunks": servo.chunks, "untrusted": servo.untrusted, "log": lines}})
+                              "chunks": servo.chunks, "untrusted": servo.untrusted, "locked": servo.locked, "log": lines}})
         return frames, out
 
     # -- sending images back -----------------------------------------------

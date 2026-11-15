@@ -101,9 +101,10 @@ def test_servo_does_not_learn_from_moving_or_untrusted_chunks():
     assert servo.est == {"j": 1.0, "l": 1.0} and servo.heading == pytest.approx(servo.intended) == pytest.approx(12 * RATE)
     weak = FakeSession(1.5, 1.5, peak=0.0)
     servo = YS.YawServo()
-    YS.step(weak, servo, ["l"] * 12 + ["l"] * 16, RATE, _measure(weak), rigid=None)
-    assert servo.est["l"] == 1.0 and servo.untrusted == 2 and servo.heading == pytest.approx(servo.intended)
-    assert [g for _n, g in weak.calls] == [(1.0, 1.0), (1.0, 1.0)]     # stood down: the rollout is the open-loop one
+    YS.step(weak, servo, ["l"] * 12 + ["l"] * 16 + ["l"] * 16, RATE, _measure(weak), rigid=None)
+    assert servo.est["l"] == 1.0 and servo.untrusted == 3 and servo.heading == pytest.approx(servo.intended)
+    assert [g for _n, g in weak.calls] == [(1.0, 1.0)] * 3             # never measured: the rollout is the open-loop one
+    assert servo.locked and "locked after" in servo.describe()
     still = FakeSession(1.0, 1.0)
     servo = YS.YawServo()
     YS.step(still, servo, ["none"] * 12, RATE, _measure(still), rigid=None)         # nothing to correct: gain stays 1
@@ -137,6 +138,9 @@ def test_flag_counters_only_with_the_flag():
     on.yaw_servo_chunks, on.yaw_servo_untrusted = 11, 1
     s = on.summary("GC033")
     assert (s["yaw_servo"], s["yaw_servo_chunks"], s["yaw_servo_untrusted"]) == ("on", 11, 1)
+    on.yaw_servo_locked = True
+    assert on.summary("GC033")["yaw_servo"] == "locked"
+    on.yaw_servo_locked = False
     on.finish_task("GC033")
     assert "yaw_servo=on yaw_servo_chunks=11 yaw_servo_untrusted=1" in on.total_line()
 
@@ -160,6 +164,7 @@ def test_step_stands_down_when_the_motion_is_not_rigid():
     servo = YS.YawServo()
     YS.step(s, servo, ["l"] * 12 + ["l"] * 16, RATE, _measure(s), rigid=lambda frames: 0.4)
     assert servo.est["l"] == 1.0 and servo.untrusted == 2 and [g for _n, g in s.calls] == [(1.0, 1.0), (1.0, 1.0)]
+    assert servo.locked
 
 
 # ------------------------------------------- through the runner, next to no-flag arms
@@ -252,3 +257,31 @@ def test_runner_arms_servo_corrects_and_neighbours_are_untouched(monkeypatch, ca
     flags = [ln for ln in out.splitlines() if ln.startswith("[lingbot] flags task=")]
     assert "yaw_servo" not in flags[0] and "yaw_servo=on yaw_servo_chunks=11 yaw_servo_untrusted=0" in flags[1] and "yaw_servo" not in flags[2]
     assert out.count("[lingbot] yaw servo: GC033_full est L") == 1
+
+
+def test_one_untrusted_chunk_does_not_bias_the_heading():
+    # GC031 on the 14B: one chunk of an otherwise static scene failed the rigid test and cost 12 degrees when its
+    # turn was booked as intended. Booked at the estimate, the rollout still closes.
+    keys = _script(("j", 80), ("l", 80))
+    s = FakeSession(1.7, 1.3)
+    servo = YS.YawServo()
+    calls = iter(range(100))
+    rigid = lambda frames: 0.4 if next(calls) == 3 else 1.0          # the fourth chunk is not trusted
+    YS.step(s, servo, keys, RATE, _measure(s), rigid=rigid)
+    assert servo.untrusted == 1 and not servo.locked
+    assert abs(s.heading) < 3.0 and abs(servo.heading - s.heading) < 3.0
+
+
+def test_servo_locks_on_a_scene_with_a_moving_subject():
+    keys = _script(("j", 80), ("l", 80))
+    s = FakeSession(1.4, 1.1)
+    servo = YS.YawServo()
+    calls = iter(range(100))
+    rigid = lambda frames: 0.4 if next(calls) in (2, 4) else 1.0     # two untrusted turn chunks: a subject is moving
+    YS.step(s, servo, keys, RATE, _measure(s), rigid=rigid)
+    assert servo.locked and servo.untrusted == 2 and servo.est == {"j": 1.0, "l": 1.0}
+    gains = [g for _n, g in s.calls]
+    assert all(g == (1.0, 1.0) for g in gains[5:]) and any(g != (1.0, 1.0) for g in gains[:5])
+    assert servo.plan(["l"] * 16, RATE) == (1.0, 1.0)
+    servo.reset()
+    assert not servo.locked                                           # the next rollout starts fresh

@@ -167,7 +167,7 @@ class FlagStats:
         self.kv_noise_chunks = 0
         self.yaw_gain_frames = 0
         self.yaw_servo_chunks = self.yaw_servo_untrusted = 0
-        self.yaw_servo_state = ""  # the servo's last describe() for this task
+        self.yaw_servo_locked = False  # the servo stood down on this task (a subject was moving)
         self.stg_chunks = self.stg_calls = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
@@ -330,8 +330,8 @@ class FlagStats:
         if self.yaw_gain:
             s.update(yaw_gain=self.yaw_gain, yaw_gain_frames=self.yaw_gain_frames)
         if self.yaw_servo:
-            s.update(yaw_servo="on" if self.yaw_servo_chunks else "skip", yaw_servo_chunks=self.yaw_servo_chunks,
-                     yaw_servo_untrusted=self.yaw_servo_untrusted)
+            s.update(yaw_servo="locked" if self.yaw_servo_locked else "on" if self.yaw_servo_chunks else "skip",
+                     yaw_servo_chunks=self.yaw_servo_chunks, yaw_servo_untrusted=self.yaw_servo_untrusted)
         if self.if_identity:
             s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))

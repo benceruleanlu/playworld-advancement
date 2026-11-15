@@ -17,8 +17,10 @@ Each chunk's gain is limited to [0.5, 2.0]. It never adds or removes frames and 
 Only pure LEFT / RIGHT runs are measured and corrected. Chunks that also move (w/s/a/d) or tilt (i/k) are
 generated at the current gain and their yaw is taken as intended, because image shift is not a rotation there.
 A run whose correlation peak is under measured_turn.MIN_PEAK, or whose image motion is not one rigid shift
-(rigid_share under RIGID_MIN: a subject is moving), is not trusted: its turn is taken as intended and nothing is
-learned from it, so on such scenes the servo leaves the rollout as it would be without the flag.
+(rigid_share under RIGID_MIN: a subject is moving), is not trusted. Nothing is learned from it and its turn is
+booked at what the current estimates predict, so one bad chunk on a static scene does not bias the heading.
+After LOCK_AFTER untrusted turn runs in one rollout the scene is taken to have a moving subject: the servo locks,
+forgets its estimates and leaves every later chunk at gain 1 (the flags line then says yaw_servo=locked).
 
 Constants (env): LINGBOT_YAW_SERVO_K (1.0: share of the heading error corrected per chunk), LINGBOT_YAW_SERVO_BETA
 (0.6: weight of the newest chunk in the estimates). Pure Python and numpy; the session is passed in.
@@ -32,6 +34,7 @@ LO, HI = 0.5, 2.0
 SIGN = {"l": 1.0, "j": -1.0}   # right positive, as measured_turn and player_hint
 MIN_FRAMES = 4                 # a run shorter than one latent is not used to update an estimate
 RIGID_MIN = 0.7                # under this share of rigid frame pairs the image motion is not a camera turn
+LOCK_AFTER = 2                 # untrusted turn runs in one rollout before the servo stands down for the rest of it
 
 
 def enabled(argv: list[str], environ=os.environ) -> bool:
@@ -111,6 +114,7 @@ class YawServo:
         self.intended = 0.0                 # heading the keys asked for so far, degrees, right positive
         self.heading = 0.0                  # heading the video showed so far
         self.chunks = self.corrected = self.untrusted = 0
+        self.locked = False                 # too many untrusted turn runs: gain 1 for the rest of the rollout
         self.last_gain = (1.0, 1.0)
 
     def error(self) -> float:
@@ -118,6 +122,9 @@ class YawServo:
 
     def plan(self, keys: list[str], rate_deg: float) -> tuple[float, float]:
         """(left gain, right gain) for the next chunk of keys at rate_deg per frame."""
+        if self.locked:
+            self.last_gain = (1.0, 1.0)
+            return self.last_gain
         frames = {"j": 0, "l": 0}
         for key in keys:
             if (y := yaw_part(key)):
@@ -146,14 +153,21 @@ class YawServo:
             n, y = b - a, yaw_part(key)
             asked = SIGN[y] * n * rate_deg if y else 0.0
             self.intended += asked
+            # what the estimates say this run rendered: the commanded pose angle times rendered / commanded
+            predicted = asked * gain[0 if y == "j" else 1] * self.est[y] if y else 0.0
             if not measurable(key):
-                self.heading += asked            # moving or tilting: take the turn as intended
+                self.heading += predicted        # moving or tilting: image shift is not a rotation here
                 continue
-            if not trusted:                      # weak peak or a moving subject: stand down, as intended too
-                self.heading += asked
-                self.untrusted += 1
+            if not trusted:                      # weak peak or a moving subject: learn nothing from it
+                self.heading += predicted
+                if y:
+                    self.untrusted += 1
+                    if self.untrusted >= LOCK_AFTER and not self.locked:
+                        self.locked, self.est = True, {"j": 1.0, "l": 1.0}
                 continue
             self.heading += yaw
+            if self.locked:
+                continue
             if y and n >= MIN_FRAMES:
                 commanded = n * rate_deg * gain[0 if y == "j" else 1]
                 ratio = abs(yaw) / commanded if commanded > 0 else 0.0
@@ -161,6 +175,9 @@ class YawServo:
                     self.est[y] = (1 - self.beta) * self.est[y] + self.beta * ratio
 
     def describe(self) -> str:
+        if self.locked:
+            return (f"locked after {self.untrusted} untrusted turn runs (a subject is moving): gain 1 from here, "
+                    f"intended {self.intended:+.1f}")
         return (f"est L {self.est['j']:.2f} R {self.est['l']:.2f}, gain L {self.last_gain[0]:.2f} R {self.last_gain[1]:.2f}, "
                 f"heading {self.heading:+.1f} (intended {self.intended:+.1f})")
 
