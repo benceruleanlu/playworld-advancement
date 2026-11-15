@@ -1,0 +1,110 @@
+{
+ "exp": "sp14-gc-v1-a3",
+ "release_tag": "run-sp14-gc-v1-a3",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a3",
+ "generated": "2026-11-15T03:58:29Z",
+ "git_sha": "785e9ddba69cd26b608731b10b63e667d787147b",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "agent",
+ "scored": false,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-scripted-player",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--agent-model",
+  "gpt-6-luna",
+  "--lingbot-gc-ease-turns"
+ ],
+ "player_model": "",
+ "notes": "scripted player A/B of chunk-level GC flags; not a closed-loop score [arm 3/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-ease-turns]",
+ "labels": [
+  "not scored",
+  "scripted dataset moves (no AI player), A/B only",
+  "arm 3/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-ease-turns"
+ ],
+ "report": "sp14-gc-v1-a3.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC005",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC005.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC005.jpg"
+  },
+  {
+   "task_id": "GC016",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC016.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC016.jpg"
+  },
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC036.jpg"
+  },
+  {
+   "task_id": "GC038",
+   "family": "gc",
+   "mean": null,
+   "status": [
+    "not scored"
+   ],
+   "reason": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC038.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC038.jpg"
+  }
+ ]
+}

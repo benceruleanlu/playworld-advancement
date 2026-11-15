@@ -1,6 +1,54 @@
 {
  "runs": [
   {
+   "exp": "sp14-gc-v1-a4",
+   "generated": "2026-11-15T03:58:41Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a4",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "scripted dataset moves (no AI player), A/B only",
+    "arm 4/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-reanchor"
+   ]
+  },
+  {
+   "exp": "sp14-gc-v1-a3",
+   "generated": "2026-11-15T03:58:29Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a3",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "scripted dataset moves (no AI player), A/B only",
+    "arm 3/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-ease-turns"
+   ]
+  },
+  {
+   "exp": "sp14-gc-v1-a2",
+   "generated": "2026-11-15T03:58:17Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a2",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "scripted dataset moves (no AI player), A/B only",
+    "arm 2/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-chunk-director"
+   ]
+  },
+  {
+   "exp": "sp14-gc-v1-a1",
+   "generated": "2026-11-15T03:58:06Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a1",
+   "scored": false,
+   "labels": [
+    "not scored",
+    "scripted dataset moves (no AI player), A/B only",
+    "arm 1/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna"
+   ]
+  },
+  {
    "exp": "mem14-fx-v1-a2",
    "generated": "2026-11-15T03:52:29Z",
    "n_tasks": 9,
