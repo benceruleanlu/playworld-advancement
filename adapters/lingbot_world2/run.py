@@ -56,6 +56,12 @@ Env:
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
+Stall watchdog (watchdog.py), per generate() call: `--lingbot-stall-dump N` (LINGBOT_STALL_DUMP_S, default
+300, 0 = off) dumps every thread's stack to stderr once a call has run N s, and every N s after;
+`--lingbot-stall-abort N` (LINGBOT_STALL_ABORT_S, default 0 = off) dumps, prints `[lingbot] stall:` and
+exits the process with 124 after N s. The process is this runner: under pwa gen-arms that is the whole
+shard, so an abort drops every remaining arm and family of the shard.
+
 Start-up (fast_start.py): `[lingbot] timing <part> <s>s` lines for each load component and for the
 reset and first step of every rollout, always on. Opt-in, all off by default:
   --lingbot-fast-t5    (LINGBOT_FAST_T5=1)   prompt-embedding cache on the weights volume; T5 loads
@@ -101,6 +107,7 @@ from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
+from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
@@ -123,6 +130,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    flags["stall"], argv = W.parse(argv, environ)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
@@ -131,6 +139,7 @@ STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = Fa
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
 CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
+STALL = W.Limits()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -237,7 +246,8 @@ class LingBotWorld2Engine:
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
               + (", player hint on" if PLAYER_HINT else "")
               + (", return stop on" if RETURN_STOP else "")
-              + (", GC completion hint on" if GC_COMPLETION else ""),
+              + (", GC completion hint on" if GC_COMPLETION else "")
+              + f", stall watchdog {STALL.describe()}",
               flush=True)
 
     def _t5_cache(self, weights, t5_cpu):
@@ -266,9 +276,10 @@ class LingBotWorld2Engine:
             if (S.parse_chunk_name(name) or (name, 1))[1] == 1:  # once per rollout
                 print(f"[lingbot] {name}: prompt mode {PROMPT_MODE}, "
                       f"{'caption' if prompt != goal else 'goal (no caption found)'}: {prompt[:120]!r}", flush=True)
-        if self.session is None:
-            return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
-        return self._generate_session(image_path, prompt, action, output_dir, name, num_frames)
+        with W.watch(name, STALL):
+            if self.session is None:
+                return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
+            return self._generate_session(image_path, prompt, action, output_dir, name, num_frames)
 
     def _generate_session(self, image_path, prompt, action, output_dir, name, num_frames):
         """Continue (or reset and start) the persistent session; write <output_dir>/<name>.mp4.
@@ -351,11 +362,11 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS
+    global CPU_THREADS, STALL
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
-    RETURN_STOP, GC_COMPLETION = flags["return_stop"], flags["gc_completion"]
+    RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
