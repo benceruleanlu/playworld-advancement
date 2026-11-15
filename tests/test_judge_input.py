@@ -65,13 +65,15 @@ def test_gemini_and_empty_are_the_official_judge(value):
     (LUNA, LUNA),
     ("gemini-4-hydrogen:low, openai:gpt-6-luna", "gemini-4-hydrogen:low openai:gpt-6-luna"),
     ("gemini:gemini-3.1-pro-preview", "gemini:gemini-3.1-pro-preview"),  # a named Gemini model is a screening judge
+    ("openai:A,openai:a", "openai:A openai:a"),  # model names are case-sensitive, so these are two judges
 ])
 def test_screening_judges_pass_through(value, want):
     r = _specs(value)
     assert r.returncode == 0 and r.stdout.strip() == want, r.stderr
 
 
-@pytest.mark.parametrize("value", ["gemini,openai:gpt-6-luna", "a,,b", "x;y", "a,a", ",", "openai:bad/model"])
+@pytest.mark.parametrize("value", ["gemini,openai:gpt-6-luna", "a,,b", "x;y", "a,a", ",", "openai:bad/model",
+                                   "openai:gpt-6-luna:HIGH", "gemini:x:Low", "Gemini,openai:x"])
 def test_bad_values_are_refused(value):
     assert _specs(value).returncode == 2
 

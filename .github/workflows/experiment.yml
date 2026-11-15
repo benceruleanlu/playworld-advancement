@@ -6,7 +6,7 @@ run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inpu
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
 # backend=local: generation runs on this runner (no GPU; use runner=tests/fake_runner.py to test the pipeline).
 # Scoring and reporting always run on this runner. Default judge: the Luna PROXY judge (openai:gpt-6-luna), whose
-# rows go to results/proxy_experiments.csv only. judge_model=gemini (or empty) = official Gemini 3.1 Pro, whose
+# rows go to results/proxy_experiments.csv only. judge_model=gemini = official Gemini 3.1 Pro, whose
 # results/experiments.csv row is committed to main.
 
 on:
@@ -53,7 +53,7 @@ on:
         description: Verifier passes
         default: "2"
       judge_model:
-        description: "Judge. Default openai:gpt-6-luna = Luna PROXY judge (user decision Nov 15, Gemini credits out): rows go to results/proxy_experiments.csv, never the results csv, not comparable to the paper or Genie 3. gemini (or empty) = official Gemini 3.1 Pro judge (needs credits or GCP_GEMINI_API_KEY). Or comma-separated screening judges [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna."
+        description: "Judge. Default openai:gpt-6-luna = Luna PROXY judge (user decision Nov 15, Gemini credits out): rows go to results/proxy_experiments.csv, never the results csv, not comparable to the paper or Genie 3. gemini = official Gemini 3.1 Pro judge (needs credits or GCP_GEMINI_API_KEY). Or comma-separated screening judges [openai:]MODEL[:minimal|low|medium|high], e.g. gemini-4-hydrogen:low,openai:gpt-6-luna."
         default: "openai:gpt-6-luna"
       notes:
         default: ""

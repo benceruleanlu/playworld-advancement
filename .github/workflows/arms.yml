@@ -56,7 +56,7 @@ on:
         description: Verifier passes (passed to each score-only run)
         default: "2"
       judge_model:
-        description: "Judge for the score-only runs (see experiment.yml). Default openai:gpt-6-luna = Luna PROXY judge, not comparable to the paper. gemini (or empty) = official Gemini 3.1 Pro."
+        description: "Judge for the score-only runs (see experiment.yml). Default openai:gpt-6-luna = Luna PROXY judge, not comparable to the paper. gemini = official Gemini 3.1 Pro."
         default: "openai:gpt-6-luna"
       notes:
         default: ""
