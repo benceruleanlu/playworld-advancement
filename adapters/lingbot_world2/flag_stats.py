@@ -77,6 +77,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       scripted_ends
   --lingbot-yaw-gain G                yaw_gain=G (or LEFT/RIGHT when they differ), yaw_gain_frames (pixel-frame
                                       deltas sent to the model with scaled j/l yaw)
+  --lingbot-turntable-poses           turntable=ground|free, turntable_frames (active rotation/translation pixel
+                                      frames), plus turntable_rescaled when --lingbot-turntable-rescale is on
   --lingbot-kv-noise                  kv_noise=on|skip, kv_noise_t (requested T), kv_noise_chunks (session chunks
                                       whose KV write was re-noised; image-anchored chunks stay clean)
   --lingbot-warp-reanchor             warp_reanchor=on (session reset of a task matching --lingbot-warp-tasks) | skip,
@@ -107,10 +109,13 @@ class FlagStats:
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
-                 pose_mem: bool = False, yaw_servo: bool = False, warp_reanchor: bool = False):
+                 pose_mem: bool = False, yaw_servo: bool = False, warp_reanchor: bool = False,
+                 turntable: str = "", turntable_rescale: bool = False):
         self.warp_reanchor = bool(warp_reanchor)
         self.pose_mem = bool(pose_mem)
         self.yaw_servo = bool(yaw_servo)  # --lingbot-yaw-servo
+        self.turntable = str(turntable)  # --lingbot-turntable-poses walk mode ("" = off)
+        self.turntable_rescale = bool(turntable_rescale)
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
@@ -148,6 +153,7 @@ class FlagStats:
                        "scripted_chunks": 0, "scripted_ends": 0,
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
                        "yaw_gain_frames": 0, "yaw_servo_chunks": 0, "yaw_servo_untrusted": 0,
+                       "turntable_frames": 0, "turntable_rescaled": 0,
                        **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS},
                        "warp_events": 0, "warp_patches": 0}
         self.new_task()
@@ -176,6 +182,8 @@ class FlagStats:
         self.yaw_gain_frames = 0
         self.yaw_servo_chunks = self.yaw_servo_untrusted = 0
         self.yaw_servo_locked = False  # the servo stood down on this task (a subject was moving)
+        self.turntable_frames = 0
+        self.turntable_rescaled = 0
         self.stg_chunks = self.stg_calls = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
@@ -347,6 +355,10 @@ class FlagStats:
         if self.yaw_servo:
             s.update(yaw_servo="locked" if self.yaw_servo_locked else "on" if self.yaw_servo_chunks else "skip",
                      yaw_servo_chunks=self.yaw_servo_chunks, yaw_servo_untrusted=self.yaw_servo_untrusted)
+        if self.turntable:
+            s.update(turntable=self.turntable, turntable_frames=self.turntable_frames)
+            if self.turntable_rescale:
+                s.update(turntable_rescaled=self.turntable_rescaled)
         if self.if_identity:
             s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))
@@ -414,6 +426,9 @@ class FlagStats:
                 + (f" yaw_gain={self.yaw_gain} yaw_gain_frames={t['yaw_gain_frames']}" if self.yaw_gain else "")
                 + (f" yaw_servo=on yaw_servo_chunks={t['yaw_servo_chunks']} yaw_servo_untrusted={t['yaw_servo_untrusted']}"
                    if self.yaw_servo else "")
+                + (f" turntable={self.turntable} turntable_frames={t['turntable_frames']}"
+                   + (f" turntable_rescaled={t['turntable_rescaled']}" if self.turntable_rescale else "")
+                   if self.turntable else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
                    if self.scripted else "")
@@ -459,6 +474,8 @@ class FlagStats:
         t["yaw_gain_frames"] += self.yaw_gain_frames
         t["yaw_servo_chunks"] += self.yaw_servo_chunks
         t["yaw_servo_untrusted"] += self.yaw_servo_untrusted
+        t["turntable_frames"] += self.turntable_frames
+        t["turntable_rescaled"] += self.turntable_rescaled
         for k in POSE_MEM_FIELDS:
             t[f"pose_mem_{k}"] += self.pose_mem_counts[k]
         t["warp_events"] += self.warp_events

@@ -52,7 +52,7 @@ def _rot_x(t: float) -> np.ndarray:
     return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
 
 
-def calibrate(dataset: bool, n_keys: int, action_frame_unit: int = 20) -> tuple[float, float]:
+def calibrate(dataset: bool, n_keys: int, action_frame_unit: float = 20) -> tuple[float, float]:
     """Set YAW/PITCH (rad per pixel frame) so one dataset token turns UNIT_*_DEG.
 
     Dataset mode: the harness holds each token for action_frame_unit frames.
@@ -115,7 +115,8 @@ def frame_count(n_frames: int) -> int:
     return (lat - 1) * 4 + 1
 
 
-def build_poses(action: str, num_frames: int, yaw_gain: tuple[float, float] | None = None) -> np.ndarray:
+def build_poses(action: str, num_frames: int, yaw_gain: tuple[float, float] | None = None,
+                turntable=None) -> np.ndarray:
     """float32 [F, 4, 4] camera-to-world poses; F = frame_count(num_frames).
 
     num_frames is the budget, as in the upstream harness (closed loop passes
@@ -125,8 +126,14 @@ def build_poses(action: str, num_frames: int, yaw_gain: tuple[float, float] | No
     total = frame_count(num_frames if num_frames > 0 else len(keys) + 1)
     keys += [keys[-1] if keys else "none"] * (total - 1 - len(keys))
     poses = [np.eye(4)]
-    for k in keys[: total - 1]:
-        poses.append(poses[-1] @ key_delta(k, yaw_gain=yaw_gain))
+    if turntable is not None and turntable.enabled:
+        from adapters.lingbot_world2.turntable import TurntableState  # noqa: PLC0415
+        st = TurntableState()
+        for k in keys[: total - 1]:
+            poses.append(st.step(k, YAW, PITCH, yaw_gain=yaw_gain, walk=turntable.walk))
+    else:
+        for k in keys[: total - 1]:
+            poses.append(poses[-1] @ key_delta(k, yaw_gain=yaw_gain))
     return np.stack(poses).astype(np.float32)
 
 
