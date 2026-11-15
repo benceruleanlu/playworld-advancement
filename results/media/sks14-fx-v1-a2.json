@@ -1,0 +1,166 @@
+{
+ "exp": "sks14-fx-v1-a2",
+ "release_tag": "run-sks14-fx-v1-a2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sks14-fx-v1-a2",
+ "generated": "2026-11-15T04:32:39Z",
+ "git_sha": "814b26c0728dc1fe713bea1ca6ad4dd2ecea3965",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-sink-key-scale",
+  "0.7"
+ ],
+ "player_model": "",
+ "notes": "sink key scale on out-of-sight, fixed actions, official judge 4 passes [arm 2/4 of sks14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-sink-key-scale 0.7]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "sks14-fx-v1-a2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "OE034",
+   "family": "outsight",
+   "mean": 1.25,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头执行了向右再向左的平移，但返回时原场景完全崩坏，取而代之的是比例极度放大的斑马特写，地面生菜和鸵鸟消失，构成了严重的场景重置和幻觉。",
+   "reason_en": "The camera panned right and then left, but upon returning, the original scene completely collapsed, replaced by an extremely oversized close-up of a zebra. The lettuce on the ground and the ostrich disappeared, constituting severe scene reset and hallucination.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE034.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE034.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": 1.5,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.0,
+    2.0,
+    2.0,
+    1.0
+   ],
+   "reason": "未能回到原始视角，场景发生了重置。",
+   "reason_en": "Failed to return to the original viewpoint, and the scene reset.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": 1.5,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    1.0,
+    1.0,
+    2.0
+   ],
+   "reason": "镜头按提示词移动，但男子在镜头移开时发生不合理的瞬移，且后段外观严重变异。",
+   "reason_en": "The camera moved according to the prompt, but the man unreasonably teleported when the camera moved away, and his appearance severely mutated in the latter part.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": 3.125,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.0,
+    3.0,
+    3.5,
+    3.0
+   ],
+   "reason": "视频成功展示了镜头右转并转回的过程，且杯中咖啡液面合理上升，但背景盆栽在转回时消失，杯子结构发生改变，且镜头在完成指令后有较多不必要的额外移动。",
+   "reason_en": "The video successfully showed the camera turning right and turning back, and the coffee level in the cup rose reasonably. However, the potted plant in the background disappeared when turning back, the cup's structure changed, and the camera made many unnecessary extra movements after completing the instruction.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE048.jpg"
+  },
+  {
+   "task_id": "OE058",
+   "family": "outsight",
+   "mean": 1.0,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "镜头未能回到初始视角，且场景完全改变。",
+   "reason_en": "The camera failed to return to the initial viewpoint, and the scene completely changed.",
+   "fail_reason": "未执行返回原视角的动作。",
+   "fail_pass": 2,
+   "fail_reason_en": "Did not perform the action of returning to the original viewpoint.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE058.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE058.jpg"
+  },
+  {
+   "task_id": "OE069",
+   "family": "outsight",
+   "mean": 1.5,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    1.0,
+    1.0,
+    2.0
+   ],
+   "reason": "The camera executes the requested pan, but the original escalator environment undergoes a hard reset, replacing the steps with a flat floor when the subjects reappear.",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE069.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sks14-fx-v1-a2/OE069.jpg"
+  }
+ ]
+}

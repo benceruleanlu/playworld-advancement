@@ -1,0 +1,229 @@
+{
+ "exp": "win14-fx-v1-a3",
+ "release_tag": "run-win14-fx-v1-a3",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a3",
+ "generated": "2026-11-15T05:43:23Z",
+ "git_sha": "6804889ff4c495357c46c7c5391f905c28697093",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--seed",
+  "1"
+ ],
+ "player_model": "",
+ "notes": "larger attention cache on out-of-sight and GC returns: sink 10 + cache 22, cache 22 only, and a second seed for control and treatment; seed-0 control is sks14-fx-v1-a1 / mem14-fx-v1-a1 (generation is deterministic) [arm 3/4 of win14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --seed 1]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "win14-fx-v1-a3.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 1.4,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.4,
+    1.0,
+    2.2,
+    1.0
+   ],
+   "reason": "镜头虽然执行了向右的环视旋转动作，但由于场景发生严重幻觉和变化，未能真正在视觉上回到初始的十字路口视角，仅满足部分轨迹要求。",
+   "reason_en": "Although the camera executed a panning rotation to the right, due to severe hallucinations and changes in the scene, it failed to visually return to the initial intersection perspective, only partially meeting the trajectory requirement.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 3.4,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.2,
+    3.8,
+    4.0,
+    3.6
+   ],
+   "reason": "视频成功完成了要求的镜头左右平移并返回初始视角，橱窗内关键物体的身份、颜色和相对位置保持一致，但悬挂标志上的文字呈现乱码，未能满足精确文本要求。",
+   "reason_en": "The video successfully completed the required left-and-right camera pan and returned to the initial perspective, keeping the identity, color, and relative positions of key objects in the display window consistent, but the text on the hanging sign appeared as gibberish, failing to meet the exact text requirement.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 3.05,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.2,
+    2.4,
+    3.6,
+    4.0
+   ],
+   "reason": "视频成功执行了平移镜头，大部分场景元素保持稳定，但右侧墙壁的粉色面板在重新进入视野时错误地生成了'HATS'字样随后又消失，导致了明显的纹理一致性失败。",
+   "reason_en": "The video successfully executed the camera pan, and most scene elements remained stable, but the pink panel on the right wall erroneously generated the word 'HATS' when re-entering the view and then disappeared, resulting in an obvious texture consistency failure.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/GC036.jpg"
+  },
+  {
+   "task_id": "OE034",
+   "family": "outsight",
+   "mean": 1.0,
+   "status": [
+    "score_1.0"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频虽然执行了向右再向左的镜头平移轨迹，但在镜头返回时，初始的三只斑马、鸵鸟、水泥地和生菜完全消失，被全新的场景和斑马取代，发生了严重的场景重置和身份丢失。",
+   "reason_en": "Although the video executed a camera pan trajectory to the right and then back to the left, when the camera returned, the initial three zebras, ostrich, concrete ground, and lettuce completely disappeared and were replaced by an entirely new scene and zebras, resulting in a severe scene reset and loss of identity.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE034.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE034.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": 1.0,
+   "status": [
+    "score_1.0"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "镜头完成旋转后，初始的毛茸茸白狗、红色椅子和绿墙被完全替换为不同的狗、橙色椅子和玻璃窗，未能保持场景和主体的一致性。",
+   "reason_en": "After the camera completed its rotation, the initial fluffy white dog, red chair, and green wall were completely replaced by a different dog, an orange chair, and a glass window, failing to maintain scene and subject consistency.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": 1.25,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频虽然完成了相机的转动指令，但原男子走入门内后，扶梯上出现了他的分身，且该分身最终在天花板上行走，导致身份、状态和轨迹连续性彻底失败。",
+   "reason_en": "Although the video fulfilled the camera rotation instruction, after the original man walked through the door, a duplicate of him appeared on the escalator and eventually walked on the ceiling, causing a complete failure in identity, state, and trajectory continuity.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": 1.75,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    2.0,
+    1.0,
+    2.0
+   ],
+   "reason": "摄像机成功执行了向右旋转并返回的动作，但原视角的咖啡杯在镜头移开期间状态完全冻结，咖啡液面没有任何合理的积累，导致演变失败。",
+   "reason_en": "The camera successfully executed the action of rotating right and returning, but the coffee cup in the original perspective remained completely frozen in state while the camera was away, with no plausible accumulation of coffee liquid level, leading to an evolution failure.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE048.jpg"
+  },
+  {
+   "task_id": "OE058",
+   "family": "outsight",
+   "mean": 1.5,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    2.0,
+    2.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频执行了要求的镜头平移，但初始场景中的饼干和背景在平移过程中被完全替换，导致目标饼干上没有连贯的装饰进度。",
+   "reason_en": "The video executed the required camera pan, but the cookies and background in the initial scene were completely replaced during the pan, resulting in no coherent decorating progress on the target cookie.",
+   "fail_reason": "相机完全没有执行提示要求的向右旋转180度然后返回的轨迹动作。",
+   "fail_pass": 3,
+   "fail_reason_en": "The camera completely failed to execute the prompt's requested trajectory of rotating 180 degrees to the right and then returning.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE058.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE058.jpg"
+  },
+  {
+   "task_id": "OE069",
+   "family": "outsight",
+   "mean": 2.0,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.0,
+    2.0,
+    3.0,
+    2.0
+   ],
+   "reason": "镜头成功完成了要求的左右旋转，但在镜头移开期间，扶梯上的母女发生了严重的身份替换，母亲的橙色背包消失且外套改变，导致过程连贯性和身份一致性得分较低。",
+   "reason_en": "The camera successfully completed the required left-and-right rotation, but while the camera was away, the mother and daughter on the escalator underwent severe identity replacement, with the mother's orange backpack disappearing and her coat changing, leading to low scores in process coherence and identity consistency.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE069.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a3/OE069.jpg"
+  }
+ ]
+}

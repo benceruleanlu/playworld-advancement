@@ -54,7 +54,8 @@
    ],
    "reason": "视频整体非特定任务质量较好，材质、颜色和空间位置保持稳定，但男子背包上凭空生成了一根自拍杆，导致身份一致性受损。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC016.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC016.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC016.jpg",
+   "reason_en": "The video's overall non-task-specific quality is good, with materials, colors, and spatial positions remaining stable, but a selfie stick appeared out of nowhere on the man's backpack, impairing identity consistency."
   },
   {
    "task_id": "GC031",
@@ -65,7 +66,8 @@
    ],
    "reason": "视频完成了360度环视，但当镜头回到初始的岔路口时，原本的大树干、人物和长椅均未一致重现，场景布局和物体身份发生了严重的重置失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC031.jpg",
+   "reason_en": "The video completed a 360-degree pan-around, but when the camera returned to the initial fork in the path, the original large tree trunk, person, and bench did not reappear consistently, resulting in a severe reset failure in scene layout and object identity."
   },
   {
    "task_id": "GC033",
@@ -76,7 +78,8 @@
    ],
    "reason": "视频成功执行了向左旋转并返回的相机运动，初始橱窗内的所有关键物体在重新进入视野后均保持了高度的身份、材质、颜色和相对位置一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC033.jpg",
+   "reason_en": "The video successfully executed the camera motion of rotating left and returning, and all key objects inside the initial display window maintained high consistency in identity, material, color, and relative position after re-entering the frame."
   },
   {
    "task_id": "GC036",
@@ -87,7 +90,8 @@
    ],
    "reason": "视频在镜头平移过程中出现了严重的物体复制和属性变异，原本唯一的黄色HATS招牌变成了整排颜色各异的招牌，场景布局完全崩溃。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC036.jpg",
+   "reason_en": "During the camera pan, the video suffered severe object duplication and attribute mutation; the originally unique yellow HATS sign turned into a whole row of differently colored signs, causing the scene layout to completely collapse."
   },
   {
    "task_id": "GC038",
@@ -98,7 +102,8 @@
    ],
    "reason": "视频在镜头移动过程中发生了严重的场景重置和物体替换，初始的壁炉、椅子和地毯均未能保持一致。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC038.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC038.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/GC038.jpg",
+   "reason_en": "During camera movement, the video suffered severe scene resets and object replacements; the initial fireplace, chair, and rug all failed to remain consistent."
   },
   {
    "task_id": "IF002",
@@ -120,7 +125,8 @@
    ],
    "reason": "视频成功展示了主体向左转并向前行走的轨迹，但机器狗在移动过程中严重变形为真实的狗，导致身份和运动学评分较低。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF010.jpg",
+   "reason_en": "The video successfully shows the trajectory of the subject turning left and walking forward, but the robotic dog severely morphed into a real dog during movement, resulting in low identity and kinematics scores."
   },
   {
    "task_id": "IF017",
@@ -131,7 +137,8 @@
    ],
    "reason": "男子仅执行了与提示无关的转身和挥剑动作，完全没有向前走动。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF017.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF017.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF017.jpg",
+   "reason_en": "The man only performed turning and sword-swinging actions unrelated to the prompt, and did not walk forward at all."
   },
   {
    "task_id": "IF031",
@@ -142,7 +149,8 @@
    ],
    "reason": "人物完全没有移动。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF031.jpg",
+   "reason_en": "The person did not move at all."
   },
   {
    "task_id": "IF034",
@@ -153,7 +161,8 @@
    ],
    "reason": "场景硬重置导致动作中断。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF034.jpg",
+   "reason_en": "A hard reset of the scene interrupted the action."
   },
   {
    "task_id": "IF052",
@@ -164,7 +173,8 @@
    ],
    "reason": "男孩向前走，但直接穿过了实体的篝火和金属烤架，发生了严重的穿模失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF052.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF052.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/IF052.jpg",
+   "reason_en": "The boy walks forward, but passes straight through the solid campfire and metal grill, resulting in a severe clipping failure."
   },
   {
    "task_id": "OE001",
@@ -252,7 +262,8 @@
    ],
    "reason": "镜头完成了360度旋转，但返回初始视角时，狗的品种和背景墙颜色发生了严重的替换，未能保持身份和场景的一致性。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE039.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE039.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE039.jpg",
+   "reason_en": "The camera completes a 360-degree rotation, but upon returning to the initial viewpoint, the dog's breed and the background wall color are severely replaced, failing to maintain identity and scene consistency."
   },
   {
    "task_id": "OE047",
@@ -263,7 +274,8 @@
    ],
    "reason": "视频虽然完成了镜头的转动，但主体男子在镜头移开时发生了不合理的空间平移，脱离了扶梯，导致隐藏状态演进和轨迹连续性完全失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE047.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE047.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE047.jpg",
+   "reason_en": "Although the video completes the camera rotation, the male subject undergoes an unreasonable spatial translation while off-camera and separates from the escalator, causing a complete failure in hidden state evolution and trajectory continuity."
   },
   {
    "task_id": "OE048",
@@ -274,7 +286,8 @@
    ],
    "reason": "视频成功展示了镜头移开期间咖啡继续倒入杯中的累积过程，但镜头转回后背景发生了严重改变（出现了原本没有的窗户和新植物）。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE048.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE048.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE048.jpg",
+   "reason_en": "The video successfully shows the cumulative process of coffee continuing to pour into the cup while the camera is turned away, but after the camera turns back, the background changes severely (a window and new plants that were not originally there appear)."
   },
   {
    "task_id": "OE058",
@@ -296,7 +309,8 @@
    ],
    "reason": "镜头返回后人物未随扶梯向下移动且背包发生突变，缺乏有效演进。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE069.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE069.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a3/OE069.jpg",
+   "reason_en": "After the camera returns, the person has not moved down with the escalator and their backpack mutates abruptly, lacking valid evolution."
   }
  ]
 }

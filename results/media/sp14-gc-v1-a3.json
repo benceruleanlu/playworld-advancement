@@ -1,0 +1,156 @@
+{
+ "exp": "sp14-gc-v1-a3",
+ "release_tag": "run-sp14-gc-v1-a3",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-sp14-gc-v1-a3",
+ "generated": "2026-11-15T04:31:54Z",
+ "git_sha": "785e9ddba69cd26b608731b10b63e667d787147b",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "agent",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-scripted-player",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--agent-model",
+  "gpt-6-luna",
+  "--lingbot-gc-ease-turns"
+ ],
+ "player_model": "",
+ "notes": "scripted player A/B of chunk-level GC flags; not a closed-loop score [arm 3/4 of sp14-gc-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-scripted-player --lingbot-caption-prompt --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-gc-ease-turns]",
+ "labels": [
+  "scripted dataset moves (no AI player), A/B only"
+ ],
+ "report": "sp14-gc-v1-a3.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC005",
+   "family": "gc",
+   "mean": 1.5,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    2.0,
+    1.0
+   ],
+   "reason": "相机完成了360度环绕并回到了初始的观察方向，但最终停留的位置比初始位置更近，未能完全回到原始的相机位置。",
+   "reason_en": "The camera completed a 360-degree orbit and returned to the initial viewing direction, but it stopped closer than the starting position and failed to fully return to the original camera position.",
+   "fail_reason": "相机未能执行360度环绕雕塑的轨迹，且完全没有回到初始的相机位置和视角，运动轨迹与指令要求不符。",
+   "fail_pass": 2,
+   "fail_reason_en": "The camera failed to perform a 360-degree orbit around the sculpture and did not return to its initial position and perspective at all; the motion trajectory does not match the instructions.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC005.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC005.jpg"
+  },
+  {
+   "task_id": "GC016",
+   "family": "gc",
+   "mean": 3.0,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    4.0
+   ],
+   "reason": "视频前13秒完全静止，随后发生硬切导致场景和人物重置，全程缺乏实质性动作进展，触发动态性门槛最低分限制。",
+   "reason_en": "The first 13 seconds of the video are completely static, followed by a hard cut that resets the scene and characters. There is a lack of substantial motion progression throughout, triggering the minimum score limit for the dynamics threshold.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC016.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC016.jpg"
+  },
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 2.1,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.2,
+    2.0
+   ],
+   "reason": "相机进行了向右旋转，但未能完成完整的360度旋转并回到初始视角。",
+   "reason_en": "The camera rotated to the right, but failed to complete a full 360-degree rotation and return to the initial viewpoint.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 3.2,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    4.0,
+    2.4
+   ],
+   "reason": "视频展示了连续的相机平移运动，初始场景中的紫水晶洞、标志牌等物体在重新进入视野时保持了高度的一致性。",
+   "reason_en": "The video shows continuous camera translation motion, and objects from the initial scene, such as the amethyst geode and signs, maintain a high degree of consistency when re-entering the field of view.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 2.1,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.2,
+    2.0
+   ],
+   "reason": "视频在镜头平移时未能保持场景的一致性，招牌文字发生严重变形和重复，空间布局也变成了无限延伸的重复店铺。",
+   "reason_en": "The video failed to maintain scene consistency during camera translation; the sign text suffered severe distortion and duplication, and the spatial layout turned into infinitely extending repetitive shops.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC036.jpg"
+  },
+  {
+   "task_id": "GC038",
+   "family": "gc",
+   "mean": 1.5,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    1.0
+   ],
+   "reason": "视频执行了向右转、向前走（到达火炉）以及向左转的动作，但向左转的时间过长导致方向偏离，随后的向前走并未回到起点，也没有完成最后转向初始方向的要求，未能成功重访起点。",
+   "reason_en": "The video executed the actions of turning right, walking forward (reaching the stove), and turning left, but the left turn lasted too long and caused the direction to deviate. The subsequent walk forward did not return to the starting point, nor did it fulfill the requirement of finally turning toward the initial direction, failing to successfully revisit the starting point.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC038.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-sp14-gc-v1-a3/GC038.jpg"
+  }
+ ]
+}

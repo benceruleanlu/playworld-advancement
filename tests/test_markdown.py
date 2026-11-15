@@ -33,5 +33,5 @@ def test_render_md_without_link_and_plain_default_unchanged():
 def test_failures_md_escapes_pipes_and_newlines():
     rows = [{"task_id": "IF002", "family": "if", "mean": 1.0, "status": ["gate_fail"], "reason": "a|b\nc"}]
     md = report.render_failures_md(rows)
-    assert "| IF002 | if | 1.00 | gate_fail | a\\|b c |" in md
+    assert "| IF002 | if | 1.00 | - | gate_fail | a\\|b c |" in md
     assert report.render_failures_md([]).startswith("No failures")

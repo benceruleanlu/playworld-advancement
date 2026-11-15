@@ -1,0 +1,171 @@
+{
+ "exp": "pm14-fx-v1-a3",
+ "release_tag": "run-pm14-fx-v1-a3",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-pm14-fx-v1-a3",
+ "generated": "2026-11-15T04:56:05Z",
+ "git_sha": "50246505d9c5a7950b8b6889827fa47841637178",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-pose-memory",
+  "--lingbot-pose-mem-latents",
+  "8",
+  "--lingbot-sink-size",
+  "10",
+  "--lingbot-local-attn",
+  "22"
+ ],
+ "player_model": "",
+ "notes": "pose-indexed memory vs control, fixed actions, official judge 4 passes [arm 3/3 of pm14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-pose-memory --lingbot-pose-mem-latents 8 --lingbot-sink-size 10 --lingbot-local-attn 22]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "pm14-fx-v1-a3.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 2.35,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.6,
+    4.2,
+    1.2,
+    1.4
+   ],
+   "reason": "镜头虽然进行了旋转，但没有完成360度旋转并回到初始视角。",
+   "reason_en": "Although the camera rotated, it did not complete a 360-degree turn and return to the initial viewpoint.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 3.75,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.6,
+    3.4,
+    4.0,
+    4.0
+   ],
+   "reason": "镜头成功完成了向左平移并返回的动作，初始橱窗内的主要物品及标牌文字在重新进入视野后保持了高度一致，仅右侧吊灯数量减少了一个。",
+   "reason_en": "The camera successfully moved left and returned. The main items and sign text inside the initial display window remained highly consistent upon re-entering the frame, with only one fewer pendant light on the right.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 2.1,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    1.0,
+    3.0,
+    1.0,
+    3.4
+   ],
+   "reason": "视频完成了摇摄动作，黄色标志和水池保持一致，但右侧锚定区域在回摇时发生严重突变，黑色垃圾桶消失且深色墙面变成了新的玻璃店面。",
+   "reason_en": "The video completed the panning motion, with the yellow sign and pool remaining consistent, but the anchor area on the right underwent severe abrupt changes when panning back—the black trash can disappeared and the dark wall turned into a new glass storefront.",
+   "fail_reason": "镜头仅持续向左平移，未能执行向右平移以及回到中心的指令。",
+   "fail_pass": 1,
+   "fail_reason_en": "The camera only keeps panning left and fails to follow the instructions to pan right and return to the center.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/GC036.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": 3.125,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.0,
+    3.0,
+    3.5,
+    3.0
+   ],
+   "reason": "相机完成了环视和后退，狗的姿态有合理变化，但返回时场景背景发生了严重的重置。",
+   "reason_en": "The camera completed looking around and pulling back, and the dog's pose changed reasonably, but the scene background suffered a severe reset upon returning.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": 2.125,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.0,
+    2.0,
+    3.0,
+    2.5
+   ],
+   "reason": "视频中男子在镜头开始转动时瞬间从扶梯瞬移到平地，完全破坏了视线外乘坐扶梯的状态演进和轨迹连续性。",
+   "reason_en": "In the video, the man instantly teleported from the escalator to flat ground as the camera began turning, completely breaking the off-screen state progression and trajectory continuity of riding the escalator.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": 1.5,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    2.0,
+    1.0,
+    1.0,
+    2.0
+   ],
+   "reason": "镜头成功完成右转并返回，但杯中原本积累的咖啡在重新出现时完全消失，导致状态严重重置。",
+   "reason_en": "The camera successfully turned right and returned, but the coffee that had accumulated in the cup completely vanished when it reappeared, resulting in a severe state reset.",
+   "fail_reason": "未按要求返回原视角。",
+   "fail_pass": 3,
+   "fail_reason_en": "Did not return to the original perspective as requested.",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-pm14-fx-v1-a3/OE048.jpg"
+  }
+ ]
+}
