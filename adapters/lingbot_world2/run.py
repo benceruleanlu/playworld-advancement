@@ -153,7 +153,7 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
-              "--lingbot-if-slow-translation")
+              "--lingbot-if-slow-translation", "--lingbot-noise-mean-coupling")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -179,8 +179,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "if_repeat": "--lingbot-if-repeat-check" in argv or environ.get("LINGBOT_IF_REPEAT_CHECK", "0") == "1",
         "if_slow": "--lingbot-if-slow-translation" in argv
                    or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
+        "noise_mean": "--lingbot-noise-mean-coupling" in argv or environ.get("LINGBOT_NOISE_MEAN_COUPLING", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
+    if flags["noise_mean"] and flags["stateless"]:
+        raise SystemExit("--lingbot-noise-mean-coupling requires session mode")
     flags["stall"], argv = W.parse(argv, environ)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
@@ -189,6 +192,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 
 
 # Set by main() from configure(); the engine reads them at call time.
+NOISE_MEAN = False  # --lingbot-noise-mean-coupling / LINGBOT_NOISE_MEAN_COUPLING=1, off by default
 STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = IF_HORIZON = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
@@ -301,6 +305,7 @@ class LingBotWorld2Engine:
               + (", player hint on" if PLAYER_HINT else "")
               + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else "")
+              + (", noise mean coupling on" if NOISE_MEAN else "")
               + (", IF horizon on" if IF_HORIZON else "")
               + (", IF camera hint on" if STATS.if_camera else "")
               + (", player history endpoints on" if STATS.history_endpoints else "")
@@ -373,13 +378,16 @@ class LingBotWorld2Engine:
             reanchor = REANCHOR and S.reanchor_task(name)
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
-                               reanchor=reanchor)
+                               reanchor=reanchor,
+                               noise_mean=bool(NOISE_MEAN and parsed and parsed[0].startswith(("GC", "IF"))))
             if reanchor:
                 STATS.armed()
         self._configure_if_motion(name, keys)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
+        coupled = getattr(self.session.noise_mean, "count", 0)
         frames = self.session.step(keys)
+        STATS.noise_mean_samples += getattr(self.session.noise_mean, "count", 0) - coupled
         STATS.reanchored(self.session.reanchor_events - anchored)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -435,19 +443,20 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL, IF_HORIZON
+    global CPU_THREADS, STALL, IF_HORIZON, NOISE_MEAN
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON = flags["if_horizon"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
+    NOISE_MEAN = flags["noise_mean"]
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
                                  if_horizon=IF_HORIZON, if_camera=flags["if_camera"],
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
-                                 if_slow=flags["if_slow"])
+                                 if_slow=flags["if_slow"], noise_mean=NOISE_MEAN)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
