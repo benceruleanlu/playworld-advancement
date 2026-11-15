@@ -385,7 +385,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
       pending: "control and sink 12 scored (2.35, 2.17); the two arms with a window of 36 failed",
       also: ["pm14-fx-v1-a3", "pm14-fx-v2-a4", "win14-fx-v1-a3", "win14-fx-v1-a4"],
-      body: "Changes how many latent frames the model keeps attending to (a sink of 6 opening latents in an attention window of 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. OE039 scored about 3 in all three arms that keep more of the opening view: 3.00 with a sink of 12, and 3.12 in both arms with a sink of 10 in a window of 22 (pm14-fx-v1-a3, pm14-fx-v2-a4), against 1.25 to 2.00 across the control's scorings. The two 10 and 22 arms scored 2.25 and 2.67 on out-of-sight, about 2.46 against 1.83 to 2.10 for control. That is at the noise bar, on one seed. Their two videos are nearly identical, yet they scored 1.50 and 2.88 on OE048. A sink of 12 alone showed no out-of-sight gain (1.86 against 1.93) and dropped OE048 from 3.19 to 1.25. A second seed is running (win14-fx-v1). The two arms with an attention window of 36 produced no clips.",
+      body: "Changes how many latent frames the model keeps attending to (a sink of 6 opening latents in an attention window of 18 by default), which sets how far back it remembers. Run on the 6 out-of-sight dev tasks and 3 GC tasks. OE039 scored about 3 in all three arms that keep more of the opening view: 3.00 with a sink of 12, and 3.12 in both arms with a sink of 10 in a window of 22 (pm14-fx-v1-a3, pm14-fx-v2-a4), against 1.25 to 2.00 across the control's scorings. The two 10 and 22 arms scored 2.25 and 2.67 on out-of-sight, about 2.46 against 1.83 to 2.10 for control. That is at the noise bar, on one seed. Their two videos are nearly identical, yet they scored 1.50 and 2.88 on OE048. A sink of 12 alone showed no out-of-sight gain (1.86 against 1.93) and dropped OE048 from 3.19 to 1.25. The second seed (win14-fx-v1): sink 10 with window 22 scored 1.81 on out-of-sight at seed 0 and window 22 alone 2.13, against a control near 2.0; at seed 1 control 1.42 and the larger window 2.04. No family-level effect repeats; OE039 is the one consistent task. Not adopted. The two arms with an attention window of 36 produced no clips.",
       links: [["#104", PR + "104"]] },
     { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
       cells: "every scaled arm is lower than the control; dropped",
@@ -400,7 +400,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
     { group: "now", title: "Pose-indexed memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory + window", "pm14-fx-v1-a3"]],
       cells: "6 tasks, one seed; the first run changed no frame, so any difference is judge spread",
-      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. A fix is in progress. Not a result.",
+      body: "Re-inserts past views into the attention sink when the camera returns near them. Every memory arm so far (pm14-fx-v1-a2, pm14-fx-v2-a1, pm14-fx-v2-a2) made zero retrievals, and its clips are byte-identical to control, so its scores are the control plus judge spread. After the fix (#129), pm14-fx-v3 is the first run that can fire; it is generated and not scored. No result.",
       also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3", "pm14-fx-v2-a4"], links: [["#123", PR + "123"]] },
     { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
       body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
@@ -494,13 +494,13 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       say: "Identical controls disagree. The bar is a full point, twice.",
       runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
       watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" } },
-    { id: "turncal", prs: [23], label: "Turn calibration", verdict: "not adopted", title: "Calibrated turns lifted two GC tasks, once",
+    { id: "turncal", prs: [23], label: "Turn calibration", verdict: "did not replicate", title: "Calibrated turns lifted two GC tasks, once",
       body: "Task prompts name 22.5 degrees per turn key; the model's default turns 34. With the rate calibrated, GC031 and GC036 gained more than a point, though the judge's comment on GC031 says the camera never completes its 360. On a second run they gained 0.35 and 0.80. Not adopted.",
       say: "Two tasks up on one run, under the bar on the second.",
       ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
       watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
-    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result, rerun pending", kind: "repeat", title: "Pose memory never fired, and the score still moved",
-      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129) and its run is not scored yet.",
+    { id: "memory", prs: [123, 129], label: "Pose memory", verdict: "no result", kind: "repeat", title: "Pose memory never fired, and the score still moved",
+      body: "Pose memory re-inserts an earlier view when the camera returns to it. In its first run it inserted nothing and the clips are byte-identical to control, yet GC036 moved 1.3 points and failed a gate. The two later memory arms also made zero retrievals. A fix is merged (PR #129); its run, pm14-fx-v3, is the first that can fire and is not scored yet.",
       say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
@@ -510,18 +510,18 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
       watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
     { id: "insight", prs: [32, 90], label: "Caption prompt on insight", verdict: "not adopted", title: "The scene caption alone did not move insight",
-      body: "Insight tasks prompt the model with \"wait and observe\", and four of six baseline rollouts were flagged static or near static in a judge pass. Prompting with the scene caption moved no task by a full point. Adding the insight director, a fixed sentence about the activity, moved one task up and one down.",
+      body: "Insight tasks prompt the model with \"wait and observe\", and four of six baseline rollouts were flagged static or near static in a judge pass. On all six insight dev tasks (ins14-fx-v2) the goal prompt scored 1.76, the scene caption 1.80 and the caption with the insight director, a fixed sentence about the activity, 2.09, all inside the noise. The caption moved no task by a full point; the director moved one up and one down.",
       say: "Swapping \"wait and observe\" for the scene caption moved nothing by a full point.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
-    { id: "window", seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "not repeated", title: "A larger attention window moved different tasks on each seed",
-      body: "At seed 1 it raised OE039 by 2.4 and OE069 by 1.0 and lowered nothing by a full point. At seed 0 the same flags raised GC031 by 1.65, lowered OE048 by 1.06 and left OE039 inside the control's spread. No task moved on both seeds.",
-      say: "Our best lead, repeated on a second seed. Different tasks moved each time.",
+    { id: "window", seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "not adopted", title: "A larger attention window lifted OE039, not the out-of-sight family",
+      body: "On out-of-sight (win14-fx-v1), sink 10 with window 22 scored 1.81 on seed 0 against a control near 2.0, and window 22 alone 2.13. On seed 1 control scored 1.42 and the larger window 2.04. OE039 scored 3.0 or more in five of six larger-window videos and 2.0 or less in every control video. No family-level effect repeats; one task is consistent. Not adopted.",
+      say: "The family score did not move the same way twice. One task, OE039, rose every time but once.",
       ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
       watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
     { id: "stack", label: "The stack, 24 tasks, two seeds", verdict: "running", pending: true, title: "The stack on all 24 dev tasks, at two seeds",
-      body: "Turn calibration, caption prompt, insight director, slow IF translation and the larger attention window together, against no flags, on every dev task at two seeds.",
-      say: "The combined method on all 24 dev tasks at two seeds is running now.",
+      body: "Turn calibration, caption prompt, insight director, slow IF translation and the larger attention window together, against no flags, on every dev task at two seeds (stk14-fx-dev-v1) and on the 24 dev2 tasks (stk14-fx-dev2-v1).",
+      say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is running now.",
       ctl: "stk14-fx-dev-v1-a1", arms: [["stack", "stk14-fx-dev-v1-a2", "the stack, seed 0"]],
       watch: { task: "OE039", b: "stk14-fx-dev-v1-a1", c: "stk14-fx-dev-v1-a2" } },
     { id: "open", kind: "note", title: "Still open",
@@ -529,8 +529,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       points: ["No 171-task score, for the starting model or for a method.",
         "Every A/B here uses fixed moves, and all but one ran on a single seed. Adoption needs the AI player and two seeds.",
         "Dropped: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
-        "Leads: a larger attention window (moves tasks, not the same ones twice), the insight director (one up, one down), re-anchoring on GC (weak).",
-        "Pose memory has no result yet."],
+        "Leads: a larger attention window on OE039 only (no family effect on two seeds), the insight director (one up, one down), re-anchoring on GC (weak).",
+        "Pose memory has no result yet: its first run that can fire (pm14-fx-v3) is not scored.",
+        "Running: the stack against no flags on 24 dev tasks (stk14-fx-dev-v1) and on 24 dev2 tasks (stk14-fx-dev2-v1)."],
       links: [["status", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
@@ -911,30 +912,50 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     if (focus) { var cur = tabs.querySelector('[aria-selected="true"]'); if (cur) cur.focus(); }
     var k = galFam, info = FAMINFO[k], list = pool.filter(function (c) { return c.t.family === k; });
     var best = pickBest(list), worst = pickWorst(list, best);
-    var scores = el("dl", { class: "kv" }, [el("dt", { text: "Genie 3" }), el("dd", { text: fmt(GENIE[k]) }), el("dt", { text: "LingBot v2" }), el("dd", { text: fmt(lb[k]) }),
-      b && b[k] !== null ? el("dt", { text: "Ours, " + b.n_tasks + " tasks" }) : null, b && b[k] !== null ? el("dd", { text: fmt(b[k]) }) : null]);
+    var part = b && !isFinal(b) ? " (partial)" : "";
+    var scores = el("dl", { class: "kv" }, [el("dt", { text: "Genie 3, all " + FULL_TASKS + " tasks" }), el("dd", { text: fmt(GENIE[k]) }), el("dt", { text: "LingBot v2, all " + FULL_TASKS + " tasks" }), el("dd", { text: fmt(lb[k]) }),
+      b && b[k] !== null ? el("dt", { text: "Ours, " + b.n_tasks + " tasks" + part }) : null, b && b[k] !== null ? el("dd", { text: fmt(b[k]) }) : null]);
     var head = el("div", { class: "gf-head" }, [el("p", { class: "gf-q", text: info.ask }), scores]);
     var cards = el("div", { class: "gf-cards" });
     if (best) cards.appendChild(clipCard(best, "highest"));
     if (worst) cards.appendChild(clipCard(worst, "lowest"));
     if (!best) cards.appendChild(el("p", { class: "note", text: "No scored rollout for this task type yet." }));
     box.appendChild(el("div", { class: "gfam", id: "gallery-" + k, role: "tabpanel" }, [head, cards]));
-    $("gal-note").textContent = "Quotes are the official judge's comments, machine-translated. Chosen from " + pool.length + " scored 14B rollouts by pass mean; ties on the lowest go to the longest comment. Most use fixed moves.";
+    $("gal-note").textContent = "English quotes were machine-translated after scoring; \"show original\" has the judge's own text. Chosen from " + pool.length + " officially scored 14B rollouts by pass mean; ties on the lowest go to the longest comment. Most use fixed action scripts.";
     renderHeroClip(pool);
   }
-  // header: the highest-scored rollout so far, looping muted; labelled as one rollout, never as the score
+  // header: one rollout, from a control arm only (memory arms whose clips equal control would just pick the judge's maximum),
+  // labelled with its driver and run id, never as the score. Poster and play button first; it plays by itself only at 900 px
+  // or wider without reduced motion or data saver, and creates no video element (so fetches no video) before that.
+  function isControlArm(row) { var m = row && /\[arm (\d+)\/\d+ of /.exec(row.notes || ""); return !!m && m[1] === "1"; }
   function renderHeroClip(pool) {
     var fig = $("heroclip"); if (!fig) return;
-    var c = pickBest(pool); if (!c) { fig.hidden = true; return; }
+    var c = pickBest(pool.filter(function (x) { return isControlArm(x.row); })); if (!c) { fig.hidden = true; return; }
     if (fig.getAttribute("data-clip") === c.exp + "/" + c.t.task_id) return;
     clear(fig); fig.hidden = false; fig.setAttribute("data-clip", c.exp + "/" + c.t.task_id);
-    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var v = el("video", { playsinline: "", loop: "", preload: calm ? "none" : "auto", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id });
-    v.muted = true; if (calm) v.setAttribute("controls", ""); else { v.autoplay = true; var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); }); }
-    fig.appendChild(v);
-    var cap = el("figcaption", null, [el("b", { text: c.t.task_id + ", scored " + fmt(c.mean) + " of 5." }),
-      document.createTextNode(" Our highest-scored rollout" + (c.row && !isClosed(c.row) ? ", fixed moves" : "") + ". ")]);
-    var a = el("a", { href: "#story-examples", text: "What breaks" }); cap.appendChild(a);
+    var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+    var save = !!(navigator.connection && navigator.connection.saveData);
+    var auto = mq("(min-width: 900px)") && !mq("(prefers-reduced-motion: reduce)") && !save;
+    var media = el("div", { class: "media" });
+    function start(withControls) {
+      var v = el("video", { playsinline: "", loop: "", preload: "metadata", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id + " from " + c.exp });
+      v.muted = true; if (withControls) v.setAttribute("controls", "");
+      clear(media); media.appendChild(v);
+      var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); });
+    }
+    if (auto) start(false);
+    else {
+      media.appendChild(el("img", { src: c.t.poster || "", alt: "First frame of " + c.t.task_id, loading: "lazy" }));
+      var pb = el("button", { class: "play", type: "button", "aria-label": "Play " + c.t.task_id });
+      pb.addEventListener("click", function () { start(true); });
+      media.appendChild(pb);
+    }
+    fig.appendChild(media);
+    var np = (c.t.pass_scores || []).length;
+    var cap = el("figcaption", null, [el("b", { text: c.t.task_id }), document.createTextNode(" from "), el("code", { class: "rawid", text: c.exp }),
+      document.createTextNode(", " + (c.row && isOpen(c.row) ? "fixed action scripts (open loop, A/B only)" : c.row && isScripted(c.row) ? "scripted moves, test only" : "AI player") +
+        ". One rollout of a control arm, judge mean " + fmt(c.mean) + (np ? " over " + np + " passes" : "") + "; not a score. "), driverBadge(c.row), document.createTextNode(" ")]);
+    var a = el("a", { href: "#story-examples", text: "More clips" }); cap.appendChild(a);
     fig.appendChild(cap);
   }
 
