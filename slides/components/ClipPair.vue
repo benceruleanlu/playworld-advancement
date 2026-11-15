@@ -95,5 +95,5 @@ onSlideLeave(() => { if (playing.value || vids().some(v => !v.paused)) pauseBoth
 .clips { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .clip video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 4px; display: block; }
 .label { font-size: 14px; margin-top: 2px; line-height: 1.25; }
-.label code { font-size: 14px; white-space: nowrap; }
+.label code { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

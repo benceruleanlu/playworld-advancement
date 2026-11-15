@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// End-heading error in degrees, control vs yaw servo (AGENTS.md, "Status against the timeline"). GC022's pair is from the stack run.
+// End-heading error in degrees, control vs yaw servo (AGENTS.md, "Status against the timeline"). GC022's pair is from the stack run. Only GC033 and GC036 have an independent frame check; the rest use the servo's own estimate.
 const rows = [
   { task: 'GC031', control: 96, servo: 0 },
   { task: 'GC038', control: 96, servo: 49 },
-  { task: 'GC036', control: 70, servo: 5.6 },
+  { task: 'GC036', control: 70, servo: 5.6, note: 'frame check' },
   { task: 'GC022', control: 45, servo: 1, note: 'stack run' },
-  { task: 'GC033', control: 28, servo: 0.3 },
+  { task: 'GC033', control: 28, servo: 0.3, note: 'frame check' },
   { task: 'GC012', control: 8, servo: 2 },
 ]
 const max = 100
@@ -23,7 +23,7 @@ const pct = (v: number) => `${(v / max) * 100}%`
       </div>
     </div>
     <div class="axis"><div class="ticks"><span style="left: 0%">0</span><span style="left: 50%">50</span><span style="left: 100%">100</span></div></div>
-    <figcaption>End-heading error (degrees from the intended heading at the last frame)</figcaption>
+    <figcaption>End-heading error, degrees at the last frame. "frame check": independent check; others: the servo's own estimate.</figcaption>
   </figure>
 </template>
 
