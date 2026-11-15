@@ -28,6 +28,10 @@ Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 t
 closed-loop player how far one action turns the camera and where the commanded camera
 is relative to the start; see player_hint.py. The world model's inputs do not change.
 
+GC completion hint (off by default): `--lingbot-gc-completion-hint` or
+LINGBOT_GC_COMPLETION_HINT=1 reminds the player to finish the requested path once, then
+END on visual completion. Counts hints and END replies; never forces an action.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
@@ -57,6 +61,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
+from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
@@ -70,9 +75,12 @@ if PROMPT_MODE not in prompts.MODES:
     raise SystemExit(f"LINGBOT_PROMPT_MODE must be one of {prompts.MODES}, got {PROMPT_MODE!r}")
 REANCHOR = "--lingbot-reanchor" in sys.argv or os.environ.get("LINGBOT_REANCHOR", "0") == "1"
 PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
+GC_COMPLETION = ("--lingbot-gc-completion-hint" in sys.argv
+                 or os.environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1")
 sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
+                                              "--lingbot-gc-completion-hint",
                                               "--lingbot-reanchor", "--lingbot-player-hint")]
-STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
+STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, gc_completion=GC_COMPLETION)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -118,7 +126,8 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
-              + (", player hint on" if PLAYER_HINT else ""),
+              + (", player hint on" if PLAYER_HINT else "")
+              + (", GC completion hint on" if GC_COMPLETION else ""),
               flush=True)
 
     def _calibrate(self, name, n_keys):
@@ -221,6 +230,9 @@ if PLAYER_HINT:
     run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
                                      session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
     print("[lingbot] player hint: on", flush=True)
+if GC_COMPLETION:
+    run_agent.decide_action = C.wrap(run_agent.decide_action, STATS.completion_hint, STATS.completion_end)
+    print("[lingbot] GC completion hint: on", flush=True)
 _rc = run_agent.main()
 print(STATS.total_line(), flush=True)
 raise SystemExit(_rc)
