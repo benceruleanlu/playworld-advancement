@@ -53,7 +53,9 @@ def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, un
     """Commanded camera after `actions` (player words, e.g. 'LEFT'); to_key maps them to engine keys."""
     turned = {"left": 0.0, "right": 0.0}
     if turntable is not None and turntable.enabled:
-        st = TT.TurntableState()
+        # session: one world-up track for the rollout; stateless: build_poses starts a fresh track per call from
+        # the previous output frame, so each call's pose composes onto the last (as the local-frame path does)
+        st, pose = TT.TurntableState(), np.eye(4)
         old = P.YAW, P.PITCH
         try:
             for i, a in enumerate(actions):
@@ -61,6 +63,8 @@ def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, un
                 n = step_keys(i, chunk_frames, session)
                 if turn_cal:
                     P.calibrate(False, n, unit)
+                if not session:
+                    st = TT.TurntableState()
                 yaw0 = st.yaw
                 for _ in range(n):
                     st.step(key, P.YAW, P.PITCH, translation_gain, walk=turntable.walk)
@@ -69,9 +73,12 @@ def replay(actions, to_key, chunk_frames: int, session: bool, turn_cal: bool, un
                     turned["left"] += -dyaw
                 elif dyaw > 0:
                     turned["right"] += dyaw
+                if not session:
+                    pose = pose @ st.c2w()
         finally:
             P.YAW, P.PITCH = old
-        pose = st.c2w()
+        if session:
+            pose = st.c2w()
     else:
         pose = np.eye(4)
         for i, a in enumerate(actions):

@@ -209,7 +209,9 @@ class PoseTrack:
             walk = self.turntable.walk
             if self._tt_cur is None:
                 self._tt_cur = TT.TurntableState()
-            if gain and self._tt_want is None:
+            if not gain:  # as the local-frame path: with no gain the intended track is the model track
+                self._tt_want = None
+            elif self._tt_want is None:
                 self._tt_want = TT.TurntableState(
                     yaw=self._tt_cur.yaw, pitch=self._tt_cur.pitch,
                     pos=self._tt_cur.pos.copy(), max_pitch=self._tt_cur.max_pitch,
