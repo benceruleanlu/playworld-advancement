@@ -7,9 +7,10 @@
     <li><b>The benchmark's own judge.</b> Gemini 3.1 Pro scores each video with the benchmark's settings, and is never told which model made it. A cheaper screening judge may pick which practice test gets an official run; its scores never appear here.</li>
     <li><b>Score twice.</b> A final score averages two or more scorings and reports how much they disagree.</li>
     <li><b>Ignore small differences.</b> A gain smaller than twice that disagreement does not count. On practice tasks a change is kept only if single tasks move by a full point on two separate runs, because two scorings of the same video differed by half a point or more on 10 of 24 tasks.</li>
+    <li><b>Quick checks are labeled.</b> Capped smoke runs stop each rollout after 10 of its 30 chunks, on 2 or 3 chosen tasks with one GPU each, and get one pass of the screening judge. They show how the player and each change behave; their numbers are not comparable with official scores and never count here.</li>
     <li><b>Everything is logged.</b> Each run is a row in a public file with its exact code version. This page reads it live.</li>
   </ol>
-  <details class="rules-wrap"><summary>Technical detail: the 10 rules and where the code enforces each</summary>
+  <details class="rules-wrap"><summary>Technical detail: the 11 rules and where the code enforces each</summary>
   <div class="scroll" style="margin-top:10px">
     <table class="rules">
       <thead><tr><th scope="col">Rule</th><th scope="col">Why</th><th scope="col">Where it lives</th></tr></thead>
@@ -23,6 +24,7 @@
         <tr><td>Gains must clear the noise</td><td>Verifier passes disagree; a single lucky pass is not an improvement.</td><td class="enf"><code>pwa compare</code> and the <a href="#progress">Progress</a> table use 2x pass std</td></tr>
         <tr><td>Changes are kept only on a full-point, two-seed gain</td><td>Two scorings of the same video differed by 0.5 or more on 10 of 24 baseline tasks, so half-point moves are judge noise.</td><td class="enf"><code>pwa cells</code> counts tasks that moved by a full point; adoption is a team rule <span class="badge warn">convention, not code</span></td></tr>
         <tr><td>Screening scores stay out of the log</td><td>A second judge is not comparable with the leaderboard.</td><td class="enf"><code>--judge-model</code> writes to its own eval folder and <code>report.&lt;model&gt;.json</code>, never <code>results/experiments.csv</code></td></tr>
+        <tr><td>Capped smoke runs never count</td><td>A rollout cut to 10 of 30 chunks covers a third of the task, so its score measures a different thing.</td><td class="enf">Upstream <code>--num-chunks 10</code> caps the rollout; screening-judge runs end as <code>generated</code> with no score; this page badges rows named <code>smk-*</code> or noted "capped smoke" and keeps them out of the headline, ruler, task-type scores and best-so-far line</td></tr>
         <tr><td>Branch code is flagged</td><td>A score should describe code anyone can check out from main.</td><td class="enf">Workflow records <code>branch</code>; non-main rows badged "unmerged code"</td></tr>
       </tbody>
     </table>
