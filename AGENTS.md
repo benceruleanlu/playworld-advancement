@@ -18,6 +18,7 @@ Hackathon repo: raise an open world model's PlayWorld score above Genie 3 (2.12)
 - Final numbers must be closed loop (`--action-source agent` or `refined`) and scored with Gemini 3.1 Pro at the upstream sampling settings. `--action-source dataset` is for fast A/B only.
 - Do not change verifier FPS, resolution, or JPEG settings.
 - A delta smaller than 2x the pass-to-pass std is noise.
+- Screening judge (`--judge-model`, e.g. `gemini-4-hydrogen`) is for dev loops only: picking which arm deserves an official run. The official judge (Gemini 3.1 Pro, upstream settings) decides what ships and produces every reported number. Never quote, plot or compare a screening score against the leaderboard or against an official score.
 - Secrets live in `config/env.sh` only. Never print or commit key values.
 
 ## Skills
@@ -40,6 +41,8 @@ Setup: `./setup.sh`, fill `config/env.sh`, `source .venv/bin/activate`, `pwa doc
 - `pwa score EXP [--passes 2] [--workers 4] [--dry-run] [--force]` verifier into `runs/EXP/eval/pass<k>/`; idempotent.
 - `pwa report EXP [--split ..] [--strict] [--json] [--md [--site-url U]]` per-family means, std, gate passes, missing; upserts `results/experiments.csv`.
 - `pwa compare A B [--json]` deltas B minus A, flags noise (< 2x pass std).
+- `pwa cells A B [--json]` per-task pass-means of A and B on their shared tasks, the delta, and how many tasks moved up or down by at least 1.0 (a cell moves only at a full point). The decision readout for an A/B.
+- Screening judge: `pwa score|report|compare|cells|failures ... --judge-model MODEL [--judge-thinking minimal|low|medium|high]` runs or reads the same upstream verifier with `--model MODEL`, in `runs/EXP/eval-<slug>/pass<k>/` (slug = model id with characters outside `[A-Za-z0-9._-]` replaced by `-`, plus `-think-<level>` with a thinking level). Output is labelled "screening judge: MODEL, not comparable to the leaderboard"; `report` writes `report.<slug>.json`, never `report.json` or `results/experiments.csv`. Without the flag nothing changes (`$GEMINI_MODEL`, default `gemini-3.1-pro-preview`, `eval/`). Upstream `metrics/vqa/score.py` passes the model id through unchanged (no allowlist) and sets no thinking config (only `response_mime_type` and `temperature=0.1`), and no env var sets one; `--judge-thinking` runs it through `pwa/judge_shim.py`, which adds `thinking_config` to that config object and leaves the submodule untouched. Dry runs (`--dry-run`) call no model and keep writing `eval_dry/`.
 - `pwa media EXP --out DIR [--base-url URL] [--release-url URL] [--index PATH]` web copies of a run's rollouts and the Scenes manifest (used by the workflow; see "Scenes and attribution").
 - `pwa failures EXP [--all] [--json] [--md]` missing, gate-failed, or 1.0 tasks with the verifier's reason; `--all` lists every task.
 - `pwa upsert-row EXP --into PATH` copy EXP's row from this checkout's `results/experiments.csv` into another CSV by column name (adds missing columns, fails on malformed files); used by the workflow.
@@ -73,12 +76,14 @@ Typical loop: `pwa run sana-base-dev --split dev --runner sana --action-source d
 
 ### Remote runs (GitHub Actions + Modal)
 
-Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, notes, extra (runner args, e.g. `--lingbot-stateless`).
+Actions tab -> `experiment` -> Run workflow. Inputs: exp, split or tasks, runner, action_source, backend (modal|local), gpu, num_shards, stage (full|gen-only|score-only), passes, judge_model, notes, extra (runner args, e.g. `--lingbot-stateless`).
+
+- `judge_model` (empty = official judge): `MODEL` or `MODEL:THINKING`, e.g. `gemini-4-hydrogen:low`. When set, Score runs `pwa score --judge-model`, the step summary shows the screening report and all-task table, and only `results/reports/EXP.<slug>.md` is committed to main: no `results/experiments.csv` row and no Scenes release. The live status row ends as `generated`, so the experiment still shows as unscored. Re-score an existing run with `stage=score-only`; score it officially later with another `score-only` run and `judge_model` empty.
 
 - `backend=modal`: `modal_app.py` runs `pwa gen` shards on Modal GPUs into the `pwa-runs` Volume, then the runner fetches them, scores with Gemini, reports, records the `results/experiments.csv` row on main (from any branch; see below), and uploads `runs/EXP` as an artifact (14 days). The step summary shows the report and failures.
 - `backend=local` with `runner=tests/fake_runner.py`: full pipeline test with no GPU.
 - Finding and reading runs:
-  - The run title in the Actions list and API is `EXP · runner · split or tasks · action_source [· extra] [· stage]`. GitHub does not expose a running job's logs or its inputs, so the title is how to tell runs apart.
+  - The run title in the Actions list and API is `EXP · runner · split or tasks · action_source [· player] [· extra] [· judge MODEL] [· stage]`. GitHub does not expose a running job's logs or its inputs, so the title is how to tell runs apart.
   - At launch the workflow adds a `status=running` row for EXP to `results/experiments.csv` on main, with `run_url` linking to the Actions run. The final row (`status=scored`) replaces it. A gen-only run ends as `generated`, and a failed or cancelled job as `failed` / `cancelled`. Rows from before these columns have them blank. These marker steps never fail the job.
   - Every scored run commits `results/reports/EXP.md` to main: the report plus a table of every task with its mean, status and the verifier's reason. Read that instead of downloading the artifact.
   - Each marker is one more commit to main touching `results/experiments.csv`, so it also triggers a Pages deploy.
