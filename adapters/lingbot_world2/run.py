@@ -16,6 +16,10 @@ argv) or LINGBOT_SESSION=0: every call is a fresh upstream rollout from image_pa
 Turn calibration (off by default): `--lingbot-turn-cal` or LINGBOT_TURN_CAL=1 sets the
 arrow-key rates so one dataset token turns 22.5 deg (yaw) / 20 deg (pitch); see poses.calibrate.
 
+Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 tells the
+closed-loop player how far one action turns the camera and where the commanded camera
+is relative to the start; see player_hint.py. The world model's inputs do not change.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
@@ -24,6 +28,7 @@ Env:
   LINGBOT_YAW_RAD / LINGBOT_PITCH_RAD   per-frame camera rotation for arrow keys (poses.py)
   LINGBOT_TURN_CAL  1 = same as --lingbot-turn-cal (overrides the two rates above)
   LINGBOT_UNIT_YAW_DEG / LINGBOT_UNIT_PITCH_DEG / LINGBOT_CHUNK_UNITS   turn-cal angles (22.5 / 20 / 2)
+  LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 """
@@ -35,6 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
@@ -42,7 +48,8 @@ run_agent = import_run_agent()
 
 STATELESS = "--lingbot-stateless" in sys.argv or os.environ.get("LINGBOT_SESSION", "1") == "0"
 TURN_CAL = "--lingbot-turn-cal" in sys.argv or os.environ.get("LINGBOT_TURN_CAL", "0") == "1"
-sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal")]
+PLAYER_HINT = "--lingbot-player-hint" in sys.argv or os.environ.get("LINGBOT_PLAYER_HINT", "0") == "1"
+sys.argv = [a for a in sys.argv if a not in ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-player-hint")]
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
 LOCAL_ATTN, SINK = 18, 6  # README settings for causal-fast
@@ -169,4 +176,8 @@ class LingBotWorld2Engine:
 
 run_agent.SanaWMEngine = LingBotWorld2Engine
 print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
+if PLAYER_HINT:
+    run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
+                                     session=not STATELESS, turn_cal=TURN_CAL)
+    print("[lingbot] player hint: on", flush=True)
 raise SystemExit(run_agent.main())
