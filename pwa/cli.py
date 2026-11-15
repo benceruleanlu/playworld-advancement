@@ -181,8 +181,24 @@ def _split_label(a, exp: str) -> str:
     return meta.get("split_label") or meta.get("split") or "custom"
 
 
+def _join_arms(argv: list[str]) -> list[str]:
+    """`--arms VALUE` -> `--arms=VALUE` (before any `--`). argparse rejects a separate value that starts with a
+    dash and has no space, e.g. `--arms '--lingbot-turn-cal|--lingbot-stateless'`."""
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--":
+            return out + argv[i:]
+        if argv[i] == "--arms" and i + 1 < len(argv) and argv[i + 1] != "--":
+            out.append(f"--arms={argv[i + 1]}")
+            i += 2
+            continue
+        out.append(argv[i])
+        i += 1
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
+    argv = _join_arms(list(sys.argv[1:] if argv is None else argv))
     extra = []
     if "--" in argv:
         i = argv.index("--")

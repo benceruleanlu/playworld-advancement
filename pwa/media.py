@@ -93,7 +93,7 @@ def build(exp: str, sel: list[dict], out_dir: Path, base_url: str, release_url: 
                       "reason": r.get("reason", ""), "video": video, "poster": poster})
     man = {"exp": exp, "release_tag": f"run-{exp}", "release_url": release_url, "generated": now(),
            "git_sha": meta.get("git_sha") or "", "runner": meta.get("runner") or "", "model": model_for(meta.get("runner") or ""),
-           "license": LICENSE, "tasks": tasks}
+           "license": LICENSE, "scored": any(x["mean"] is not None for x in tasks), "tasks": tasks}
     (out_dir / f"{exp}.json").write_text(json.dumps(man, indent=1, ensure_ascii=False) + "\n")
     (out_dir / "RELEASE_NOTES.md").write_text(release_notes(man))
     n = sum(1 for x in tasks if x["video"])
@@ -120,9 +120,14 @@ def release_notes(man: dict) -> str:
     lic = f", {m['license']}" if m["license"] else ""
     note = f" {m['note']}" if m["note"] else ""
     sha = f" (commit {man['git_sha'][:12]})" if man.get("git_sha") else ""
-    return (f"Rollouts from experiment `{exp}`{sha}, scored by the PlayWorld verifier (Gemini 3.1 Pro). "
-            f"Per-task scores and the verifier's reasons: [results/reports/{exp}.md]({REPO_URL}/blob/main/results/reports/{exp}.md). "
-            f"Browse them on the [results site](https://benceruleanlu.github.io/playworld-advancement/#scenes).\n\n"
+    if man.get("scored", True):
+        head = (f"Rollouts from experiment `{exp}`{sha}, scored by the PlayWorld verifier (Gemini 3.1 Pro). "
+                f"Per-task scores and the verifier's reasons: [results/reports/{exp}.md]({REPO_URL}/blob/main/results/reports/{exp}.md). "
+                f"Browse them on the [results site](https://benceruleanlu.github.io/playworld-advancement/#scenes).\n\n")
+    else:
+        # no task has a score yet (e.g. clips published right after generation): claim no scoring, link no report
+        head = f"Unscored rollouts from experiment `{exp}`{sha}. No verifier scores were available when these clips were published.\n\n"
+    return (head +
             "**Attribution**\n"
             f"- Generated with {model}{f' ({who})' if who else ''}{lic}, runner `{m['runner']}`.{note}\n"
             "- Each rollout starts from a [PlayWorld](https://github.com/kxding/PlayWorld) task image (Ding et al., arXiv:2608.13552; "

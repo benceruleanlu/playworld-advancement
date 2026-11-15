@@ -60,6 +60,19 @@ def test_build_manifest(tmp_path, monkeypatch):
     assert gc["mean"] == 2.2 and gc["reason"] == "scene kept its layout"
     assert if_["video"] is None and if_["status"] == ["missing"]  # no rollout: listed, no clip
     assert json.loads((tmp_path / "out" / "e1.json").read_text()) == man
+    assert man["scored"] and "scored by the PlayWorld verifier" in (tmp_path / "out" / "RELEASE_NOTES.md").read_text()
+
+
+def test_build_unscored_run_notes_claim_no_scoring(tmp_path, monkeypatch):
+    # clips published right after generation (arms workflow): no eval passes, so failures() lists nothing
+    vids = {"GC005": _clip(tmp_path / "runs" / "GC005.mp4")}
+    monkeypatch.setattr(media, "video_path", lambda exp, tid: vids.get(tid, tmp_path / "none.mp4"))
+    monkeypatch.setattr(media, "read_meta", lambda exp: {"git_sha": "", "runner": "lingbot_world2_1p3b"})
+    monkeypatch.setattr(media, "failures", lambda exp, sel, all_tasks=False: [])
+    man = media.build("g-a1", [{"task_id": "GC005", "family": "gc"}], tmp_path / "out", "u/", "r")
+    notes = (tmp_path / "out" / "RELEASE_NOTES.md").read_text()
+    assert man["scored"] is False and man["tasks"][0]["video"] == "u/GC005.mp4"
+    assert notes.startswith("Unscored rollouts") and "Gemini" not in notes and "results/reports/g-a1.md" not in notes
 
 
 def test_index_replaces_and_sorts_newest_first(tmp_path):
@@ -88,6 +101,16 @@ def test_release_notes_credit_the_runs_own_model():
     assert "SANA-WM" in sana and "LingBot" not in sana
     for notes in (lb, sana):
         assert "Pexels and web image search" in notes and "Scene+removal+request" in notes
+
+
+def test_release_notes_claim_scoring_only_when_scored():
+    model = media.model_for("lingbot_world2_1p3b")
+    scored = media.release_notes({"exp": "e", "git_sha": "", "model": model, "scored": True, "tasks": []})
+    legacy = media.release_notes({"exp": "e", "git_sha": "", "model": model, "tasks": []})
+    unscored = media.release_notes({"exp": "e", "git_sha": "", "model": model, "scored": False, "tasks": []})
+    assert scored == legacy and "scored by the PlayWorld verifier" in scored and "results/reports/e.md" in scored
+    assert unscored.startswith("Unscored rollouts") and "Gemini" not in unscored and "results/reports" not in unscored
+    assert "LingBot-World v2" in unscored and "Scene+removal+request" in unscored
 
 
 def test_pipeline_tests_are_not_published(tmp_path, monkeypatch):

@@ -53,8 +53,10 @@ def arm_names(exp: str, n: int) -> list[str]:
     return [f"{exp}-a{i}" for i in range(1, n + 1)]
 
 
-def arm_label(arm: list[str]) -> str:
-    return " ".join(arm) or "base"
+def arm_label(arm: list[str], shared: list[str] | None = None) -> str:
+    """Every arg the arm ran with: the args shared by all arms (`--` / workflow `extra`), then its own.
+    "base" only when both are empty, so a label never hides a flag the run used."""
+    return " ".join([*(shared or []), *arm]) or "base"
 
 
 def load_main(runner: Path):
@@ -180,8 +182,9 @@ def gen_arms(a, sel: list[dict]) -> dict:
     for i, (name, arm) in enumerate(zip(names, arms), 1):
         b = copy.copy(a)
         b.exp, b.extra = name, [*(a.extra or []), *arm]
-        b.notes = " ".join(x for x in (a.notes, f"[arm {i}/{len(arms)} of {a.exp}: {arm_label(arm)}]") if x)
-        log(f"[pwa] arm {i}/{len(arms)} {name}: {arm_label(arm)}")
+        label = arm_label(arm, a.extra)
+        b.notes = " ".join(x for x in (a.notes, f"[arm {i}/{len(arms)} of {a.exp}: {label}]") if x)
+        log(f"[pwa] arm {i}/{len(arms)} {name}: {label}")
         s = gen.gen(b, sel, launch=launch,
                     meta_extra={"arm_group": a.exp, "arm": i, "num_arms": len(arms), "arm_args": arm})
         summaries.append({**s, "arm": i, "arm_args": arm})
@@ -189,16 +192,21 @@ def gen_arms(a, sel: list[dict]) -> dict:
             "failed": any(s["failed"] or s["runner_errors"] for s in summaries)}
 
 
-def listing(exp: str, text: str) -> list[str]:
-    """One "NAME I/N LABEL" line per arm (python -m pwa.arms EXP ARMS; read by .github/workflows/arms.yml)."""
+def listing(exp: str, text: str, shared: str = "") -> list[str]:
+    """One "NAME I/N LABEL" line per arm (python -m pwa.arms EXP ARMS [SHARED]; read by .github/workflows/arms.yml).
+    SHARED is the runner arg string every arm gets first (the workflow's `extra`), so labels match gen_arms."""
     arms = parse_arms(text)
-    return [f"{name} {i}/{len(arms)} {arm_label(arm)}"
+    try:
+        common = shlex.split(shared or "")
+    except ValueError as e:
+        raise PwaError(f"cannot parse shared args {shared!r}: {e}") from e
+    return [f"{name} {i}/{len(arms)} {arm_label(arm, common)}"
             for i, (name, arm) in enumerate(zip(arm_names(exp, len(arms)), arms), 1)]
 
 
 if __name__ == "__main__":
     try:
-        print("\n".join(listing(sys.argv[1], sys.argv[2])))
+        print("\n".join(listing(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "")))
     except PwaError as e:
         log(f"pwa: {e}")
         raise SystemExit(2) from None
