@@ -158,6 +158,7 @@ import * as RunInfo from "./runinfo.js";
   function refreshRI() { RI = RunInfo.build(ALL, scenesIdx && scenesIdx.runs, MANS); }
   var filt = { tests: false, capped: false, ended: false };
   var sort = { key: "overall", dir: -1 };
+  var RUNS_SHOWN = 8, runsAll = false;
 
   function visible() {
     return ALL.filter(function (r) {
@@ -267,6 +268,10 @@ import * as RunInfo from "./runinfo.js";
       var c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
       return c * sort.dir || a.order - b.order;
     });
+    var total = rows.length;
+    if (!runsAll) rows = rows.slice(0, RUNS_SHOWN);
+    var more = $("runs-more");
+    if (more) { more.hidden = total <= RUNS_SHOWN; more.textContent = runsAll ? "Show the first " + RUNS_SHOWN + " only" : "Show all " + total + " runs"; }
     var tb = el("tbody");
     if (!rows.length) tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: String(COLS.length), text: ALL.length ? "No runs match. Tick a box above to show hidden rows." : "No runs logged yet." })]));
     rows.forEach(function (r) { tb.appendChild(rowEl(r)); });
@@ -553,6 +558,19 @@ import * as RunInfo from "./runinfo.js";
       say: "Insight: the model was being prompted with \"wait and observe\". This A/B swaps in the scene caption.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } }
+    ,{ id: "window", kicker: "Second seed", title: "Does a larger attention cache help the camera come back?", pending: true,
+      body: "On the first seed, three arms with a larger cache scored OE039 between 3.0 and 3.1, against 1.25 to 2.0 for three controls, and two of the three lost more than a point on OE048. This run repeats the control and the larger cache on a second seed, which is what the adoption rule asks for.",
+      say: "The one lead that survived is being repeated on a second seed right now.",
+      ctl: "win14-fx-v1-a3", arms: [["larger cache", "win14-fx-v1-a4", "sink 10, cache 22, seed 1"]],
+      watch: { task: "OE039", b: "win14-fx-v1-a3", c: "win14-fx-v1-a4" } },
+    { id: "open", kind: "note", kicker: "Still open", title: "What this page cannot show yet",
+      body: "Reported as it stands, not as we hoped.",
+      say: "What is missing: a full 171-task score, and any change that repeats on two seeds.",
+      points: ["No score on all 171 tasks exists, for the starting model or for a method, so nothing here compares directly with the paper rows.",
+        "Every A/B above is one seed with fixed actions (open loop). None meets the adoption rule, which needs the AI player and two seeds.",
+        "Dropped as harmful or null: conditioning schedule, sink key scale, GC chunk director, GC turn easing, GC completion hint.",
+        "Leads still standing: the caption prompt on insight, re-anchoring on GC (weak), pose memory (needs its rerun)."],
+      links: [["status in AGENTS.md", BLOB + "AGENTS.md#status-against-the-timeline"]] }
   ];
   // changes adopted under the two-seed rule; shown in the verdict line under the lede
   var ADOPTED = [];
@@ -668,7 +686,7 @@ import * as RunInfo from "./runinfo.js";
   function storyState(s) {
     if (s.kind === "note") return "ok";
     var exps = s.kind === "repeat" ? s.runs.map(function (r) { return r[1]; }) : [s.ctl].concat(s.arms.map(function (a) { return a[1]; }));
-    if (exps.some(function (e) { return tasksOfRun(e); })) return "ok";
+    if (s.kind === "repeat" ? exps.filter(tasksOfRun).length >= 2 : tasksOfRun(s.ctl) && s.arms.some(function (a) { return tasksOfRun(a[1]); })) return "ok";
     var rows = exps.map(rowByExp).filter(Boolean);
     if (rows.some(function (r) { return r.overall !== null; })) return "loading";
     if (rows.some(function (r) { return r.status === "running" && !isStale(r); })) return "running";
@@ -687,6 +705,7 @@ import * as RunInfo from "./runinfo.js";
       var text = el("div", { class: "st-text" }, [
         el("p", { class: "st-kick" }, [el("span", { class: "st-n", text: String(n) }), document.createTextNode(s.kicker)]),
         el("h3", { text: s.title }), el("p", { class: "st-body", text: s.body })]);
+      if (s.points) text.appendChild(el("ul", { class: "st-points" }, s.points.map(function (t) { return el("li", { text: t }); })));
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
         var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task + " side by side" });
@@ -721,7 +740,7 @@ import * as RunInfo from "./runinfo.js";
           side.appendChild(pb);
         }
       }
-      var li = el("li", { class: "st card" + (ev || s.kind === "note" ? "" : " pend"), id: "story-" + s.id }, [text, side]);
+      var li = el("li", { class: "st card" + (ev || s.kind === "note" ? "" : " pend") + (side.firstChild ? "" : " solo"), id: "story-" + s.id }, side.firstChild ? [text, side] : [text]);
       ol.appendChild(li); storyShown.push({ s: s, li: li, ev: !!ev });
     });
     if (!storyShown.length) ol.appendChild(el("li", { class: "empty", text: "No findings to show yet." }));
@@ -799,6 +818,7 @@ import * as RunInfo from "./runinfo.js";
     bar.hidden = false; document.body.classList.add("touring");
     $("tour-n").textContent = (tourAt + 1) + " / " + tourSteps.length;
     $("tour-title").textContent = s.title; $("tour-line").textContent = s.line;
+    $("tour-prog").style.width = ((tourAt + 1) / tourSteps.length * 100) + "%";
     $("tour-prev").disabled = tourAt === 0;
     $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next →";
     Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
@@ -840,6 +860,18 @@ import * as RunInfo from "./runinfo.js";
       else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); tourGo(tourAt - 1); }
       else if (e.key === "Escape") tourExit();
     });
+  }
+  // nav: mark the section in view
+  function wireSpy() {
+    if (typeof IntersectionObserver !== "function") return;
+    var links = {}; Array.prototype.forEach.call(document.querySelectorAll("nav.top a.nl"), function (a) { links[a.getAttribute("href").slice(1)] = a; });
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        for (var k in links) { if (k === e.target.id) links[k].setAttribute("aria-current", "true"); else links[k].removeAttribute("aria-current"); }
+      });
+    }, { rootMargin: "-30% 0px -65% 0px" });
+    Object.keys(links).forEach(function (id) { var n = $(id); if (n) io.observe(n); });
   }
   // ?tour=N opens the tour at step N once the clips' manifests are in
   var tourWanted = 0;
@@ -1139,6 +1171,7 @@ import * as RunInfo from "./runinfo.js";
     ["tests", "capped", "ended"].forEach(function (k) {
       $("f-" + k).addEventListener("change", function (e) { filt[k] = e.target.checked; renderBoard(); syncUrl(); });
     });
+    $("runs-more").addEventListener("click", function () { runsAll = !runsAll; renderBoard(); if (!runsAll) scrollToEl($("runs")); });
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {
       if (window.innerWidth === lastW) return; lastW = window.innerWidth;
@@ -1169,7 +1202,7 @@ import * as RunInfo from "./runinfo.js";
       return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
     });
   }
-  initMode(); wire(); wireScenes(); wireTour(); addAnchors();
+  initMode(); wire(); wireScenes(); wireTour(); wireSpy(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; refreshRI(); })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
     .then(function () { readUrl(); renderFoot(); renderAll(); loadScenes(); shareData(); });
