@@ -46,6 +46,14 @@ export const FLAG_NAMES = {
   "--lingbot-pose-mem-fallback": function (v) { return "no match: " + v; },
   "--lingbot-pose-mem-tasks": function (v) { return "tasks " + v; },
   "--lingbot-pose-mem-max-mb": function (v) { return "bank cap " + v + " MB"; },
+  "--lingbot-warp-reanchor": "warp re-anchor",
+  "--lingbot-warp-max-deg": function (v) { return "approach within " + v + " degrees"; },
+  "--lingbot-warp-max-trans": function (v) { return "approach within " + v + " units"; },
+  "--lingbot-warp-leave-deg": function (v) { return "left after " + v + " degrees"; },
+  "--lingbot-warp-leave-trans": function (v) { return "left after " + v + " units"; },
+  "--lingbot-warp-focus": function (v) { return +v === 0 ? "focus inf" : "focus " + v + " units"; },
+  "--lingbot-warp-erode": function (v) { return "erode " + v + " patches"; },
+  "--lingbot-warp-tasks": function (v) { return "tasks " + v; },
   "--lingbot-kv-noise": "noisy memory writes",
   "--lingbot-kv-noise-t": function (v) { return "noise level " + v; },
   "--lingbot-stg": "step-0 self-guidance",
@@ -75,6 +83,10 @@ var KNOB_OF = {
   "--lingbot-pose-mem-leave-trans": "--lingbot-pose-memory", "--lingbot-pose-mem-latents": "--lingbot-pose-memory",
   "--lingbot-pose-mem-anchor": "--lingbot-pose-memory", "--lingbot-pose-mem-time": "--lingbot-pose-memory", "--lingbot-pose-mem-fallback": "--lingbot-pose-memory",
   "--lingbot-pose-mem-tasks": "--lingbot-pose-memory", "--lingbot-pose-mem-max-mb": "--lingbot-pose-memory",
+  "--lingbot-warp-max-deg": "--lingbot-warp-reanchor", "--lingbot-warp-max-trans": "--lingbot-warp-reanchor",
+  "--lingbot-warp-leave-deg": "--lingbot-warp-reanchor", "--lingbot-warp-leave-trans": "--lingbot-warp-reanchor",
+  "--lingbot-warp-focus": "--lingbot-warp-reanchor", "--lingbot-warp-erode": "--lingbot-warp-reanchor",
+  "--lingbot-warp-tasks": "--lingbot-warp-reanchor",
   "--lingbot-stg-steps": "--lingbot-stg", "--lingbot-stg-blocks": "--lingbot-stg", "--lingbot-stg-w": "--lingbot-stg"
 };
 // what a value flag tests, for a group title ("Attention window test")

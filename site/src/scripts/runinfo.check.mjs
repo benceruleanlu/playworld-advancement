@@ -34,6 +34,8 @@ const RI = build(rows, index.runs, mans, Date.parse("2026-11-15T06:00:00Z"));
 assert.deepEqual(parseArgs(["--lingbot-stall-abort", "900", "--lingbot-cond-text=1.0", "--lingbot-fast"]),
   [{ flag: "--lingbot-stall-abort", value: "900" }, { flag: "--lingbot-cond-text", value: "1.0" }, { flag: "--lingbot-fast", value: null }]);
 assert.deepEqual(words(["--lingbot-cond-schedule", "--lingbot-cond-text=1.0"]), ["conditioning schedule (text boost off)"]);
+assert.deepEqual(words(["--lingbot-warp-reanchor", "--lingbot-warp-max-deg=35", "--lingbot-warp-focus=0"]),
+  ["warp re-anchor (approach within 35 degrees, focus inf)"]);
 assert.deepEqual(words(["--lingbot-new-thing=3"]), ["--lingbot-new-thing 3"], "unknown flags show verbatim");
 assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-k=0.5"]),
   ["turn calibration", "yaw servo (error share 0.5)"]);
