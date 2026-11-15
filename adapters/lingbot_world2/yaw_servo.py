@@ -22,7 +22,8 @@ booked at what the current estimates predict, so one bad chunk on a static scene
 After LOCK_AFTER untrusted turn runs in one rollout the scene is taken to have a moving subject: the servo locks,
 forgets its estimates and leaves every later chunk at gain 1 (the flags line then says yaw_servo=locked).
 
-Tasks: GC call names only by default (LINGBOT_YAW_SERVO_TASKS, a regex matched at the start of the call name).
+Tasks: GC call names only by default. --lingbot-yaw-servo-tasks REGEX (else LINGBOT_YAW_SERVO_TASKS) widens it: a
+regex matched at the start of the call name, e.g. "^[GO][CE]\\d" for GC and OE (insight and out-of-sight) tasks.
 
 Knobs (runner args, else env): --lingbot-yaw-servo-k / LINGBOT_YAW_SERVO_K (1.0: share of the heading error
 corrected per chunk), --lingbot-yaw-servo-beta / LINGBOT_YAW_SERVO_BETA (0.6: weight of the newest chunk in the
@@ -37,6 +38,7 @@ from dataclasses import dataclass
 
 FLAG = "--lingbot-yaw-servo"
 K_FLAG, BETA_FLAG = "--lingbot-yaw-servo-k", "--lingbot-yaw-servo-beta"
+TASKS_FLAG, TASKS_ENV, TASKS_DEFAULT = "--lingbot-yaw-servo-tasks", "LINGBOT_YAW_SERVO_TASKS", "GC"
 K_DEFAULT, BETA_DEFAULT = 1.0, 0.6
 LO, HI = 0.5, 2.0
 SIGN = {"l": 1.0, "j": -1.0}   # right positive, as measured_turn and player_hint
@@ -54,6 +56,7 @@ class ServoConfig:
     enabled: bool = False
     k: float = K_DEFAULT
     beta: float = BETA_DEFAULT
+    tasks: str = TASKS_DEFAULT   # regex matched at the start of the call name (applies())
 
 
 def _check(k: float, beta: float) -> None:
@@ -67,13 +70,13 @@ def parse(argv: list[str], environ=os.environ) -> tuple[ServoConfig, list[str]]:
     seen, rest, i = {}, [], 0
     while i < len(argv):
         a = argv[i]
-        key = next((n for n in (K_FLAG, BETA_FLAG) if a == n or a.startswith(n + "=")), None)
+        key = next((n for n in (K_FLAG, BETA_FLAG, TASKS_FLAG) if a == n or a.startswith(n + "=")), None)
         if key is None:
             rest.append(a)
             i += 1
         elif a == key:
             if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
-                raise SystemExit(f"{key} needs a number")
+                raise SystemExit(f"{key} needs {'a regex' if key == TASKS_FLAG else 'a number'}")
             seen[key], i = argv[i + 1], i + 2
         else:
             seen[key], i = a[len(key) + 1:], i + 1
@@ -90,13 +93,24 @@ def parse(argv: list[str], environ=os.environ) -> tuple[ServoConfig, list[str]]:
         except ValueError:
             raise SystemExit(f"{name} needs a number, got {raw!r}") from None
     _check(vals[K_FLAG], vals[BETA_FLAG])
-    return ServoConfig(True, vals[K_FLAG], vals[BETA_FLAG]), rest
-def applies(name: str, environ=os.environ) -> bool:
+    tasks = seen.get(TASKS_FLAG, environ.get(TASKS_ENV, "").strip() or TASKS_DEFAULT)
+    if not tasks:
+        raise SystemExit(f"{TASKS_FLAG} needs a regex, got an empty one")
+    try:
+        re.compile(tasks)
+    except re.error as e:
+        src = TASKS_FLAG if TASKS_FLAG in seen else TASKS_ENV
+        raise SystemExit(f"{src}: {tasks!r} is not a valid regex ({e})") from None
+    return ServoConfig(True, vals[K_FLAG], vals[BETA_FLAG], tasks), rest
+def applies(name: str, environ=os.environ, pattern: str | None = None) -> bool:
     """True when the servo acts on this call name. Default: GC tasks only, as --lingbot-reanchor.
     The GC dev scenes are static, which the yaw estimate needs; three of the six out-of-sight dev scenes have a
     moving subject, where the servo changes the first chunks and then locks. LINGBOT_YAW_SERVO_TASKS (a regex
-    matched at the start of the call name) widens it, e.g. "GC|OE048"."""
-    return re.match(environ.get("LINGBOT_YAW_SERVO_TASKS", "GC"), name or "") is not None
+    matched at the start of the call name) widens it, e.g. "GC|OE048". pattern (ServoConfig.tasks, set from
+    --lingbot-yaw-servo-tasks or that env var by parse()) is used instead of the env var when given."""
+    if pattern is None:
+        pattern = environ.get(TASKS_ENV, TASKS_DEFAULT)
+    return re.match(pattern, name or "") is not None
 
 
 def split_chunks(keys: list[str], first: bool, chunk: int = 16) -> list[list[str]]:
