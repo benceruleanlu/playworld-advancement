@@ -424,9 +424,20 @@ import * as RunInfo from "./runinfo.js";
     { group: "now", title: "IF identity cue", arms: [["control", "wm14-fx-v1-a1"], ["cue", "wm14-fx-v1-a3"]],
       body: "Appends a fixed sentence about keeping each subject's identity to the model prompt on third-person IF tasks.",
       links: [["#104", PR + "104"]] },
-    { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
-      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Aimed at insight.",
+    { group: "now", title: "Attention window: larger sink", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"]], also: ["mem14-fx-v1-a3", "mem14-fx-v1-a4"],
+      cells: "OE039 up 1.5, OE048 down 1.9",
+      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Both arms have the caption prompt and turn calibration on. The two arms with a local window of 36 failed and have no score.",
       links: [["#104", PR + "104"]] },
+    { group: "now", title: "Pose memory", arms: [["control", "pm14-fx-v1-a1"], ["memory", "pm14-fx-v1-a2"], ["memory, wider window", "pm14-fx-v1-a3"], ["wider window only", "pm14-fx-v2-a4"]],
+      also: ["pm14-fx-v2-a1", "pm14-fx-v2-a2", "pm14-fx-v2-a3"],
+      body: "Stores each generated chunk by its commanded camera pose and re-inserts the most recent matching view into the attention sink when the camera comes back to it. The wider window (sink 10, local 22) is the control for the arm that recalls two chunks. Three more variants (opening kept to 1 latent, re-timed memory, yaw gain 0.85) ran against the same control.",
+      links: [["findings", "#story-memory"]] },
+    { group: "now", title: "Sink key scale", arms: [["control", "sks14-fx-v1-a1"], ["0.7", "sks14-fx-v1-a2"], ["0.4", "sks14-fx-v1-a3"], ["0.7 from chunk 4", "sks14-fx-v1-a4"]],
+      body: "Scales down the attention keys of the pinned opening frames on later chunks. Out-of-sight tasks only; every arm scored below control.",
+      links: [["findings", "#story-sink"]] },
+    { group: "now", title: "Insight prompt: goal, caption, caption with cue", arms: [["goal prompt", "ins14-fx-v2-a1"], ["caption", "ins14-fx-v2-a2"], ["caption + director", "ins14-fx-v2-a3"]],
+      body: "All six insight dev tasks. Insight tasks are wait-only, so the fixed-action rollout equals the closed-loop one.",
+      links: [["#32", PR + "32"], ["#90", PR + "90"]] },
     { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
       body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. Not a closed-loop score.",
       links: [["#100", PR + "100"], ["#102", PR + "102"]] },
@@ -487,12 +498,345 @@ import * as RunInfo from "./runinfo.js";
         var exps = (m.arms || []).map(function (a) { return [a[0], a[1]]; }).concat((m.also || []).map(function (e) { return ["", e]; }));
         if (exps.length) body.appendChild(el("p", { class: "std", text: "Runs: " + exps.map(function (a) { var ri = RI.get(a[1]); return (ri && ri.armLabel ? ri.armLabel : a[0] || "run") + " (" + a[1] + "): " + rowText(rowByExp(a[1])); }).join("; ") + "." }));
         var links = el("p", { class: "links" });
-        m.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+        m.links.forEach(function (l) {
+          links.appendChild(l[1].charAt(0) === "#" ? el("a", { href: l[1], text: "See " + l[0] }) : el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] }));
+        });
         body.appendChild(links);
         ul.appendChild(el("li", null, [el("details", null, [summary, body])]));
       });
       box.appendChild(ul);
     });
+  }
+
+  /* ---------- story: findings in order, each with its evidence read live (edit here as work lands) ---------- */
+  var BLOB = "https://github.com/" + REPO + "/blob/main/";
+  // kind "ab" (default): ctl against arms [short label, exp, long label]; kind "repeat": the same settings run several times;
+  // kind "note": text and a scene only. watch: { task, b: control, c: treatment } for the compare player; scene: [exp, task].
+  // say: the one line the tour bar shows. Every number in body or say must be in results/ or research/.
+  var STORY = [
+    { id: "player", kind: "note", kicker: "Starting point", title: "With an AI player, the player decides most camera tasks",
+      body: "In our 24-task baseline the player reversed direction 9 to 17 times on every out-of-sight task and 25 times on GC036. On 4 of 6 out-of-sight tasks the camera never came back to the start view, so there was nothing for the judge to grade. We therefore test model-side changes with fixed action scripts, and keep the AI player for final scores.",
+      say: "The baseline player turned left and right for the whole rollout. Model-side tests use fixed moves instead.",
+      scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch the baseline player on GC036",
+      links: [["baseline census", BLOB + "research/baseline-census.md"]] },
+    { id: "noise", kind: "repeat", kicker: "Noise floor", title: "The same settings, scored three times, do not give the same score",
+      body: "Three control arms ran the same flags and the same fixed action scripts, at different commits. Their per-task means over four judge passes still differ. So a task counts as moved only at a full point, and a change is adopted only if the gain repeats on a second seed.",
+      say: "Three identical controls disagree. That sets the bar: a full point, twice.",
+      runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
+      watch: { task: "OE047", b: "pm14-fx-v1-a1", c: "sks14-fx-v1-a1" }, watchLabel: "Watch two identical controls on OE047" },
+    { id: "turncal", kicker: "Camera", title: "Given correct moves, calibrated turns lifted two GC tasks by more than a point",
+      body: "The task prompts name angles (a turn key is 22.5 degrees) but the model's default rate turns 34. With dataset moves replayed and the rate calibrated, GC031 and GC036 moved up. In the separate 24-task A/B the same two tasks moved by 0.35 and 0.80, under the bar, so this is not adopted.",
+      say: "Calibrated turns: two tasks up on one run, under the bar on the second.",
+      ctl: "orc14-gc-v1-a1", arms: [["turn cal", "orc14-gc-v1-a2", "turn calibration"]],
+      watch: { task: "GC031", b: "orc14-gc-v1-a1", c: "orc14-gc-v1-a2" } },
+    { id: "memory", kicker: "Memory", title: "Pose memory did not beat its control. A wider attention window did, on one task",
+      body: "The model attends to about two seconds of recent frames plus its opening frames. Pose memory re-inserts an earlier view when the camera comes back to it. Alone it moved no task up. Widening the window moved OE039 up by 1.9, with or without the memory, and a third run with a larger sink moved it by 1.5. The larger sink also dropped OE048 in two of those three runs.",
+      say: "Our memory mechanism did not help. Simply widening the window did, on one task.",
+      ctl: "pm14-fx-v1-a1", arms: [["memory", "pm14-fx-v1-a2", "pose memory"], ["window", "pm14-fx-v2-a4", "wider window (sink 10, local 22)"], ["both", "pm14-fx-v1-a3", "pose memory in the wider window"]],
+      watch: { task: "OE039", b: "pm14-fx-v1-a1", c: "pm14-fx-v2-a4" } },
+    { id: "sink", kicker: "Negative result", title: "Damping attention to the opening frames made out-of-sight worse",
+      body: "Hypothesis: the pinned opening frames pull the scene back to its first state when the camera returns, which the rubric scores lowest. Scaling their attention keys down did not help in any of three arms.",
+      say: "A hypothesis that failed: every arm scored lower than control.",
+      ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
+      watch: { task: "OE048", b: "sks14-fx-v1-a1", c: "sks14-fx-v1-a4" } },
+    { id: "insight", kicker: "Insight", title: "Does the scene caption wake up a static scene?", pending: true,
+      body: "Insight tasks tell the player to wait and observe, and the model receives that sentence as its text prompt. In the baseline, four of six insight rollouts were flagged static. This A/B gives the model the task's scene caption instead, with and without a fixed activity cue.",
+      say: "Insight: the model was being prompted with \"wait and observe\". This A/B swaps in the scene caption.",
+      ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
+      watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } }
+  ];
+  // changes adopted under the two-seed rule; shown in the verdict line under the lede
+  var ADOPTED = [];
+  var MOVE = 1.0;
+  function tasksOfRun(exp) {
+    var m = MANS[exp]; if (!m || m.scored === false) return null;
+    var o = {}; (m.tasks || []).forEach(function (t) { o[t.task_id] = t; });
+    return o;
+  }
+  // a task's pass-mean, or null when the run has no judged clip for it (missing rollouts carry a placeholder 1.0)
+  function cellVal(t) {
+    if (!t || typeof t.mean !== "number") return null;
+    return (t.status || []).indexOf("missing") >= 0 ? null : t.mean;
+  }
+  function gateFail(t) { return !!t && (t.status || []).indexOf("gate_fail") >= 0; }
+  // the other watch mode's deep-link params would win on reload, so drop them
+  function dropParams(keys) {
+    try {
+      var q = new URLSearchParams(location.search); keys.forEach(function (k) { q.delete(k); });
+      var qs = q.toString(); history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+    } catch (e) { /* sandboxed */ }
+  }
+  function watch(sel) {
+    setMode("compare", false); dropParams(["scenes", "scene"]);
+    document.dispatchEvent(new CustomEvent("pwa:compare", { detail: { task: sel.task, b: sel.b, c: sel.c, play: true } }));
+    scrollToEl($("compare-clips"));
+  }
+  function openScene(exp, task) {
+    scenesExp = exp; scenesTask = task; scenesWanted = ""; scenesScrolled = true;
+    setMode("scenes", false); dropParams(["compare", "a", "b", "c"]);
+    var req = scenesReq + 1;
+    loadManifest().then(function () { if (req === scenesReq) { renderScenes(); syncUrl(); } });
+    scrollToEl($("scenes"));
+  }
+  function scrollToEl(node) {
+    if (!node || !node.scrollIntoView) return;
+    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    node.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
+  }
+  function numCell(t, cls) {
+    var v = cellVal(t), td = el("td", { class: "num" + (cls ? " " + cls : "") });
+    if (v === null) { td.appendChild(el("span", { class: "dash", title: t ? "No judged clip for this task in this run" : null, text: t ? "no clip" : "-" })); return td; }
+    td.appendChild(document.createTextNode(fmt(v)));
+    if (gateFail(t)) td.appendChild(el("span", { class: "gf", title: "Failed a gate in at least one judge pass", text: "✕" }));
+    return td;
+  }
+  // per-task table: control against each arm; a cell that moved by a full point is marked, and each arm cell opens its clips
+  function abEvidence(s) {
+    var ctl = tasksOfRun(s.ctl), arms = s.arms.map(function (a) { return tasksOfRun(a[1]); });
+    if (!ctl || arms.every(function (a) { return !a; })) return null;
+    var ids = Object.keys(ctl).filter(function (k) { return cellVal(ctl[k]) !== null || arms.some(function (a) { return a && cellVal(a[k]) !== null; }); }).sort();
+    if (!ids.length) return null;
+    var tally = s.arms.map(function () { return { up: 0, down: 0, n: 0 }; }), anyGate = false;
+    var hr = el("tr", null, [el("th", { scope: "col", text: "Task" }), el("th", { class: "num", scope: "col", text: "control" })]);
+    s.arms.forEach(function (a) { hr.appendChild(el("th", { class: "num", scope: "col", title: a[2] || a[0], text: a[0] })); });
+    var tb = el("tbody");
+    ids.forEach(function (k) {
+      var c = cellVal(ctl[k]), tr = el("tr", null, [el("th", { scope: "row", text: k }), numCell(ctl[k])]);
+      if (gateFail(ctl[k])) anyGate = true;
+      s.arms.forEach(function (a, i) {
+        var t = arms[i] && arms[i][k], v = cellVal(t), d = c !== null && v !== null ? v - c : null;
+        if (d !== null) { tally[i].n++; if (d >= MOVE) tally[i].up++; else if (d <= -MOVE) tally[i].down++; }
+        if (gateFail(t)) anyGate = true;
+        var td = numCell(t, d !== null && d >= MOVE ? "up" : d !== null && d <= -MOVE ? "down" : "");
+        if (v !== null && t.video && ctl[k] && ctl[k].video) {
+          var b = el("button", { type: "button", class: "cellbtn", "aria-label": "Watch " + k + ": control " + (c === null ? "no score" : fmt(c)) + " against " + (a[2] || a[0]) + " " + fmt(v),
+            title: "Watch " + k + ": control against " + (a[2] || a[0]) });
+          while (td.firstChild) b.appendChild(td.firstChild);
+          if (d !== null && Math.abs(d) >= MOVE) b.appendChild(el("span", { class: "mv", "aria-hidden": "true", text: d > 0 ? "▲" : "▼" }));
+          b.addEventListener("click", function () { watch({ task: k, b: s.ctl, c: a[1] }); });
+          td.appendChild(b);
+        }
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    var sum = el("ul", { class: "tally" });
+    s.arms.forEach(function (a, i) {
+      var t = tally[i]; if (!t.n) { sum.appendChild(el("li", null, [el("b", { text: a[2] || a[0] }), document.createTextNode(": not scored yet")])); return; }
+      sum.appendChild(el("li", null, [el("b", { text: a[2] || a[0] }), document.createTextNode(": "),
+        el("span", { class: t.up ? "good" : "", text: t.up + " up" }), document.createTextNode(", "),
+        el("span", { class: t.down ? "bad" : "", text: t.down + " down" }), document.createTextNode(" of " + t.n + " task" + (t.n === 1 ? "" : "s"))]));
+    });
+    return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
+      cap: "Mean of the official judge's passes per task. ▲ ▼ mark a move of a full point against control. Click a number to watch that pair." };
+  }
+  // the same settings run several times: tasks at least two runs judged, and the spread between them
+  function repeatEvidence(s) {
+    var maps = s.runs.map(function (r) { return tasksOfRun(r[1]); });
+    if (maps.filter(Boolean).length < 2) return null;
+    var seen = {}; maps.forEach(function (m) { if (m) Object.keys(m).forEach(function (k) { if (cellVal(m[k]) !== null) seen[k] = (seen[k] || 0) + 1; }); });
+    var ids = Object.keys(seen).filter(function (k) { return seen[k] >= 2; }).sort();
+    if (!ids.length) return null;
+    var hr = el("tr", null, [el("th", { scope: "col", text: "Task" })]);
+    s.runs.forEach(function (r) { hr.appendChild(el("th", { class: "num", scope: "col", title: r[1], text: r[0] })); });
+    hr.appendChild(el("th", { class: "num", scope: "col", text: "spread" }));
+    var tb = el("tbody"), worst = null, over = 0, anyGate = false;
+    ids.forEach(function (k) {
+      var vals = maps.map(function (m) { return m ? cellVal(m[k]) : null; }), got = vals.filter(function (v) { return v !== null; });
+      var sp = Math.max.apply(null, got) - Math.min.apply(null, got);
+      if (!worst || sp > worst.sp) worst = { k: k, sp: sp };
+      if (sp >= 0.5) over++;
+      var tr = el("tr", null, [el("th", { scope: "row", text: k })]);
+      maps.forEach(function (m) { if (gateFail(m && m[k])) anyGate = true; tr.appendChild(numCell(m && m[k])); });
+      tr.appendChild(el("td", { class: "num" + (sp >= MOVE ? " down" : ""), text: fmt(sp) }));
+      tb.appendChild(tr);
+    });
+    var sum = el("ul", { class: "tally" }, [el("li", null, [document.createTextNode("Largest spread "), el("b", { text: fmt(worst.sp) }),
+      document.createTextNode(" on " + worst.k + "; " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
+    return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
+      cap: "Mean of the official judge's passes per task, for runs with identical settings." };
+  }
+  function storyState(s) {
+    if (s.kind === "note") return "ok";
+    var exps = s.kind === "repeat" ? s.runs.map(function (r) { return r[1]; }) : [s.ctl].concat(s.arms.map(function (a) { return a[1]; }));
+    if (exps.some(function (e) { return tasksOfRun(e); })) return "ok";
+    var rows = exps.map(rowByExp).filter(Boolean);
+    if (rows.some(function (r) { return r.overall !== null; })) return "loading";
+    if (rows.some(function (r) { return r.status === "running" && !isStale(r); })) return "running";
+    if (rows.some(function (r) { return r.status === "generated"; })) return "generated";
+    return rows.length ? "ended" : "none";
+  }
+  var storyShown = [];
+  function renderStory() {
+    var ol = $("story-list"); if (!ol) return; clear(ol); storyShown = [];
+    STORY.forEach(function (s) {
+      var st = storyState(s);
+      // a finding whose runs ended without a score is not a finding; one still running is shown as pending
+      if (st === "ended" || st === "none" || (st === "generated" && !s.pending)) return;
+      var ev = st !== "ok" ? null : s.kind === "repeat" ? repeatEvidence(s) : s.kind === "note" ? null : abEvidence(s);
+      var n = storyShown.length + 1;
+      var text = el("div", { class: "st-text" }, [
+        el("p", { class: "st-kick" }, [el("span", { class: "st-n", text: String(n) }), document.createTextNode(s.kicker)]),
+        el("h3", { text: s.title }), el("p", { class: "st-body", text: s.body })]);
+      var acts = el("p", { class: "st-acts" });
+      if (s.watch && ev) {
+        var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task + " side by side" });
+        wb.addEventListener("click", function () { watch(s.watch); }); acts.appendChild(wb);
+      }
+      if (s.scene && MANS[s.scene[0]]) {
+        var sb = el("button", { type: "button", class: "cvbtn primary", text: s.sceneLabel || "Watch " + s.scene[1] });
+        sb.addEventListener("click", function () { openScene(s.scene[0], s.scene[1]); }); acts.appendChild(sb);
+      }
+      (s.links || []).forEach(function (l) { acts.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: l[0] })); });
+      if (acts.firstChild) text.appendChild(acts);
+      var side = el("div", { class: "st-ev" });
+      if (ev) {
+        side.appendChild(ev.table); side.appendChild(ev.sum);
+        side.appendChild(el("p", { class: "st-cap", text: ev.cap + (ev.gate ? " ✕ failed a gate in at least one pass." : "") }));
+        var bd = el("div", { class: "badges" });
+        var exps = s.kind === "repeat" ? s.runs.map(function (r) { return r[1]; }) : [s.ctl].concat(s.arms.map(function (a) { return a[1]; }));
+        var rows = exps.map(rowByExp).filter(Boolean);
+        if (rows.some(isOpen)) bd.appendChild(el("span", { class: "badge warn", title: "Fixed action scripts from the dataset, no AI player. Used for A/B tests only, never for final scores.", text: "open loop, A/B only" }));
+        if (s.kind !== "repeat") bd.appendChild(el("span", { class: "badge warn", title: "One generation per arm. The adoption rule asks for the gain to repeat on a second seed.", text: "one seed" }));
+        var ps = rows.map(function (r) { return r.passes; }).filter(function (p) { return p !== null; });
+        if (ps.length) bd.appendChild(el("span", { class: "badge", text: Math.min.apply(null, ps) + " judge passes" }));
+        side.appendChild(bd);
+      } else if (s.kind !== "note") {
+        side.appendChild(el("p", { class: "st-pend" }, [el("span", { class: "badge " + (st === "running" ? "warn" : ""), text: st === "running" ? "running now" : st === "generated" ? "generated, not scored yet" : "loading scores" }),
+          document.createTextNode(" The per-task scores appear here when the official judge has scored every arm.")]));
+      } else if (s.scene) {
+        var t0 = MANS[s.scene[0]] && (MANS[s.scene[0]].tasks || []).filter(function (t) { return t.task_id === s.scene[1]; })[0];
+        if (t0 && t0.poster) {
+          var pb = el("button", { type: "button", class: "st-poster", "aria-label": s.sceneLabel || "Watch " + s.scene[1] }, [el("img", { src: t0.poster, alt: "", loading: "lazy" })]);
+          pb.addEventListener("click", function () { openScene(s.scene[0], s.scene[1]); });
+          side.appendChild(pb);
+        }
+      }
+      var li = el("li", { class: "st card" + (ev || s.kind === "note" ? "" : " pend"), id: "story-" + s.id }, [text, side]);
+      ol.appendChild(li); storyShown.push({ s: s, li: li, ev: !!ev });
+    });
+    if (!storyShown.length) ol.appendChild(el("li", { class: "empty", text: "No findings to show yet." }));
+    buildTour();
+  }
+
+  /* ---------- hero: verdict line and the project in numbers ---------- */
+  function renderVerdict() {
+    var p = $("verdict"); if (!p) return; clear(p);
+    var fin = bestFinal(), shown = fin || bestClosed();
+    if (!shown) { p.hidden = true; return; }
+    p.hidden = false;
+    var beat = fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD);
+    p.appendChild(el("b", { text: fin ? (beat ? "Answer: yes. " : "Answer: no. ") : "Answer so far: not yet. " }));
+    p.appendChild(document.createTextNode(fin ? "Final score " + fmt(fin.overall) + " on all " + FULL_TASKS + " tasks against Genie 3's " + fmt(TARGET) + "."
+      : "Our best official score is " + fmt(shown.overall) + " on " + shown.n_tasks + " of " + FULL_TASKS + " tasks; Genie 3 scores " + fmt(TARGET) + " on all of them. " +
+        (ADOPTED.length ? "Adopted so far: " + ADOPTED.join(", ") + "." : "No change has yet repeated a full-point gain on two seeds, so none is adopted.")));
+  }
+  function renderGlance() {
+    var ul = $("glance"); if (!ul) return; clear(ul);
+    var real = realRows(), scored = real.filter(function (r) { return r.overall !== null; });
+    var groups = {}; real.forEach(function (r) { var m = /\[arm \d+\/\d+ of ([^:\]]+)/.exec(r.notes || ""); if (m) groups[m[1]] = 1; });
+    var judged = 0; scored.forEach(function (r) { judged += (r.n_tasks || 0) * (r.passes || 0); });
+    var clipsN = 0; ((scenesIdx && scenesIdx.runs) || []).forEach(function (r) { clipsN += r.n_tasks || 0; });
+    [[real.length, "runs logged", "Every launch writes a row, including failed and cancelled ones."],
+     [Object.keys(groups).length, "A/B groups", "Sets of arms run on the same tasks and seed in one job."],
+     [judged, "official judgments", "Task scores from Gemini 3.1 Pro: tasks times judge passes over every scored run."],
+     [clipsN || null, "clips published", "Rollouts you can watch on this page."]].forEach(function (x) {
+      if (x[0] === null) return;
+      ul.appendChild(el("li", { title: x[2] }, [el("b", { text: String(x[0]) }), el("span", { text: x[1] })]));
+    });
+  }
+
+  /* ---------- how a test runs ---------- */
+  var LOOP = [
+    ["Flag", "Each change is a runner flag, off by default, with a counter in the log that shows whether it fired.", "adapters/lingbot_world2/", "adapters/lingbot_world2"],
+    ["Arms", "One job runs every arm on the same tasks and seed on Modal H100s; the model loads once per container.", "arms workflow", ".github/workflows/arms.yml"],
+    ["Judge", "PlayWorld's own verifier, Gemini 3.1 Pro at the benchmark's settings, four passes per clip.", "pwa score", "pwa/score.py"],
+    ["Decide", "A task moves only at a full point on its pass mean. A change is adopted only if the gain repeats on a second seed and no gate breaks.", "plan of record", "AGENTS.md#plan-of-record"],
+    ["Publish", "The row, the judge's reason for every task and the clips land on main; this page reads them at view time.", "results/", "results"]
+  ];
+  function renderLoop() {
+    var ol = $("loop-steps"); if (!ol) return; clear(ol);
+    LOOP.forEach(function (x, i) {
+      ol.appendChild(el("li", { class: "card" }, [el("div", { class: "lp-h" }, [el("span", { class: "st-n", text: String(i + 1) }), el("b", { text: x[0] })]),
+        el("p", { text: x[1] }), el("a", { href: (/\.|#/.test(x[3]) ? BLOB : "https://github.com/" + REPO + "/tree/main/") + x[3], target: "_blank", rel: "noopener", text: x[2] })]));
+    });
+    var note = $("loop-note"); clear(note);
+    note.appendChild(document.createTextNode("Measured: loading the 14B model fell from about 207 s to about 31 s with bit-identical weights ("));
+    note.appendChild(el("a", { href: PR + "79", target: "_blank", rel: "noopener", text: "PR #79" }));
+    note.appendChild(document.createTextNode("). Not covered by CI: GPU generation, Gemini scoring and player calls need keys."));
+  }
+
+  /* ---------- guided tour: a bar that walks the page in order; arrow keys step, Esc exits, ?tour=N deep links ---------- */
+  var tourSteps = [], tourAt = -1;
+  function buildTour() {
+    var shown = bestFinal() || bestClosed();
+    var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can inference-time changes lift an open world model past Genie 3 (" + fmt(TARGET) + ") on PlayWorld? No retraining." }];
+    steps.push({ el: function () { return $("scores"); }, title: "Where we start",
+      line: shown ? "The unmodified model, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks. Genie 3: " + fmt(TARGET) + " on all " + FULL_TASKS + "." : "No run big enough to estimate a score yet." });
+    storyShown.forEach(function (x) {
+      var s = x.s;
+      steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
+      if (s.watch && x.ev) steps.push({ el: function () { return $("watch"); }, run: function () { watch(s.watch); }, title: "Watch " + s.watch.task, line: "Control on the left, treatment on the right, on one clock. The judge's score and comment are under each clip." });
+      else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return $("watch"); }, run: function () { openScene(s.scene[0], s.scene[1]); }, title: "Watch " + s.scene[1], line: "One rollout, as the judge saw it." });
+    });
+    steps.push({ el: function () { return $("loop"); }, title: "How a test runs", line: "One dispatch: flag, arms on GPUs, official judge, full-point rule, published clips." });
+    steps.push({ el: function () { return $("testing"); }, title: "Every change we tested", line: "Each row is an A/B with its runs. Nothing is hidden, including what failed." });
+    steps.push({ el: function () { return $("runs"); }, title: "Every run", line: "The full log, with the commit and job behind each row." });
+    tourSteps = steps;
+    if (tourAt >= 0) tourShow();
+  }
+  function tourShow() {
+    var bar = $("tour"), s = tourSteps[tourAt]; if (!bar || !s) return;
+    bar.hidden = false; document.body.classList.add("touring");
+    $("tour-n").textContent = (tourAt + 1) + " / " + tourSteps.length;
+    $("tour-title").textContent = s.title; $("tour-line").textContent = s.line;
+    $("tour-prev").disabled = tourAt === 0;
+    $("tour-next").textContent = tourAt === tourSteps.length - 1 ? "Done" : "Next →";
+    Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
+    var node = s.el(); if (node && node.classList && node.id !== "top") node.classList.add("tour-on");
+  }
+  function tourUrl() {
+    try {
+      var q = new URLSearchParams(location.search);
+      if (tourAt >= 0) q.set("tour", String(tourAt + 1)); else q.delete("tour");
+      var qs = q.toString();
+      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+    } catch (e) { /* sandboxed */ }
+  }
+  function tourGo(i) {
+    if (!tourSteps.length) return;
+    if (i >= tourSteps.length) { tourExit(); return; }
+    tourAt = Math.max(0, i);
+    var s = tourSteps[tourAt];
+    tourShow();
+    if (s.run) s.run(); else { if ($("cv-play").textContent === "Pause") $("cv-play").click(); scrollToEl(s.el()); }
+    tourUrl();
+  }
+  function tourExit() {
+    tourAt = -1; $("tour").hidden = true; document.body.classList.remove("touring");
+    Array.prototype.forEach.call(document.querySelectorAll(".tour-on"), function (n) { n.classList.remove("tour-on"); });
+    tourUrl();
+  }
+  function wireTour() {
+    $("hero-tour").addEventListener("click", function () { tourGo(0); $("tour-next").focus(); });
+    $("nav-tour").addEventListener("click", function () { if (tourAt >= 0) tourExit(); else { tourGo(0); $("tour-next").focus(); } });
+    $("tour-prev").addEventListener("click", function () { tourGo(tourAt - 1); });
+    $("tour-next").addEventListener("click", function () { tourGo(tourAt + 1); });
+    $("tour-exit").addEventListener("click", tourExit);
+    document.addEventListener("keydown", function (e) {
+      if (tourAt < 0 || e.altKey || e.ctrlKey || e.metaKey) return;
+      var tg = e.target && e.target.tagName;
+      if (tg === "SELECT" || tg === "INPUT" || tg === "TEXTAREA" || tg === "VIDEO") return;
+      if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); tourGo(tourAt + 1); }
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); tourGo(tourAt - 1); }
+      else if (e.key === "Escape") tourExit();
+    });
+  }
+  // ?tour=N opens the tour at step N once the clips' manifests are in
+  var tourWanted = 0;
+  function tourFromUrl() {
+    if (!tourWanted) return;
+    var n = tourWanted; tourWanted = 0; tourGo(Math.min(n, tourSteps.length) - 1);
   }
 
   /* ---------- footer ---------- */
@@ -715,7 +1059,7 @@ import * as RunInfo from "./runinfo.js";
       refreshRI();
       // every manifest, for task families and recorded flags in the run names
       Promise.all(runs.map(function (r) { return getJson(r.exp + ".json").then(function (m) { if (m && m.exp === r.exp) MANS[r.exp] = m; }, function () {}); }))
-        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); });
+        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGlance(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
       return scenesExp ? loadManifest() : null;
     }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); renderBoard(); syncUrl(); });
   }
@@ -731,7 +1075,7 @@ import * as RunInfo from "./runinfo.js";
 
   /* ---------- render all ---------- */
   function renderAll() {
-    renderStatus(); renderRuler(); renderFams(); renderFull(); renderMethods();
+    renderStatus(); renderVerdict(); renderGlance(); renderRuler(); renderFams(); renderFull(); renderStory(); renderLoop(); renderMethods();
     renderToggles(); renderBoard();
     syncUrl();
     var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
@@ -744,6 +1088,7 @@ import * as RunInfo from "./runinfo.js";
     filt.ended = q.get("ended") === "1";
     var sv2 = q.get("sort") || "", d = sv2.charAt(0) === "-" ? -1 : 1, sk = sv2.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
+    tourWanted = Math.max(0, parseInt(q.get("tour") || "0", 10) || 0);
     scenesExp = q.get("scenes") || "";
     scenesTask = scenesExp ? (q.get("scene") || "") : "";
   }
@@ -815,7 +1160,7 @@ import * as RunInfo from "./runinfo.js";
       return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
     });
   }
-  initMode(); wire(); wireScenes(); addAnchors();
+  initMode(); wire(); wireScenes(); wireTour(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; refreshRI(); })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
     .then(function () { readUrl(); renderFoot(); renderAll(); loadScenes(); shareData(); });
