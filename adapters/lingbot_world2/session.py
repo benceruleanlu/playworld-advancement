@@ -23,7 +23,16 @@ no files. Differences from upstream, all deliberate:
     instead of for the whole horizon at reset (same encoder calls on the same inputs);
   * opt-in re-anchoring (reset(reanchor=True), off by default): when the commanded
     camera track returns to the start pose, that latent of `y` is set to the input
-    image again (ReturnDetector, _anchor_y).
+    image again (ReturnDetector, _anchor_y);
+  * opt-in noisy KV writes (kv_noise=KVNoise, --lingbot-kv-noise, off by default): the
+    KV-write forward of a generated chunk sees add_noise(x0, eps, t_kv) at t_kv instead of
+    x0 at t=0, eps from its own generator (kv_noise.py); chunks with an image latent stay clean.
+  * opt-in early-step self-guidance (stg=stg.SkipGuidance, --lingbot-stg, off by default):
+    one extra forward with chosen blocks' self-attention skipped on the first denoising
+    step(s) of each chunk, combined with the full prediction before the x0 conversion.
+  * opt-in sink key scaling (sink_scale=SinkScaleConfig, --lingbot-sink-key-scale, off by
+    default): the cached keys of the attention-sink tokens are scaled on a chunk's denoising
+    forwards and copied back before its KV write (_sink_scaled, sink_scale.py).
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -41,6 +50,7 @@ import numpy as np
 from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import repe_steer as REPE
+from adapters.lingbot_world2 import sink_scale as SK
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
 FRAMES_PER_CHUNK = 4 * CHUNK    # pixel frames per chunk after the first latent
@@ -248,7 +258,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None):
+                 cond_sched=None, kv_noise=None, stg=None, sink_scale=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -265,22 +275,30 @@ class LingBotSession:
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
+        self.kv_noise, self.kv_noise_chunks = kv_noise, 0  # --lingbot-kv-noise (flag_stats reads deltas)
+        # --lingbot-stg: an stg.SkipGuidance; latent chunks with a guided step, and extra skip forwards (deltas)
+        self.stg, self.stg_chunks, self.stg_calls = stg, 0, 0
+        # --lingbot-sink-key-scale: config (None = off), whether this rollout's task matched, chunks scaled
+        self.sink_scale, self.sink_scale_on, self.sink_scaled_chunks = sink_scale, False, 0
         self.repe_steered = 0
         self._free()
 
     def _free(self):
+        self.noise_mean = None
         self.kv = self.cross = self.y = None
         self._feat_map = None
         self._enc_feat_map = None
         self._all_lat = []
         self._last_frame = None
         self._anchor = None
+        self._anchored = set()  # latents re-anchored to the input image (kv_noise keeps their chunk clean)
         self.detector = None
         self._repe_scale = None
 
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
-              reanchor: bool = False, third_person: bool = False, repe_scale: float | None = None):
+              reanchor: bool = False, third_person: bool = False,
+              noise_mean: bool = False, repe_scale: float | None = None):
         import torch  # noqa: PLC0415
         import torchvision.transforms.functional as TF  # noqa: PLC0415
         from wan.utils.cam_utils import get_Ks_transformed  # noqa: PLC0415
@@ -289,6 +307,9 @@ class LingBotSession:
         dev = pipe.device
         t_reset = time.time()
         self._free()
+        if noise_mean:
+            from .noise_mean import CoupledMean  # noqa: PLC0415
+            self.noise_mean = CoupledMean()
         torch.cuda.empty_cache()
 
         img = TF.to_tensor(image).sub_(0.5).div_(0.5).to(dev)
@@ -350,6 +371,8 @@ class LingBotSession:
             self.weight_mod.reset()
         if self.cond_sched is not None:
             self.cond_sched.reset()
+        if self.kv_noise is not None:
+            self.kv_noise.reset(pipe.scheduler, seed, dev)
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -430,6 +453,7 @@ class LingBotSession:
         self.y[:4, g] = 1
         self.y[4:, g] = self._anchor.to(self.y.dtype)
         self.reanchor_events += 1
+        self._anchored.add(g)
         print(f"[lingbot] session: re-anchored latent {g} (frame {4 * g}) to the input image", flush=True)
 
     def _plucker(self, rel: np.ndarray):
@@ -447,6 +471,9 @@ class LingBotSession:
         return emb.to(self.pipe.param_dtype)
 
     # -- step --------------------------------------------------------------
+    def _couple_noise(self, noise, stage):
+        return noise if self.noise_mean is None else self.noise_mean.apply(noise, stage)
+
     def update_prompt(self, prompt: str) -> bool:
         """Refresh text cross-attention only; preserve visual KV, camera and decoder state."""
         if not self.started:
@@ -496,9 +523,9 @@ class LingBotSession:
 
         new, modulated = [], False
         with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
-                torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
+                contextlib.ExitStack() as sink, torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
-                cid, chunk_hit = self.chunk_id, False
+                cid, chunk_hit, stg_hit = self.chunk_id, False, False
                 rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
@@ -507,6 +534,7 @@ class LingBotSession:
                     emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
                                      generator=self.gen, device=pipe.device)
+                latent = self._couple_noise(latent, 0)
                 kwargs = {
                     "context": [self.context[0]],
                     "seq_len": self.max_seq_len,
@@ -520,21 +548,35 @@ class LingBotSession:
                 }
                 ts = self.timesteps
                 for i in range(len(ts)):
+                    if i == 0:  # --lingbot-sink-key-scale: no-op unless it acts on this chunk
+                        sink.enter_context(self._sink_scaled(cid))
                     if self.weight_mod is not None:
                         self.weight_mod.denoise_step(i, len(ts))
                     if self.cond_sched is not None and self.cond_sched.set_step(rel_c, i, third_person=self.third_person):
                         self.cond_sched_calls += 1
                         chunk_hit = True
                     t = torch.stack([ts[i]]).to(pipe.device)
+                    pred_skip = None
+                    if self.stg is not None and self.stg.guided(i):
+                        # before the full pass, which then rewrites this chunk's KV slot and sees main's caches
+                        with self.stg.skipped():
+                            pred_skip = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init,
+                                                   **kwargs)[0]
+                        self.stg_calls += 1
+                        stg_hit = True
                     pred = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init, **kwargs)[0]
                     self.cross_init = True
+                    if pred_skip is not None:
+                        pred = self.stg.combine(pred, pred_skip)
                     if c == 0 and i == 0:
                         mark("step0.first_forward", "(first DiT call after reset: includes any warm-up)")
                     x0 = pipe._convert_flow_pred_to_x0(flow_pred=pred, xt=latent, timestep=ts[i],
                                                        scheduler=pipe.scheduler)
                     if i < len(ts) - 1:
                         noise = torch.randn(x0.shape, generator=self.gen, device=x0.device, dtype=x0.dtype)
+                        noise = self._couple_noise(noise, i + 1)
                         latent = pipe.scheduler.add_noise(x0, noise, ts[i + 1])
+                sink.close()  # sink keys restored before the clean KV write
                 new.append(x0)
                 if self.weight_mod is not None:
                     self.weight_mod.end_chunk()  # the clean KV write uses the chunk's base scale
@@ -542,9 +584,22 @@ class LingBotSession:
                     self.cond_sched.reset()
                 if chunk_hit:
                     self.cond_sched_chunks += 1
-                # write clean keys/values for this chunk into the KV cache
-                t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
-                pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
+                self.stg_chunks += stg_hit
+                # weight_mod.end_chunk() and cond_sched.reset() ran above, so either KV write below uses
+                # cond scales 1.0 and the chunk's base weight-mod scale.
+                if (self.kv_noise is not None and cid > 0
+                        and cid * CHUNK >= int(getattr(pipe, "sink_size", 0) or 0)
+                        and not self._anchored.intersection(range(cid * CHUNK, (cid + 1) * CHUNK))):
+                    # --lingbot-kv-noise: write keys/values of a lightly re-noised x0 at t_kv. Chunks that
+                    # overlap the attention sink stay clean: sink slots are never evicted, so a noised
+                    # write there would stay in every later chunk's context.
+                    x_kv, t_kv = self.kv_noise.kv_input(x0, pipe.scheduler)
+                    self.kv_noise_chunks += 1
+                    pipe.model(x=[x_kv], t=torch.stack([t_kv]).to(pipe.device), cross_attn_first_call=False, **kwargs)
+                else:
+                    # write clean keys/values for this chunk into the KV cache
+                    t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
+                    pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
                 self.chunk_id += 1
             lat = torch.cat(new, dim=1)
             mark("step0.denoise_rest", f"({n_chunks} chunks x {len(self.timesteps)} steps + KV writes, minus first call)")
@@ -560,6 +615,24 @@ class LingBotSession:
             frames = np.concatenate([self._last_frame[None], frames])
         self._last_frame = frames[-1].copy()
         return frames
+
+    def _sink_scaled(self, cid: int):
+        """--lingbot-sink-key-scale: scale the sink keys of every block for this chunk's denoising forwards, then
+        copy the saved originals back (also on an exception). nullcontext when off or not active for cid."""
+        sink = int(getattr(self.pipe, "sink_size", 0) or 0)
+        if not (self.sink_scale_on and SK.active(self.sink_scale, cid, CHUNK, sink)):
+            return contextlib.nullcontext()
+        return self._sink_scale_ctx(SK.sink_tokens(sink, self.frame_seqlen))
+
+    @contextlib.contextmanager
+    def _sink_scale_ctx(self, n_tokens: int):
+        saved = []
+        try:
+            SK.scale_keys(self.kv, n_tokens, self.sink_scale.scale, saved)
+            self.sink_scaled_chunks += 1
+            yield
+        finally:
+            SK.restore_keys(self.kv, n_tokens, saved)
 
     def _decode(self, lat):
         """New latents -> new pixel frames [3, F, H, W] in [-1, 1]."""

@@ -67,13 +67,6 @@
     var d = new Date(t);
     return MON[d.getUTCMonth()] + " " + d.getUTCDate() + " " + pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes());
   }
-  function ago(t) {
-    var s = Math.max(0, (Date.now() - t) / 1000);
-    if (s < 90) return "just now";
-    if (s < 5400) return Math.round(s / 60) + " min ago";
-    if (s < 129600) return Math.round(s / 3600) + " h ago";
-    return Math.round(s / 86400) + " days ago";
-  }
 
   /* ---------- CSV (RFC 4180: quoted fields, commas, doubled quotes, embedded newlines) ---------- */
   function parseCSV(text) {
@@ -123,88 +116,27 @@
     });
     return out;
   }
-
   /* ---------- state ---------- */
   var ALL = [];
   var source = "";
-  var filt = { runner: "", split: "", action: "", branch: "", tests: false, ended: false };
+  var filt = { tests: false, capped: false, ended: false };
   var sort = { key: "overall", dir: -1 };
-  var sel = []; // chosen experiment keys for the bar chart, in slot order
-  var slotOf = {}; // exp key -> slot 1..4, stable while selected
-  var touched = false;
-  var cmpBase = "", cmpAuto = "";
-  function key(r) { return r.exp + "@" + r.split; } // exp names are [A-Za-z0-9._-], so "@" is unambiguous and URL-friendly
 
   function visible() {
     return ALL.filter(function (r) {
       if (!filt.tests && isTest(r)) return false;
-      if (!filt.ended && isEnded(r)) return false;
-      if (filt.runner && r.runner !== filt.runner) return false;
-      if (filt.split && r.split !== filt.split) return false;
-      if (filt.action && r.action_source !== filt.action) return false;
-      if (filt.branch && r.branch !== filt.branch) return false;
+      if (!filt.capped && isCapped(r)) return false;
+      if (!filt.ended && isLive(r)) return false;
       return true;
     });
   }
-
-  /* ---------- stat strip ---------- */
-  function renderTiles() {
-    var box = $("tiles"); clear(box);
-    var nonTest = realRows(), hiddenTests = ALL.length - nonTest.length;
-    var real = nonTest.filter(function (r) { return !isLive(r); });
-    var closed = real.filter(isClosed).length, open = real.filter(isOpen).length;
-    var finals = real.filter(isFinal).length;
-    var held = real.filter(function (r) { return r.split === "heldout" || r.split === "all"; }).length;
-    var last = null;
-    ALL.forEach(function (r) { if (r.t !== null && (last === null || r.t > last)) last = r.t; });
-    function stat(strong, rest, title) { return el("span", { class: "stat", title: title }, [el("b", { text: strong }), document.createTextNode(" " + rest)]); }
-    [stat(String(real.length), "runs logged", closed + " played by the AI player, " + open + " with replayed moves" + (hiddenTests ? "; " + hiddenTests + " pipeline test" + (hiddenTests > 1 ? "s" : "") + " hidden" : "")),
-     stat(finals + " of " + real.length, "meet every final-score check", finals ? "can be reported as a final score" : "none yet: the final run comes after we freeze the code"),
-     stat(held ? held + " run" + (held > 1 ? "s" : "") : "Test tasks", held ? "on the 147 unseen test tasks" : "still unseen", "147 test tasks are kept unseen until the code is frozen; " + (held ? held + " logged run(s) use them" : "no logged run uses them yet")),
-     stat("Updated", last === null ? "-" : ago(last), last === null ? "no timestamps" : fmtTime(last) + " UTC")
-    ].forEach(function (n) { box.appendChild(n); });
+  function realRows() { return ALL.filter(function (r) { return !isTest(r); }); }
+  function rowByExp(name) {
+    var hit = null; ALL.forEach(function (r) { if (r.exp === name && (!hit || (r.t || 0) > (hit.t || 0))) hit = r; });
+    return hit;
   }
 
-  /* ---------- filters ---------- */
-  function fillSelect(id, values, label, cur) {
-    var s = $(id); clear(s);
-    s.appendChild(el("option", { value: "", text: label }));
-    values.forEach(function (v) { s.appendChild(el("option", { value: v, text: v })); });
-    s.value = values.indexOf(cur) >= 0 ? cur : "";
-  }
-  function uniq(f) {
-    var seen = {}, out = [];
-    ALL.forEach(function (r) { var v = f(r); if (v && !seen[v]) { seen[v] = 1; out.push(v); } });
-    return out.sort();
-  }
-  function renderFilters() {
-    fillSelect("f-runner", uniq(function (r) { return r.runner; }), "All runners", filt.runner);
-    fillSelect("f-split", uniq(function (r) { return r.split; }), "All splits", filt.split);
-    fillSelect("f-action", uniq(function (r) { return r.action_source; }), "All action sources", filt.action);
-    fillSelect("f-branch", uniq(function (r) { return r.branch; }), "All branches", filt.branch);
-    filt.branch = $("f-branch").value;
-    filt.runner = $("f-runner").value; filt.split = $("f-split").value; filt.action = $("f-action").value;
-    var nt = ALL.filter(isTest).length;
-    $("hidden-count").textContent = nt ? "(" + nt + " hidden)" : "";
-    $("f-tests").checked = filt.tests;
-    var ne = ALL.filter(function (r) { return isEnded(r) && (filt.tests || !isTest(r)); }).length;
-    $("ended-count").textContent = ne ? "(" + ne + " hidden)" : "";
-    $("f-ended").checked = filt.ended;
-  }
-
-  /* ---------- leaderboard ---------- */
-  // [key, label, class, sort numeric desc first, short label for phones]
-  var COLS = [
-    ["exp", "Experiment", "exp", false, "Experiment"],
-    ["overall", "Overall", "num", true, "All"],
-    ["gc", "Geometry", "num", true, "Geo"], ["if", "Interaction", "num", true, "Int"],
-    ["insight", "Insight", "num", true, "Ins"], ["outsight", "Out of sight", "num", true, "OoS"],
-    ["checks", "Checks", "hide-sm", false, ""], ["n_tasks", "Tasks", "num hide-sm", true, ""],
-    ["passes", "Scored", "num hide-sm", true, ""], ["t", "Run", "hide-sm", false, ""]
-  ];
-  function headLabel(c) {
-    return c[4] && c[4] !== c[1] ? [el("span", { class: "long", text: c[1] }), el("span", { class: "short", "aria-hidden": "true", text: c[4] })] : [el("span", { text: c[1] })];
-  }
+  /* ---------- badges ---------- */
   function badgesFor(r) {
     var b = el("div", { class: "badges" });
     if (r.ref) { b.appendChild(el("span", { class: "badge", text: "published, all 171 tasks" })); return b; }
@@ -212,47 +144,44 @@
       title: isStale(r) ? "Marked running at launch and never updated. Jobs stop after about 6 hours, so this run ended without a result." : "Status row from the experiment workflow. Not a score.",
       text: isStale(r) ? "! no result, stale" : r.status === "running" ? "running" : r.status === "generated" ? "generated, not scored" : "! " + r.status + ", no result" }));
     if (isTest(r)) b.appendChild(el("span", { class: "badge", title: "Produced by tests/fake_runner.py. Not a real model score.", text: "pipeline test" }));
-    if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "The moves were replayed from the dataset instead of chosen by the AI player. Fine for quick tests, never for final scores.", text: "replayed moves, test only" }));
+    if (isOpen(r)) b.appendChild(el("span", { class: "badge warn", title: "Fixed action scripts from the dataset, no AI player. Used for A/B tests only, never for final scores.", text: "open loop, A/B only" }));
     else if (isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "The scripted player replayed the dataset moves chunk by chunk; no AI player chose them. For A/B of model-side changes only, never a final score.", text: "scripted moves, test only" }));
     else if (isClosed(r)) b.appendChild(el("span", { class: "badge ok", title: "An AI player chose every move while the world was being generated (closed loop).", text: "AI played" }));
-    if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run from branch " + r.branch + ". The code behind this score is not merged into main yet.", text: "code not merged" }));
-    if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Split is not 'all' or fewer than " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
-    if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: typeof r.max_chunks === "number" && r.max_chunks > 0
-      ? "Each rollout was cut to " + r.max_chunks + " agent chunks instead of 30. A fast smoke check, never comparable to a real score."
-      : "Capped smoke run: rollouts stop early, on a few chosen tasks. A behaviour check only, not comparable with official scores.",
+    if (r.branch && r.branch !== "main") b.appendChild(el("span", { class: "badge warn", title: "Run from branch " + r.branch + ". The code behind this row is not merged into main yet.", text: "code not merged" }));
+    if (isPartial(r)) b.appendChild(el("span", { class: "badge partial", title: "Fewer than all " + FULL_TASKS + " tasks. Not comparable to the full-benchmark paper numbers.", text: "partial" }));
+    if (isCapped(r)) b.appendChild(el("span", { class: "badge warn", title: "Each rollout was cut short. A behaviour check, never comparable to a real score.",
       text: typeof r.max_chunks === "number" && r.max_chunks > 0 ? "capped smoke, " + r.max_chunks + " chunks" : "capped smoke" }));
-    else if (isSmoke(r) && !isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: a quick check that the pipeline works, too small to estimate a score.", text: "tiny test run" }));
+    else if (isSmoke(r) && !isScripted(r)) b.appendChild(el("span", { class: "badge warn", title: "Fewer than " + DEV_TASKS + " tasks or scored only once: too small to estimate a score.", text: "tiny test run" }));
     return b;
   }
-  function sortVal(r, k) {
-    if (k === "checks") return r.ref ? null : checkRow(r).filter(function (v) { return v === 1; }).length;
-    var v = r[k];
-    return v === undefined || v === null || v === "" ? null : v;
-  }
-  function metaLine(r) {
-    if (r.ref) return null;
-    var bits = [r.runner, r.action_source, r.split, r.branch].filter(Boolean);
-    var m = el("div", { class: "meta-line", text: bits.join(" · ") });
-    return m;
+
+  /* ---------- runs table ---------- */
+  // [key, label, class, numeric (sort desc first), short label for phones]
+  var COLS = [
+    ["exp", "Run", "exp", false, "Run"],
+    ["overall", "Overall", "num", true, "All"],
+    ["gc", "GC", "num", true, "GC"], ["if", "IF", "num", true, "IF"],
+    ["insight", "Insight", "num", true, "Ins"], ["outsight", "Out-of-sight", "num", true, "OoS"],
+    ["n_tasks", "Tasks", "num hide-sm", true, ""], ["passes", "Passes", "num hide-sm", true, ""], ["t", "When (UTC)", "hide-sm", true, ""]
+  ];
+  function headLabel(c) {
+    return c[4] && c[4] !== c[1] ? [el("span", { class: "long", text: c[1] }), el("span", { class: "short", "aria-hidden": "true", text: c[4] })] : [el("span", { text: c[1] })];
   }
   function rowEl(r) {
     var tr = el("tr", { class: r.ref ? "ref" : "" });
-    var td = el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp }), metaLine(r), badgesFor(r)]);
-    if (r.notes && !r.ref) td.appendChild(el("div", { class: "meta-line notes", text: r.notes }));
+    var td = el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp })]);
+    if (!r.ref) td.appendChild(el("div", { class: "meta-line hide-sm", text: [r.runner, r.split, r.branch].filter(Boolean).join(" · ") }));
+    td.appendChild(badgesFor(r));
+    if (r.notes && !r.ref) td.appendChild(el("div", { class: "meta-line notes hide-sm", title: r.notes, text: r.notes }));
     tr.appendChild(td);
     var o = el("td", { class: "num overall" });
-    // same rows renderBoard leaves out of BEST: a smoke or capped row that ties a fair best is not underlined
-    var fair = !isSmoke(r);
     if (r.overall === null) dashCell(o);
     else {
-      o.appendChild(el("div", { class: fair && r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
+      o.appendChild(el("div", { text: fmt(r.overall) }));
       if (typeof r.overall_std === "number") o.appendChild(el("div", { class: "std", text: "±" + fmt(r.overall_std) }));
     }
     tr.appendChild(o);
-    FAMS.forEach(function (f) {
-      var t = el("td", { class: "num" + (fair && r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
-    });
-    var ckt = el("td", { class: "hide-sm" }); if (r.ref) dashCell(ckt); else ckt.appendChild(checksEl(r)); tr.appendChild(ckt);
+    FAMS.forEach(function (f) { var t = el("td", { class: "num" }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t); });
     var nt = el("td", { class: "num hide-sm" });
     if (r.ref) nt.textContent = String(FULL_TASKS);
     else if (r.n_tasks === null) dashCell(nt);
@@ -267,33 +196,32 @@
     if (r.ref) tt.appendChild(el("span", { class: "std", text: "paper" }));
     else {
       if (r.t !== null) tt.appendChild(el("div", { title: r.ts, text: fmtTime(r.t) })); else dashCell(tt);
-      if (r.sha && /^[0-9a-f]{7,40}$/i.test(r.sha)) tt.appendChild(el("div", null, [el("a", { href: COMMIT + r.sha, target: "_blank", rel: "noopener", text: r.sha.slice(0, 7) })]));
+      var links = el("div", { class: "std" });
+      if (r.sha && /^[0-9a-f]{7,40}$/i.test(r.sha)) links.appendChild(el("a", { href: COMMIT + r.sha, target: "_blank", rel: "noopener", text: r.sha.slice(0, 7) }));
+      if (r.run_url && /^https:\/\/github\.com\//.test(r.run_url)) { if (links.firstChild) links.appendChild(document.createTextNode(" · ")); links.appendChild(el("a", { href: r.run_url, target: "_blank", rel: "noopener", text: "job" })); }
+      if (links.firstChild) tt.appendChild(links);
     }
     tr.appendChild(tt);
     return tr;
   }
-  var BEST = {};
+  function sortVal(r, k) { var v = r[k]; return v === undefined || v === null || v === "" ? null : v; }
   function renderBoard() {
     var t = $("board"); clear(t);
-    BEST = {};
-    // tiny and capped runs never take the underline: it marks the best fair score in each column
-    visible().filter(function (r) { return !isSmoke(r); }).concat(REFS).forEach(function (r) {
-      ["overall"].concat(FAMS.map(function (f) { return f[0]; })).forEach(function (k) {
-        if (r[k] !== null && (BEST[k] === undefined || r[k] > BEST[k])) BEST[k] = r[k];
-      });
-    });
-    var thead = el("thead"), hr = el("tr");
+    var hr = el("tr");
     COLS.forEach(function (c) {
       var th = el("th", { class: c[2], scope: "col", "aria-sort": sort.key === c[0] ? (sort.dir > 0 ? "ascending" : "descending") : "none" });
       var b = el("button", { type: "button", title: "Sort by " + c[1] }, headLabel(c).concat([el("span", { class: "arrow", "aria-hidden": "true", text: sort.key === c[0] ? (sort.dir > 0 ? "▲" : "▼") : "" })]));
       b.addEventListener("click", function () {
-        if (sort.key === c[0]) sort.dir = -sort.dir; else { sort.key = c[0]; sort.dir = c[3] || c[0] === "t" ? -1 : 1; }
+        if (sort.key === c[0]) sort.dir = -sort.dir; else { sort.key = c[0]; sort.dir = c[3] ? -1 : 1; }
         renderBoard(); syncUrl();
       });
       th.appendChild(b); hr.appendChild(th);
     });
-    thead.appendChild(hr); t.appendChild(thead);
+    t.appendChild(el("thead", null, [hr]));
     var rows = visible().slice().sort(function (a, b) {
+      // runs big enough to estimate a score first, tiny and scripted test runs after
+      var sm = /^(overall|gc|if|insight|outsight)$/.test(sort.key) ? (isSmoke(a) ? 1 : 0) - (isSmoke(b) ? 1 : 0) : 0;
+      if (sm) return sm;
       var x = sortVal(a, sort.key), y = sortVal(b, sort.key);
       if (x === null && y === null) return a.order - b.order;
       if (x === null) return 1; if (y === null) return -1;
@@ -301,12 +229,7 @@
       return c * sort.dir || a.order - b.order;
     });
     var tb = el("tbody");
-    if (!rows.length) {
-      var nt = ALL.filter(isTest).length;
-      var msg = ALL.length ? "No experiments match these filters." + (!filt.tests && nt ? " " + nt + " pipeline test row" + (nt > 1 ? "s are" : " is") + " hidden; tick \"Show pipeline tests\" to see them." : "") + (!filt.ended && ALL.some(isEnded) ? " Runs that ended without a result are hidden; tick \"Show runs with no result\" to see them." : "")
-                           : "No experiments logged yet. Run the experiment workflow and rows appear here.";
-      tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: String(COLS.length), text: msg })]));
-    }
+    if (!rows.length) tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: String(COLS.length), text: ALL.length ? "No runs match. Tick a box above to show hidden rows." : "No runs logged yet." })]));
     rows.forEach(function (r) { tb.appendChild(rowEl(r)); });
     t.appendChild(tb);
     var rb = el("tbody");
@@ -314,484 +237,22 @@
     REFS.forEach(function (r) { rb.appendChild(rowEl(r)); });
     t.appendChild(rb);
   }
-
-  /* ---------- tooltip ---------- */
-  function showTip(tip, host, html, x, y) {
-    clear(tip);
-    html.forEach(function (n) { tip.appendChild(n); });
-    tip.style.display = "block";
-    var hw = host.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
-    var lx = Math.min(Math.max(4, x + 12), hw - tw - 4);
-    var ly = y - th - 10; if (ly < 4) ly = y + 14;
-    tip.style.left = lx + "px"; tip.style.top = ly + "px";
-  }
-  function hideTip(tip) { tip.style.display = "none"; }
-
-  function table(headers, rows) {
-    var t = el("table"), h = el("tr");
-    var SHORT = { "Insight": "Ins", "Out-of-sight": "OoS", "Overall": "All", "When (UTC)": "When" };
-    headers.forEach(function (x, i) { h.appendChild(el("th", { class: i ? "num" : "exp" }, headLabel([0, x, 0, 0, SHORT[x] || x]))); });
-    t.appendChild(el("thead", null, [h]));
-    var b = el("tbody");
-    rows.forEach(function (r) {
-      var tr = el("tr");
-      r.forEach(function (c, i) { tr.appendChild(el("td", { class: i ? "num" : "exp", text: c })); });
-      b.appendChild(tr);
-    });
-    t.appendChild(b);
-    return el("div", { class: "scroll" }, [t]);
-  }
-
-  /* ---------- bar chart ---------- */
-  function slotFor(k) {
-    if (slotOf[k]) return slotOf[k];
-    var used = {}; sel.forEach(function (s) { if (slotOf[s]) used[slotOf[s]] = 1; });
-    for (var i = 1; i <= 4; i++) if (!used[i]) { slotOf[k] = i; return i; }
-    return 4;
-  }
-  function pruneSel(vis) {
-    var keys = {}; vis.forEach(function (r) { keys[key(r)] = r; });
-    sel = sel.filter(function (k) { return keys[k]; });
-    Object.keys(slotOf).forEach(function (k) { if (sel.indexOf(k) < 0) delete slotOf[k]; });
-    if (!touched) {
-      var scored = vis.filter(function (r) { return r.overall !== null; })
-        .sort(function (a, b) { return (a.t || 0) - (b.t || 0) || a.order - b.order; });
-      sel = scored.slice(-3).map(key);
-      slotOf = {}; sel.forEach(function (k) { slotFor(k); });
-    }
-  }
-  function renderBarChips(vis) {
-    var box = $("bar-chips"); clear(box);
-    var scored = vis.filter(function (r) { return r.overall !== null; });
-    if (!scored.length) { box.appendChild(el("span", { class: "std", text: "No scored experiments to chart yet. Genie 3 is shown for reference." })); return; }
-    scored.forEach(function (r) {
-      var k = key(r), on = sel.indexOf(k) >= 0, full = sel.length >= 4 && !on;
-      var cb = el("input", { type: "checkbox" }); cb.checked = on; cb.disabled = full;
-      cb.addEventListener("change", function () {
-        touched = true;
-        if (cb.checked) { sel.push(k); slotFor(k); } else { sel = sel.filter(function (x) { return x !== k; }); delete slotOf[k]; }
-        renderBarChips(vis); renderBars(vis);
-      });
-      var lab = el("label", { class: full ? "off" : "", title: full ? "Up to 4 experiments at a time" : "" }, [cb]);
-      lab.appendChild(el("span", { class: "sw " + (on ? "k" + slotOf[k] : ""), style: on ? null : "background:transparent" }));
-      lab.appendChild(el("span", { text: r.exp }));
-      box.appendChild(lab);
-    });
-  }
-  function drawBars(series, groups) {
-    var host = $("bar-svg"); clear(host);
-    var W = Math.max(280, host.clientWidth || 520), H = 280;
-    var m = { l: 30, r: 6, t: 10, b: 26 };
-    var pw = W - m.l - m.r, ph = H - m.t - m.b;
-    var maxv = 0; series.forEach(function (s) { s.vals.forEach(function (v) { if (v !== null && v > maxv) maxv = v; }); });
-    var ymax = Math.max(3, Math.ceil(maxv));
-    var y = function (v) { return m.t + ph - (v / ymax) * ph; };
-    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Grouped bar chart of per-family scores. A table view follows." });
-    for (var g = 0; g <= ymax; g++) {
-      svg.appendChild(sv("line", { class: g === 0 ? "baseline" : "gridline", x1: m.l, x2: W - m.r, y1: y(g), y2: y(g) }));
-      svg.appendChild(sv("text", { x: m.l - 6, y: y(g) + 4, "text-anchor": "end", text: String(g) }));
-    }
-    var gw = pw / groups.length, n = series.length;
-    var inner = gw * 0.78, gap = 2;
-    var bw = Math.max(3, Math.min(30, (inner - gap * (n - 1)) / n));
-    var used = bw * n + gap * (n - 1);
-    var tip = $("bar-tip");
-    groups.forEach(function (gr, gi) {
-      var gx = m.l + gi * gw + (gw - used) / 2;
-      svg.appendChild(sv("text", { x: m.l + gi * gw + gw / 2, y: H - 8, "text-anchor": "middle", text: gr[1] }));
-      series.forEach(function (s, si) {
-        var v = s.vals[gi], x = gx + si * (bw + gap);
-        var bar = null;
-        if (v !== null) {
-          var top = y(v), h = y(0) - top, r = Math.min(4, bw / 2, h);
-          bar = sv("path", { class: "bar " + s.cls, d: "M" + x + "," + y(0) + "V" + (top + r) + "Q" + x + "," + top + " " + (x + r) + "," + top + "H" + (x + bw - r) + "Q" + (x + bw) + "," + top + " " + (x + bw) + "," + (top + r) + "V" + y(0) + "Z" });
-          svg.appendChild(bar);
-        }
-        var label = gr[1] + ", " + s.name + ": " + (v === null ? "no score" : fmt(v));
-        var hit = sv("rect", { class: "hit", x: x - gap / 2 - 1, y: m.t, width: bw + gap + 2, height: ph, tabindex: "0", role: "img", "aria-label": label });
-        var show = function (ev) {
-          if (bar) bar.classList.add("hover");
-          var b = hit.getBoundingClientRect(), hb = host.getBoundingClientRect(), cb = $("c-bars").getBoundingClientRect();
-          var px = ev && ev.clientX !== undefined && ev.type !== "focus" ? ev.clientX : b.left + b.width / 2;
-          var py = ev && ev.clientY !== undefined && ev.type !== "focus" ? ev.clientY : b.top + 20;
-          var kids = [el("b", { text: v === null ? "no score" : fmt(v) }), el("div", { class: "t2", text: s.name }), el("div", { class: "t2", text: gr[1] })];
-          if (v !== null && !s.isRef && GENIE[gr[0]] !== null) {
-            var d = v - GENIE[gr[0]];
-            kids.push(el("div", { class: "t2", text: (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) + " vs Genie 3" }));
-          }
-          showTip(tip, $("c-bars"), kids, px - cb.left, py - cb.top);
-        };
-        var off = function () { if (bar) bar.classList.remove("hover"); hideTip(tip); };
-        hit.addEventListener("pointermove", show); hit.addEventListener("pointerenter", show);
-        hit.addEventListener("pointerleave", off); hit.addEventListener("focus", show); hit.addEventListener("blur", off);
-        svg.appendChild(hit);
-      });
-    });
-    host.appendChild(svg);
-  }
-  function renderBars(vis) {
-    var groups = FAMS.concat([["overall", "Overall"]]);
-    var series = [{ name: "Genie 3 (paper)", cls: "sref", isRef: true, vals: groups.map(function (g) { return GENIE[g[0]]; }) }];
-    var byKey = {}; vis.forEach(function (r) { byKey[key(r)] = r; });
-    sel.forEach(function (k) {
-      var r = byKey[k]; if (!r) return;
-      series.push({ name: r.exp, cls: "s" + slotFor(k), vals: groups.map(function (g) { return r[g[0]]; }) });
-    });
-    var lg = $("bar-legend"); clear(lg);
-    series.forEach(function (s) {
-      lg.appendChild(el("span", null, [el("span", { class: "sw " + (s.isRef ? "kref" : "k" + s.cls.slice(1)) }), el("span", { text: s.name })]));
-    });
-    drawBars(series, groups);
-    $("bar-table").replaceChildren(table(["Experiment"].concat(groups.map(function (g) { return g[1]; })),
-      series.map(function (s) { return [s.name].concat(s.vals.map(function (v) { return v === null ? "-" : fmt(v); })); })));
-  }
-
-  /* ---------- line chart ---------- */
-  var runnerSlots = [];
-  function runnerClass(runner) {
-    var i = runnerSlots.indexOf(runner);
-    return i >= 0 && i < 4 ? String(i + 1) : "other";
-  }
-  function drawLine(pts) {
-    var host = $("line-svg"); clear(host);
-    var W = Math.max(280, host.clientWidth || 520), H = 280;
-    var m = { l: 34, r: 12, t: 14, b: 28 };
-    var pw = W - m.l - m.r, ph = H - m.t - m.b;
-    var maxv = TARGET; pts.forEach(function (p) { if (p.overall > maxv) maxv = p.overall; });
-    var ymin = 1, ymax = Math.ceil((maxv + 0.2) * 2) / 2;
-    var y = function (v) { return m.t + ph - ((v - ymin) / (ymax - ymin)) * ph; };
-    var tmin, tmax;
-    if (pts.length) {
-      tmin = Math.min.apply(null, pts.map(function (p) { return p.t; })); tmax = Math.max.apply(null, pts.map(function (p) { return p.t; }));
-      if (tmax - tmin < 3600000) { tmin -= 43200000; tmax += 43200000; }
-      else { var padT = (tmax - tmin) * 0.06; tmin -= padT; tmax += padT; }
-    } else { tmax = Date.now(); tmin = tmax - 86400000; }
-    var x = function (t) { return m.l + ((t - tmin) / (tmax - tmin)) * pw; };
-    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Overall score of each experiment over time, with the Genie 3 target line at 2.12. A table view follows." });
-    var step = ymax - ymin > 3 ? 1 : 0.5;
-    for (var g = ymin; g <= ymax + 1e-9; g += step) {
-      svg.appendChild(sv("line", { class: g === ymin ? "baseline" : "gridline", x1: m.l, x2: W - m.r, y1: y(g), y2: y(g) }));
-      svg.appendChild(sv("text", { x: m.l - 6, y: y(g) + 4, "text-anchor": "end", text: g.toFixed(step < 1 ? 1 : 0) }));
-    }
-    var range = tmax - tmin, nt = W < 420 ? 3 : 5;
-    for (var i = 0; i < nt; i++) {
-      var tt = tmin + (range * i) / (nt - 1), d = new Date(tt);
-      var lab = range < 3 * 86400000 ? MON[d.getUTCMonth()] + " " + d.getUTCDate() + " " + pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) : MON[d.getUTCMonth()] + " " + d.getUTCDate();
-      svg.appendChild(sv("text", { x: x(tt), y: H - 8, "text-anchor": i === 0 ? "start" : (i === nt - 1 ? "end" : "middle"), text: lab }));
-    }
-    // target line
-    svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: y(TARGET), y2: y(TARGET), stroke: "var(--ink2)", "stroke-width": 1.5, "stroke-dasharray": "6 4" }));
-    svg.appendChild(sv("text", { x: m.l + 6, y: y(TARGET) - 5, "text-anchor": "start", text: "Genie 3 " + TARGET.toFixed(2) + " (paper)" }));
-    // best closed-loop so far (step)
-    var sorted = pts.slice().sort(function (a, b) { return a.t - b.t || a.order - b.order; });
-    var best = null, path = "";
-    sorted.forEach(function (p) {
-      if (!isClosed(p) || isSmoke(p)) return;
-      if (best === null || p.overall > best) {
-        path += (path ? "H" + x(p.t) + "V" + y(p.overall) : "M" + x(p.t) + "," + y(p.overall)); best = p.overall;
-      }
-    });
-    if (path) {
-      var lastClosed = sorted.filter(function (p) { return isClosed(p) && !isSmoke(p); }).pop();
-      path += "H" + (W - m.r);
-      svg.appendChild(sv("path", { d: path, fill: "none", stroke: "var(--ink)", "stroke-width": 2, "stroke-linejoin": "round" }));
-      void lastClosed;
-    }
-    var tip = $("line-tip");
-    var marks = [];
-    pts.forEach(function (p) {
-      var cls = runnerClass(p.runner), cx = x(p.t), cy = y(p.overall);
-      var c = sv("circle", { class: "k" + cls, cx: cx, cy: cy, r: 5, "stroke-width": 2, tabindex: "0", role: "img",
-        fill: isOpen(p) ? "var(--surface)" : "currentColor", "aria-label": p.exp + ", overall " + fmt(p.overall) + ", " + (isOpen(p) ? "open loop" : "closed loop") });
-      var show = function () {
-        var cb = $("c-line").getBoundingClientRect(), b = c.getBoundingClientRect();
-        showTip(tip, $("c-line"), [el("b", { text: fmt(p.overall) }), el("div", { class: "t2", text: p.exp }),
-          el("div", { class: "t2", text: (p.runner || "-") + ", " + (p.action_source || "-") + ", " + (p.split || "-") }),
-          el("div", { class: "t2", text: fmtTime(p.t) + " UTC" })], b.left + b.width / 2 - cb.left, b.top + 5 - cb.top);
-      };
-      c.addEventListener("focus", show); c.addEventListener("blur", function () { hideTip(tip); });
-      marks.push({ p: p, c: c, cx: cx, cy: cy, show: show });
-    });
-    // nearest-point layer so the pointer only has to be close, not exact
-    var layer = sv("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" });
-    layer.addEventListener("pointermove", function (ev) {
-      if (!marks.length) return;
-      var r = svg.getBoundingClientRect(), k = W / r.width, px = (ev.clientX - r.left) * k, py = (ev.clientY - r.top) * k;
-      var best2 = null, bd = 1e9;
-      marks.forEach(function (mk) { var d = Math.hypot(mk.cx - px, mk.cy - py); if (d < bd) { bd = d; best2 = mk; } });
-      if (best2 && bd < 40) best2.show(); else hideTip(tip);
-    });
-    layer.addEventListener("pointerleave", function () { hideTip(tip); });
-    svg.appendChild(layer);
-    marks.forEach(function (mk) { svg.appendChild(mk.c); });
-    if (!pts.length) svg.appendChild(sv("text", { x: m.l + pw / 2, y: m.t + ph / 2 + 24, "text-anchor": "middle", text: "No scored experiments yet" }));
-    host.appendChild(svg);
-  }
-  function renderLine(vis) {
-    runnerSlots = []; ALL.forEach(function (r) { if (r.runner && runnerSlots.indexOf(r.runner) < 0 && !isTest(r)) runnerSlots.push(r.runner); });
-    ALL.forEach(function (r) { if (r.runner && runnerSlots.indexOf(r.runner) < 0) runnerSlots.push(r.runner); });
-    var pts = vis.filter(function (r) { return r.overall !== null && r.t !== null; });
-    var lg = $("line-legend"); clear(lg);
-    var seen = {};
-    pts.forEach(function (p) {
-      var c = runnerClass(p.runner), k = c + p.runner;
-      if (seen[k]) return; seen[k] = 1;
-      lg.appendChild(el("span", null, [el("span", { class: "sw k" + c }), el("span", { text: c === "other" ? (p.runner || "-") + " (other)" : p.runner })]));
-    });
-    lg.appendChild(el("span", null, [el("span", { class: "sw line", style: "border-top-color:var(--ink)" }), el("span", { text: "our best so far" })]));
-    lg.appendChild(el("span", null, [el("span", { class: "sw line dash2", style: "border-top-color:var(--ink2)" }), el("span", { text: "Genie 3 target" })]));
-    drawLine(pts);
-    $("line-table").replaceChildren(pts.length ? table(["Experiment", "Overall", "When (UTC)", "Loop"],
-      pts.slice().sort(function (a, b) { return a.t - b.t; }).map(function (p) { return [p.exp, fmt(p.overall), fmtTime(p.t), isOpen(p) ? "open" : (isClosed(p) ? "closed" : "-")]; }))
-      : el("p", { class: "std", text: "No scored experiments yet." }));
-  }
-
-  /* ---------- compare ---------- */
-  function thresholdFor(a, b) {
-    var stds = [a.overall_std, b.overall_std].filter(function (s) { return s !== null && s !== undefined; });
-    var thr = stds.length ? 2 * Math.max.apply(null, stds) : 0;
-    return thr > 0 ? thr : 2 * FALLBACK_STD; // same as pwa.report.compare: a zero threshold falls back to paper variance
-  }
-  function renderCompare(vis) {
-    var scored = vis.filter(function (r) { return r.overall !== null || FAMS.some(function (f) { return r[f[0]] !== null; }); });
-    var opts = scored.map(function (r) { return [key(r), r.exp + " (" + r.split + ")", r]; })
-      .concat(REFS.map(function (r) { return ["ref:" + r.exp, r.exp + " (paper)", r]; }));
-    var s = $("cmp-base"); clear(s);
-    opts.forEach(function (o) { s.appendChild(el("option", { value: o[0], text: o[1] })); });
-    var valid = opts.some(function (o) { return o[0] === cmpBase; });
-    var firstClosed = scored.filter(isClosed).sort(function (a, b) { return (a.t || 0) - (b.t || 0); })[0];
-    cmpAuto = firstClosed ? key(firstClosed) : (scored[0] ? key(scored[0]) : "ref:" + GENIE.exp);
-    if (!valid) cmpBase = cmpAuto;
-    s.value = cmpBase;
-    var base = null; opts.forEach(function (o) { if (o[0] === cmpBase) base = o[2]; });
-    var t = $("cmp"); clear(t);
-    var others = scored.filter(function (r) { return key(r) !== cmpBase; });
-    var hr = el("tr");
-    [["Experiment", "Experiment"], ["GC", "GC"], ["IF", "IF"], ["Insight", "Ins"], ["Out-of-sight", "OoS"], ["Overall", "All"]].forEach(function (h, i) {
-      hr.appendChild(el("th", { class: i ? "num" : "exp", scope: "col" }, headLabel([0, h[0], 0, 0, h[1]])));
-    });
-    t.appendChild(el("thead", null, [hr]));
-    var tb = el("tbody");
-    if (!others.length) {
-      tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: "6", text: scored.length ? "Only one experiment is visible. Log a second run, or choose a paper row as the baseline, to see deltas." : "No scored experiments to compare yet." })]));
-    }
-    others.forEach(function (r) {
-      var tr = el("tr");
-      var td = el("td", { class: "exp" }, [el("div", { text: r.exp }), badgesFor(r)]);
-      if (base && !base.ref && base.split === "custom" && r.split === "custom") td.appendChild(el("div", { class: "badges" }, [el("span", { class: "badge warn", title: "Both are explicit task lists; the CSV does not record which tasks.", text: "! custom task sets may differ" })]));
-      else if (base && !base.ref && base.split !== r.split) td.appendChild(el("div", { class: "badges" }, [el("span", { class: "badge warn", text: "! split differs from baseline" })]));
-      tr.appendChild(td);
-      FAMS.map(function (f) { return f[0]; }).concat(["overall"]).forEach(function (k) {
-        var c = el("td", { class: "num" });
-        if (r[k] === null || base[k] === null) dashCell(c);
-        else {
-          var d = r[k] - base[k], thr = thresholdFor(base, r), noise = Math.abs(d) < thr || d === 0;
-          var box = el("div", { class: "delta" });
-          var v = el("span", { class: "v " + (noise ? "" : (d > 0 ? "good" : "bad")), text: (noise ? "" : (d > 0 ? "▲ " : "▼ ")) + (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) });
-          box.appendChild(v);
-          box.appendChild(el("span", { class: "badge " + (noise ? "" : (d > 0 ? "ok" : "bad")), title: "Threshold: 2x std = " + thr.toFixed(2), text: noise ? "noise" : "real" }));
-          box.appendChild(el("span", { class: "abs", text: fmt(base[k]) + " → " + fmt(r[k]) }));
-          c.appendChild(box);
-        }
-        tr.appendChild(c);
-      });
-      tb.appendChild(tr);
-    });
-    t.appendChild(tb);
-    var note = "";
-    if (base && base.ref) note = "The baseline is a paper number on the full 171-task benchmark. Rows scored on a smaller split or open loop are not directly comparable.";
-    $("cmp-note").textContent = note;
-  }
-
-  /* ---------- footer ---------- */
-  function renderFoot() {
-    var f = $("foot"); clear(f);
-    function A(href, text) { return el("a", { href: href, target: "_blank", rel: "noopener", text: text }); }
-    function T(t) { return document.createTextNode(t); }
-    f.appendChild(el("p", { text: "Data source: " + source }));
-    f.appendChild(el("p", { text: "Our rows come from results/experiments.csv in the repository, written automatically after each run. Published rows come from the PlayWorld paper and cover all 171 tasks, so only our runs on all 171 tasks compare directly with them." }));
-    f.appendChild(el("p", null, [A("https://github.com/" + REPO, "Repository"), T(" | "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "experiments.csv")]));
-    var ul = el("ul", { class: "credits", "aria-label": "Credits" });
-    function li(kids) { ul.appendChild(el("li", null, kids)); }
-    li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., \u201CPlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives\u201D, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources\u2019 terms.")]);
-    li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, \u201CInfinite Worlds with Versatile Interactions\u201D, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/benceruleanlu/playworld-advancement/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
-    li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
-    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the first practice-task baseline used gpt-4.1-mini.")]);
-    li([T("Site built with "), A("https://astro.build", "Astro"), T(".")]);
-    f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
-    f.appendChild(ul);
-  }
-
-  /* ---------- story content (edit here as work lands) ---------- */
-  var PR = "https://github.com/" + REPO + "/pull/";
-  var FAMINFO = {
-    gc: { name: "Geometry consistency", n: 48, q: "Does the scene keep its layout and objects as the camera moves?" },
-    if: { name: "Interaction fidelity", n: 50, q: "Does each action do what the player asked, seen from the right viewpoint?" },
-    insight: { name: "Insight evolution", n: 30, q: "Does something changing on screen (melting, filling, growing) keep changing?" },
-    outsight: { name: "Out-of-sight evolution", n: 43, q: "When the camera looks away and back, has the hidden part of the world changed sensibly?" }
-  };
-  // status: shipped | testing | planned | dropped. evidence: experiment names in results/experiments.csv.
-  // Plan of record: issue #9. Reasons for dropped cards: research/red-team-and-plan.md.
-  var RESEARCH = "https://github.com/" + REPO + "/blob/main/research/";
-  var METHODS = [
-    { title: "Base model: LingBot-World v2 14B", status: "shipped",
-      what: "Uses the open LingBot-World v2 model, 14B size. Each key the player presses becomes a camera movement.", fams: ["gc", "if", "insight", "outsight"],
-      body: "The strongest open model in the PlayWorld paper: 1.82 overall (scored via its web demo), and 1.95 on insight, where it beats Genie 3's 1.51. The released code only takes camera poses, so we map each WASD/IJKL key to per-frame camera deltas with signs checked against upstream examples. The starting model for the final comparison is this runner with every optional change switched off. Our first baseline on the 24 practice tasks (14B, session memory, gpt-4.1-mini player, two scorings) is 1.64 ±0.13. It is a diagnostic only: the paper scored LingBot through its web demo on all 171 tasks, and the runs we compare now use a different player. The 1.3B size, SANA-WM and Matrix-Game 3.0 are not used for decisions.",
-      links: [["#14", PR + "14"]], evidence: ["lb14-session-agent-dev-v1"] },
-    { title: "Persistent session memory", status: "shipped",
-      what: "Keeps the model's short-term memory between the player's moves, instead of starting fresh every two seconds.", fams: ["gc", "outsight"],
-      body: "Upstream restarts the model for every agent step, so the world state resets every chunk. We keep the KV cache (LingBot's only memory), noise generator, camera track and VAE decoder cache alive across steps, with seamless frame stitching and a closed-loop translation normaliser. Every 14B run uses it, including the starting model. No run with session memory off exists on the same tasks and model, so its effect is unmeasured, and no such run is planned before submission.",
-      // no matcher: every later 1.3B run also turns on other flags, so none is a like-for-like comparison with the stateless baseline
-      links: [["#17", PR + "17"]], evidence: [], baseline: "lb13-stateless-gc005-v1" },
-    { title: "AI player: gpt-6-luna", status: "testing",
-      what: "Every run we compare now uses gpt-6-luna as the AI player, instead of gpt-4.1-mini.", fams: ["gc", "if", "outsight"],
-      body: "The failure count on the 24-task baseline found that the player, not the world model, decided most geometry and out-of-sight outcomes. gpt-4.1-mini reversed left and right 9 to 17 times on each out-of-sight task and up to 25 times on a geometry task, and in 4 of 6 out-of-sight rollouts the camera never returned to the start view, so the judge graded no content. It never ended a rollout more than one step early. The first gpt-6-luna runs on the 6 out-of-sight and 6 geometry practice tasks (lb14-luna-oos-s42, lb14-luna-gc-s42) were stopped before they produced a result. The check moved to the capped smoke tier (GC005, GC033 and GC036 with every optional change off, read from the action logs: reversals, return to start, early END). The 14B run of it, smk-gc-base-c10-v1, was cancelled during generation. The 1.3B run, smk13-gc-base-c10-v1, finished; its action logs are not read yet. A later 1.3B run (gch13-arms-v1) showed a second problem: 22 of 110 player decisions were not the player's. Its replies came back empty, and after three tries the benchmark harness substituted the recorded action for that step. All 22 happened when the camera was back at the start view, where the player has to choose between ending and turning on, so those rollouts kept turning instead of ending. The player now retries an empty reply with a larger budget and every run counts the substituted decisions per task (#89); no run has used that fix yet. Because the player changed, the 1.64 baseline is not the starting-model number.",
-      links: [["#61", PR + "61"], ["#89", PR + "89"]], evidence: ["smk13-gc-base-c10-v1"] },
-    { title: "Method candidate: caption prompt, re-anchor, player hint", status: "testing",
-      what: "Three optional changes, each off unless switched on, merged together so every test runs the same code.", fams: ["gc", "if", "insight", "outsight"],
-      body: "Caption prompt (#32): gives the model the dataset's scene description instead of the player's goal, which is \"wait and observe\" on 29 of 30 insight tasks. The benchmark's own Genie 3 player sends that description too; we disclose its use. Re-anchor (#46): shows the model the input image again when the commanded camera returns to the start pose, on geometry tasks only. Player hint (#59): tells the AI player how far one action turns the camera and where the commanded camera is relative to the start. Each change logs a per-task counter, so a test shows whether it fired. A change is kept only if per-task scores move by a full point on both of two seeds and no task that passed its gate in the baseline fails it. Merged on main with every change switched off (#63); none is scored yet. The first runs (an insight run with the caption prompt and an all-changes smoke run from the integration branch) were stopped before they produced a result. On the capped smoke tier, smk-gc-hint-c10-v1 ran the player hint with turn calibration on GC005, GC033 and GC036 with the 14B model and produced all three videos, but the same tasks with no changes were cancelled, so it has nothing to compare with. The 1.3B pair finished (smk13-gc-hint-c10-v1 and smk13-gc-base-c10-v1), and the screening judge preferred the run with the two changes on. That decides nothing: it is one pass of a judge that is more lenient than the official one, on rollouts cut to a third, on the smaller model, with both changes on together, and the run with the changes logged three fallback actions where the player's reply was not used. The first official comparison is smk14-arms-gc-v2 on the 14B model, cut to 10 of 30 chunks, four scorings, one run per side: with turn calibration and the player hint on, GC005 went from 1.55 to 3.00, GC033 from 3.95 to 2.30 and GC036 from 3.25 to 1.75. One task up and two down on a third of each rollout decides nothing. The caption prompt is running on the 6 insight practice tasks at full length (ins14-caption-v1 against ins14-base-v2). The runs listed below with rs13- and gch13- names have the player hint on in both of their sides; they test the return stop and the completion reminder, which have their own rows.",
-      links: [["#63", PR + "63"], ["#32", PR + "32"], ["#46", PR + "46"], ["#59", PR + "59"]], evidence: ["smk-gc-hint-c10-v1", "smk13-gc-hint-c10-v1", "smk13-gc-base-c10-v1"],
-      match: function (r) { return r.branch === "method/candidate-v1" || /^cand\d/.test(r.exp) || /caption|re-?anchor|player.?hint/i.test(r.notes); } },
-    { title: "Turn calibration", status: "testing",
-      what: "Optional turn fix: one turn key now turns the angle the task expects (22.5° sideways, 20° up or down) instead of 34° and 11°.", fams: ["gc", "if", "outsight"],
-      body: "A failed gate (wrong viewpoint, target never leaves frame) scores 1.0 regardless of quality, so turns must land where the prompt says. At the default rate one closed-loop turn action is about 55 degrees, so a 90-degree turn is not a whole number of actions; with calibration it is 45. Merged with the setting off and unscored. It is tested only together with the player hint and re-anchor, which need it, not as a separate decision. Every run listed below turns it on together with the player hint, on both sides of the comparison, so none of them measures calibration itself. orc14-gc-v1 replays the recorded moves with and without it as a reference for what a perfect player would get; it is running and is not a score.",
-      links: [["#23", PR + "23"]], evidence: [],
-      match: function (r) { return /turn.?cal/i.test(r.exp + " " + r.notes); } },
-    { title: "Return stop", status: "testing",
-      what: "Optional: once the camera has left and come back to the start view, the rollout holds still for two steps and ends, instead of asking the player again.", fams: ["gc", "outsight"],
-      body: "The geometry rubric takes off up to a point for camera travel after the goal is first complete, and the baseline player never stopped after a return. The stop is decided from the commanded camera path, not from the video, and only on goals with a single return. One comparison so far, rs13-arms-v1: the 1.3B model at full length, three geometry and three out-of-sight tasks, one run per side, four official scorings, player hint and turn calibration on in both. Without and with the stop: GC031 3.55 and 3.35, GC033 2.10 and 3.60, GC036 1.00 and 2.30, OE034 1.25 and 1.00, OE047 1.00 and 1.50, OE058 1.25 and 1.25. Two tasks rose by a full point and none fell. That is not a decision: it is one run per side on the smaller model, and a second run of the same no-stop settings (gch13-arms-v1-a1) scored 3.30 on GC033, which turns the +1.5 there into +0.3. The same runs were made before the fix for the player's empty replies.",
-      links: [["#75", PR + "75"]], evidence: ["rs13-arms-v1-a2", "rs13-arms-v1-a1"] },
-    { title: "Geometry completion reminder", status: "testing",
-      what: "Optional: on geometry tasks, reminds the player to run the camera path once and end the rollout when every part is visibly done.", fams: ["gc"],
-      body: "An alternative to the return stop that leaves the decision with the player. One comparison so far, gch13-arms-v1: the 1.3B model at full length, three geometry tasks, one run per side, four official scorings. Without and with the reminder: GC031 3.30 and 1.65, GC033 3.30 and 1.80, GC036 1.00 and 1.00. Two tasks fell by a full point. The comparison is not clean: in this run 22 of 110 player decisions were replaced by the recorded action after empty replies, and 10 of those were in GC031 with the reminder on. It needs a rerun with the player fix (#89) before the reminder is kept or dropped.",
-      links: [["#78", PR + "78"]], evidence: ["gch13-arms-v1-a2", "gch13-arms-v1-a1"] },
-    { title: "Proposal batch 2: six more optional changes", status: "planned",
-      what: "Six changes on one branch, each off unless switched on. None has run on a GPU.", fams: ["if", "insight", "gc", "outsight"],
-      body: "Four for interaction tasks: a step budget sized from the recorded action length, a reminder that the keys move the camera and not the subject, a check on visible progress after four identical actions, and half-speed camera translation. One for insight tasks: the scene description plus a fixed cue to continue the activity as the model's prompt. One for the player: older chunks keep only their first and last frame. All are unscored.",
-      links: [["#90", PR + "90"]], evidence: [] },
-    { title: "Camera-conditioning weight modulation", status: "planned",
-      what: "Scales how strongly the model follows the camera command, per chunk, without changing its weights on disk. A capped smoke run is in progress from the PR branch.", fams: ["gc", "outsight"],
-      body: "Smoke runs wm14-arm-c10-v1 and wm14-ctl-c10-v1 (14B, 10 of 30 chunks) are running from the unmerged branch. Unscored.",
-      links: [["#87", PR + "87"]], evidence: [] },
-    { title: "Evaluation harness", status: "shipped",
-      what: "Tools that run each experiment on rented GPUs, score it, log it, and publish this site.", fams: [],
-      body: "pwa CLI (gen, score, report, compare, cells, failures), sharded Modal generation, an Actions workflow that scores and logs every run to the shared CSV, and this page. pwa cells shows the per-task scores of two runs side by side and counts the tasks that moved by a full point, the readout for keeping or dropping a change.",
-      links: [["#16", PR + "16"], ["#18", PR + "18"], ["#28", PR + "28"], ["#64", PR + "64"]], evidence: [] },
-    { title: "Screening judge", status: "shipped",
-      what: "Two cheaper judges (gemini-4-hydrogen and gpt-6-luna) checked against the official one on the 24 baseline videos. Neither agrees with it, so neither decides anything, and their scores never appear on this page.", fams: [],
-      body: "Scores from the screening judge go to their own folder and are never written to the results log, so they cannot reach the leaderboard. We checked it against the official judge (Gemini 3.1 Pro at the benchmark's settings) on the 24 baseline videos, two passes each, at its low thinking setting. It was more lenient: it scored the same videos higher overall and passed all 6 geometry and all 6 out-of-sight gates, where the official judge failed 2 of 6 in each. Its high thinking setting passed the same 12 gates, so more thinking did not remove the disagreement. gpt-6-luna as a judge was 1.0 or more away from the official judge on 15 of the 24 tasks. Neither is used to keep or drop a change. The early capped smoke runs got one pass of the screening judge and carry no score; the A/B runs since then are scored by the official judge, four scorings each. Every number we report comes from the official judge.",
-      links: [["#64", PR + "64"], ["#76", PR + "76"]], evidence: [] },
-    { title: "Capped smoke tier", status: "shipped",
-      what: "Quick behaviour checks: each rollout stops after 10 of its 30 chunks, on 2 or 3 chosen tasks, one GPU per task.", fams: [],
-      body: "Uses the benchmark's own --num-chunks 10 option, so a run finishes in a fraction of the time of a full one. A capped rollout covers a third of the task, so its numbers are not comparable with official scores, even when the official judge scored it (smk14-arms-gc-v2). This page badges these rows \"capped smoke\" (name starting smk- or smk13- and similar, or notes saying capped smoke) and keeps them out of the headline, the ruler, the task-type scores, the Progress table and the best-so-far line. They are read for player behaviour and for whether each optional change fired.",
-      links: [], evidence: ["smk-gc-base-c10-v1", "smk-gc-hint-c10-v1"] },
-    { title: "Out-of-sight memory work", status: "dropped",
-      what: "Changes to what the model keeps in memory while the camera looks away. Not pursued before submission.", fams: ["outsight"],
-      body: "Studied: a model of what LingBot's cache still holds (a pinned start plus the last 2 s), a look-away-and-back GPU probe (#37), and proposals to change the pinned memory, rewrite it, or pick the best of several returns. A review ruled most of them unlikely to help or not buildable in time. The baseline then showed that in 4 of 6 out-of-sight rollouts the camera never came back to the start view, so memory changes could not be graded until the player and turn control work. Written up as a finding and future work.",
-      links: [["#37", PR + "37"]], evidence: [], doc: RESEARCH + "out-of-sight-evolution.md" },
-    { title: "Out-of-sight state tracker", status: "dropped",
-      what: "Save what the camera turned away from, update it with a language model, and show it again on return. Not built.", fams: ["outsight"],
-      body: "The plan was to save a crop and description of the target on exit, advance its state with an LLM while unseen, and condition generation on an edited image on return. It was cut for the same reason as the memory work: with the baseline player most out-of-sight rollouts never returned to the start view, so there was nothing to restore, and the build (an image editor plus writing into the model's memory) did not fit the time left.",
-      links: [], evidence: [], doc: RESEARCH + "red-team-and-plan.md" },
-    { title: "Insight progress scheduler", status: "dropped",
-      what: "A language model plans the stages of a process and re-prompts each chunk. Not built.", fams: ["insight"],
-      body: "Cut for time. The caption prompt in the method candidate is the insight change being tested instead. On the baseline, insight scored 1.58 on the 6 practice tasks (paper: 1.95): all six rollouts are 30 wait steps with no player involved, and four were marked static in at least one scoring.",
-      links: [], evidence: [], doc: RESEARCH + "baseline-census.md" },
-    { title: "Fine-tuning", status: "dropped",
-      what: "The track allows fine-tuning; we chose not to train before submission.", fams: [],
-      body: "LingBot-World v2 ships inference code only, and the weights we run are a distilled few-step model whose training loop is not released. A plain low-rank fine-tune would likely break its few-step sampler, and each debug cycle would take about an hour. Kept as future work.",
-      links: [["#58", "https://github.com/" + REPO + "/issues/58"]], evidence: [], doc: RESEARCH + "red-team-and-plan.md" }
-  ];
-  /* ---------- iteration speed (edit here as runs land; measured numbers only) ---------- */
-  // SPEED.runs: wall clock of real runs. SPEED.steps: where the time of one run went. SPEED.levers: status rows.
-  // lever status: in use | open PR | being built | testing
-  var SPEED = {
-    runs: [
-      { exp: "smk-gc-hint-c10-v1", what: "14B, 3 tasks on 3 GPUs, capped at 10 chunks, 1 screening-judge pass", time: "11 min 11 s", note: "end to end" },
-      { exp: "smk14-gc-fastdit-c10-v1", what: "14B, 3 tasks on 3 GPUs, capped at 10 chunks, fast model load, not scored", time: "4 min 06 s", note: "end to end" },
-      { exp: "Earlier 1-task dispatch", what: "14B, 1 task on 1 GPU, full length (30 chunks)", time: "about 14.5 min", note: "end to end" }
-    ],
-    steps: [
-      ["Actions setup", "about 1 min"],
-      ["Model load", "289 s"],
-      ["First chunk", "97 s"],
-      ["Each later chunk", "about 11 s"]
-    ],
-    stepsOf: "smk-gc-hint-c10-v1",
-    levers: [
-      { name: "Chunk cap (10 of 30 chunks)", status: "in use", link: ["#69", PR + "69"] },
-      { name: "Several arms in one dispatch", status: "in use", note: "three A/B groups run and scored; time saved not read from the logs", link: ["#67", PR + "67"] },
-      { name: "Warm GPU container between runs", status: "testing", note: "merged, never deployed", link: ["#73", PR + "73"] },
-      { name: "Faster model load (14B)", status: "in use", note: "about 207 s to about 31 s, same weights bit for bit", link: ["#79", PR + "79"] },
-      { name: "1.3B model for smoke runs", status: "in use", note: "loads in about 80 s; not used for decisions" },
-      { name: "Less Actions overhead per run", status: "in use", note: "saving not measured yet", link: ["#70", PR + "70"] }
-    ]
-  };
-  function renderSpeed() {
-    var box = $("speed"); if (!box) return; clear(box);
-    var runs = el("table", null, [el("thead", null, [el("tr", null, [
-      el("th", { class: "exp", scope: "col", text: "Run" }), el("th", { class: "num", scope: "col", text: "Wall clock" })])])]);
-    var rb = el("tbody");
-    SPEED.runs.forEach(function (r) {
-      rb.appendChild(el("tr", null, [
-        el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp }), el("div", { class: "meta-line", text: r.what })]),
-        el("td", { class: "num" }, [el("div", { text: r.time }), el("div", { class: "std", text: r.note })])]));
-    });
-    runs.appendChild(rb);
-    var steps = el("table", null, [el("thead", null, [el("tr", null, [
-      el("th", { class: "exp", scope: "col", text: "Step in " + SPEED.stepsOf }), el("th", { class: "num", scope: "col", text: "Time" })])])]);
-    var sb = el("tbody");
-    SPEED.steps.forEach(function (st) { sb.appendChild(el("tr", null, [el("td", { class: "exp", text: st[0] }), el("td", { class: "num", text: st[1] })])); });
-    steps.appendChild(sb);
-    var ul = el("ul", { class: "levers" });
-    SPEED.levers.forEach(function (l) {
-      var cls = { "in use": "ok", "open PR": "partial", "testing": "warn" }[l.status] || "";
-      var li = el("li", null, [el("span", { class: "nm", text: l.name }), el("span", { class: "badge " + cls, text: l.status })]);
-      if (l.note) li.appendChild(el("span", { class: "std", text: l.note }));
-      if (l.link) li.appendChild(el("a", { href: l.link[1], target: "_blank", rel: "noopener", text: "PR " + l.link[0] }));
-      ul.appendChild(li);
-    });
-    box.appendChild(el("div", { class: "speedgrid" }, [
-      el("div", { class: "scroll" }, [runs]), el("div", { class: "scroll" }, [steps])]));
-    box.appendChild(el("h3", { class: "levhead", text: "Speed changes" }));
-    box.appendChild(ul);
-  }
-
-  var STATUS_LABEL = { shipped: "in use", testing: "built, not yet tested", planned: "in review", dropped: "dropped" };
-
-  /* ---------- protocol checks ---------- */
-  var CHECKS = [
-    ["L", "AI chose every move", function (r) { return isClosed(r) ? 1 : 0; }],
-    ["F", "all 171 tasks", function (r) { return r.split === "all" && r.n_tasks !== null && r.n_tasks >= FULL_TASKS ? 1 : 0; }],
-    ["P", "scored at least twice", function (r) { return r.passes !== null && r.passes >= 2 ? 1 : 0; }],
-    // all tasks scored: no missing videos and no rollouts dropped as unscored. Unknown (?) for rows logged before n_dropped existed.
-    ["S", "no task left unscored", function (r) {
-      if (r.n_missing !== null && r.n_missing > 0) return 0;
-      if (r.n_dropped !== null && r.n_dropped > 0) return 0;
-      return r.n_missing === null || r.n_dropped === null ? null : 1;
-    }],
-    ["C", "code merged", function (r) { return !r.branch ? null : (r.branch === "main" ? 1 : 0); }]
-  ];
-  function checkRow(r) { return CHECKS.map(function (c) { return c[2](r); }); }
-  function isFinal(r) { return !isCapped(r) && checkRow(r).every(function (v) { return v === 1; }); }
-  function checksEl(r) {
-    var box = el("span", { class: "checks" }), res = checkRow(r), passed = 0;
-    CHECKS.forEach(function (c, i) {
-      var v = res[i]; if (v === 1) passed++;
-      box.appendChild(el("span", { class: "ck " + (v === 1 ? "y" : v === 0 ? "n" : ""), title: c[1] + ": " + (v === 1 ? "yes" : v === 0 ? "no" : "unknown"), text: c[0] }));
-    });
-    box.setAttribute("aria-label", passed + " of " + CHECKS.length + " protocol checks pass");
-    return box;
-  }
-  function renderCkLegend() {
-    var box = $("cklegend"); clear(box);
-    CHECKS.forEach(function (c) { box.appendChild(el("span", null, [el("span", { class: "ck y", text: c[0] }), el("span", { text: c[1] })])); });
-    box.appendChild(el("span", null, [el("span", { class: "ck n", text: "x" }), el("span", { text: "fails" })]));
-    box.appendChild(el("span", null, [el("span", { class: "ck", text: "?" }), el("span", { text: "not recorded" })]));
+  function renderToggles() {
+    function count(id, pred) { var n = ALL.filter(pred).length; $(id).textContent = "(" + n + ")"; }
+    count("capped-count", function (r) { return !isTest(r) && isCapped(r); });
+    count("ended-count", function (r) { return !isTest(r) && !isCapped(r) && isLive(r); });
+    count("tests-count", isTest);
+    $("f-capped").checked = filt.capped; $("f-ended").checked = filt.ended; $("f-tests").checked = filt.tests;
   }
 
   /* ---------- headline ---------- */
-  function realRows() { return ALL.filter(function (r) { return !isTest(r); }); }
+  function isFull(r) { return r.split === "all" && r.n_tasks !== null && r.n_tasks >= FULL_TASKS; }
+  // a final score: closed loop, all 171 tasks, 2+ passes, nothing missing or dropped, code on main, not capped
+  function isFinal(r) {
+    return !isCapped(r) && isClosed(r) && isFull(r) && r.passes !== null && r.passes >= 2 &&
+      r.n_missing === 0 && r.n_dropped === 0 && r.branch === "main";
+  }
+  // best closed-loop run big enough to estimate a score (never capped, tiny or a pipeline test)
   function bestClosed() {
     var best = null;
     realRows().forEach(function (r) { if (isClosed(r) && !isSmoke(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
@@ -802,55 +263,48 @@
     realRows().forEach(function (r) { if (isFinal(r) && r.overall !== null && (!best || r.overall > best.overall)) best = r; });
     return best;
   }
+  // runs whose AI player differs from every run compared since
+  var PLAYER_NOTE = { "lb14-session-agent-dev-v1": "Older AI player than every run compared since, so this is a diagnostic, not the starting-model number." };
   function renderStatus() {
-    var box = $("status"), fin = bestFinal(), bc = bestClosed(), cls = "", head, why;
-    if (fin) {
-      var d = fin.overall - TARGET, thr = 2 * (fin.overall_std || FALLBACK_STD);
-      var real = Math.abs(d) >= thr;
-      cls = d > 0 && real ? "ok" : "warn";
-      head = "Final score: " + fmt(fin.overall) + (fin.overall_std !== null ? " ± " + fmt(fin.overall_std) : "") + " on all 171 tasks, " +
-        (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) + " compared with Genie 3" + (real ? "." : " (too small to count).");
-      why = "Run " + fin.exp + ": the AI player chose every move, the judge scored it " + fin.passes + " times, and the code is merged.";
-    } else if (bc) {
-      cls = "warn";
-      head = "In progress: our best score so far is " + fmt(bc.overall) + " on " + bc.n_tasks + " task" + (bc.n_tasks === 1 ? "" : "s") + ".";
-      why = "It can't be compared with Genie 3's 2.12 yet. A final score needs all of these: the AI player chooses every move, all 171 tasks, the judge scores each video at least twice, no task left unscored, the code is merged, and the run happens after we freeze the code.";
-    } else {
-      var ns = realRows().filter(function (r) { return isClosed(r) && isSmoke(r); }).length;
-      head = "In progress: no score to report yet.";
-      why = (ns ? ns + " tiny test run" + (ns === 1 ? " is" : "s are") + " logged, but they are too small to estimate a score. " : "No run is logged yet. ") +
-        "The first score appears after a run on all " + DEV_TASKS + " practice tasks, scored at least twice.";
-    }
-    // headline card: one number, one status chip, one comparison line; the protocol detail sits behind a disclosure
-    var shown = fin || bc;
-    box.className = "scorecard card " + cls; clear(box);
-    box.appendChild(el("div", { class: "label", text: fin ? "Final score" : "Our best score" }));
+    var box = $("status"), fin = bestFinal(), shown = fin || bestClosed();
+    box.className = "scorecard card" + (fin && fin.overall - TARGET >= 2 * (fin.overall_std || FALLBACK_STD) ? " ok" : "");
+    clear(box);
+    box.appendChild(el("div", { class: "label", text: fin ? "Final score" : "Best official score so far" }));
     var big = el("div", { class: "big" }, [document.createTextNode(shown ? fmt(shown.overall) : "-")]);
-    if (fin && fin.overall_std !== null) big.appendChild(el("span", { class: "pm", text: " ± " + fmt(fin.overall_std) }));
+    if (shown && shown.overall_std !== null) big.appendChild(el("span", { class: "pm", text: " ± " + fmt(shown.overall_std) }));
     box.appendChild(big);
-    box.appendChild(el("div", { class: "badges" }, [fin
-      ? el("span", { class: "badge " + (cls === "ok" ? "ok" : "warn"), text: "All 171 tasks" })
-      : bc ? el("span", { class: "badge warn", text: "Only " + bc.n_tasks + " of " + FULL_TASKS + " tasks" })
-           : el("span", { class: "badge", text: realRows().some(function (r) { return isClosed(r) && isSmoke(r); }) ? "Tiny test runs only" : "No runs yet" })]));
-    var vs = "Genie 3: " + TARGET.toFixed(2) + " (paper)";
-    if (fin) vs = (fin.overall - TARGET >= 0 ? "+" : "-") + Math.abs(fin.overall - TARGET).toFixed(2) + " vs Genie 3 " + TARGET.toFixed(2) + (Math.abs(fin.overall - TARGET) >= 2 * (fin.overall_std || FALLBACK_STD) ? "" : ", too small to count");
-    box.appendChild(el("p", { class: "vs", text: vs }));
-    var det = el("details", { class: "why" }, [el("summary", { text: fin ? "How this was measured" : "Why isn't this final yet?" }),
-      el("p", null, [document.createTextNode(head + " " + why + " "), el("a", { href: "#rigor", text: "How we measure" })])]);
-    box.appendChild(det);
-    box.appendChild(el("p", { class: "scale", text: "Scores run 1 to 5; higher is better." }));
+    if (shown) {
+      var b = el("div", { class: "badges" });
+      function badge(cls, text) { b.appendChild(el("span", { class: "badge " + cls, text: text })); }
+      badge(isFull(shown) ? "ok" : "warn", isFull(shown) ? "all 171 tasks" : shown.n_tasks + " of " + FULL_TASKS + " tasks");
+      badge(isClosed(shown) ? "ok" : "warn", isClosed(shown) ? "AI played" : "open loop");
+      badge(shown.passes >= 2 ? "ok" : "warn", shown.passes + " judge passes");
+      if (shown.n_missing || shown.n_dropped) badge("bad", "tasks unscored"); else if (shown.n_missing === 0 && shown.n_dropped === 0) badge("ok", "every task scored");
+      if (shown.branch && shown.branch !== "main") badge("warn", "code not merged");
+      box.appendChild(b);
+      box.appendChild(el("p", { class: "vs" }, [el("b", { text: shown.exp }), document.createTextNode(shown.notes ? ": " + shown.notes : "")]));
+      if (PLAYER_NOTE[shown.exp]) box.appendChild(el("p", { class: "vs", text: PLAYER_NOTE[shown.exp] }));
+    } else box.appendChild(el("p", { class: "vs", text: "No run big enough to estimate a score yet (24 or more tasks, 2 or more judge passes)." }));
+    var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
+    box.appendChild(el("p", { class: "vs", text: "Paper, all 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
+  }
+  function renderFull() {
+    var full = realRows().filter(function (r) { return isFull(r) && r.overall !== null; });
+    var most = 0; realRows().forEach(function (r) { if (r.overall !== null && r.n_tasks > most) most = r.n_tasks; });
+    $("full").textContent = full.length ? "" : "No full-benchmark score exists yet: every scored run so far covers at most " + most + " of the " + FULL_TASKS + " tasks, so none compares directly with the paper rows.";
+    $("full").hidden = !!full.length;
   }
   function renderRuler() {
     var host = $("ruler"); clear(host);
-    var W = Math.max(300, host.clientWidth || 700), narrow = W < 520, H = narrow ? 160 : 132;
+    var W = Math.max(300, host.clientWidth || 700), narrow = W < 520, H = narrow ? 150 : 124;
     var m = { l: 14, r: 14 };
-    var bc = bestClosed(), fin = bestFinal(), ours = fin || bc;
+    var fin = bestFinal(), ours = fin || bestClosed();
     var hi = Math.max(3, ours ? Math.ceil((ours.overall + 0.3) * 2) / 2 : 3);
     var x = function (v) { return m.l + ((v - 1) / (hi - 1)) * (W - m.l - m.r); };
-    var axisY = narrow ? 88 : 72;
+    var axisY = narrow ? 80 : 64;
     var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
       "aria-label": "Overall score on a 1 to " + hi + " axis. " + REFS.map(function (r) { return r.exp + " " + fmt(r.overall); }).join(", ") +
-        (ours ? ". Ours " + fmt(ours.overall) + (isFinal(ours) ? "" : " (partial)") : ". Ours: not yet scored") });
+        (ours ? ". Ours " + fmt(ours.overall) + (fin ? "" : " (partial)") : ". Ours: not yet scored") });
     svg.appendChild(sv("rect", { x: x(1), y: axisY - 3, width: x(TARGET) - x(1), height: 6, rx: 3, fill: "var(--wash)" }));
     svg.appendChild(sv("rect", { x: x(TARGET), y: axisY - 3, width: x(hi) - x(TARGET), height: 6, rx: 3, fill: "var(--good)", opacity: 0.18 }));
     svg.appendChild(sv("line", { x1: x(1), x2: x(hi), y1: axisY, y2: axisY, stroke: "var(--axis)" }));
@@ -860,7 +314,6 @@
       if (Math.abs(x(t) - oursX) > 16) svg.appendChild(sv("text", { x: x(t), y: axisY + 22, "text-anchor": t === 1 ? "start" : (t >= hi ? "end" : "middle"), text: t.toFixed(1) }));
     }
     svg.appendChild(sv("text", { x: x(hi), y: axisY - 10, "text-anchor": "end", style: "fill:var(--good)", text: "above Genie 3" }));
-    // reference markers, labels staggered on two rows above the axis
     var refs = REFS.slice().sort(function (a, b) { return a.overall - b.overall; });
     refs.forEach(function (r, i) {
       var cx = x(r.overall), ly = narrow ? axisY - 12 - i * 15 : axisY - 14 - (i % 2) * 18;
@@ -870,150 +323,196 @@
       var anchor = cx < 80 ? "start" : (cx > W - 80 ? "end" : "middle");
       svg.appendChild(sv("text", { class: isG ? "lab" : "", x: cx, y: ly, "text-anchor": anchor, text: (narrow ? ({ "Matrix-Game-3.0": "MG-3.0", "LingBot-World2": "LingBot", "SANA-WM": "SANA" }[r.exp] || r.exp) : r.exp) + " " + fmt(r.overall) }));
     });
-    // ours, below the axis
     if (ours) {
-      var ox = x(ours.overall), partial = !isFinal(ours), oy = axisY + (narrow ? 50 : 40);
+      var ox = x(ours.overall), partial = !fin, oy = axisY + (narrow ? 50 : 40);
       svg.appendChild(sv("line", { x1: ox, x2: ox, y1: axisY + 6, y2: oy - 12, stroke: "var(--s1)", "stroke-width": 2 }));
       svg.appendChild(sv("circle", { cx: ox, cy: axisY, r: 7, fill: partial ? "var(--surface)" : "var(--s1)", stroke: "var(--s1)", "stroke-width": 2.5 }));
       var an = ox < 120 ? "start" : (ox > W - 120 ? "end" : "middle");
       svg.appendChild(sv("text", { class: "lab", x: ox, y: oy, "text-anchor": an, style: "fill:var(--s1)",
-        text: "Ours " + fmt(ours.overall) + (partial ? " (" + ours.n_tasks + " task" + (ours.n_tasks === 1 ? "" : "s") + ", partial)" : "") }));
+        text: "Ours " + fmt(ours.overall) + (partial ? " (" + ours.n_tasks + " tasks, partial)" : "") }));
     }
     host.appendChild(svg);
-    $("ruler-cap").textContent = "Published scores on all 171 tasks. Scores run from 1 to 5; this view shows 1 to " + hi + ". " +
-      (ours ? (isFinal(ours) ? "Our marker is a final score." : "A hollow marker means our score covers only some tasks.") : "Our marker appears after our first run on all " + DEV_TASKS + " practice tasks.");
   }
-
-  /* ---------- families ---------- */
-  // one table: family, paper scores, our headline run, and our gap to Genie 3
+  // compact family table: paper rows next to the headline run
   function renderFams() {
     var t = $("fams"); clear(t);
     var b = bestFinal() || bestClosed();
-    var top = null; REFS.forEach(function (r) { if (r !== GENIE && r.exp === "LingBot-World2") top = r; });
-    var oursHead = b && !isFinal(b) ? "Ours (" + b.n_tasks + " task" + (b.n_tasks === 1 ? "" : "s") + ")" : "Ours";
+    var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
     var hr = el("tr");
-    [["Task type", "Task type", "exp"], ["Genie 3", "G3", "num"], ["LingBot v2", "LB", "num"], [oursHead, "Ours", "num"], ["Ours vs Genie 3", "Gap", "num"]].forEach(function (h) {
+    [["Task type", "Task type", "exp"], ["Genie 3", "G3", "num"], ["LingBot v2", "LB", "num"],
+     [b ? "Ours (" + b.n_tasks + " tasks)" : "Ours", "Ours", "num"]].forEach(function (h) {
       hr.appendChild(el("th", { class: h[2], scope: "col" }, headLabel([0, h[0], 0, 0, h[1]])));
     });
     t.appendChild(el("thead", null, [hr]));
     var tb = el("tbody");
     FAMS.forEach(function (f) {
       var k = f[0], info = FAMINFO[k], tr = el("tr");
-      tr.appendChild(el("td", { class: "exp" }, [el("div", { class: "nm", text: info.name }), el("div", { class: "meta-line", text: info.q + " (" + info.n + " tasks)" })]));
-      // underline the leader; our run competes only once it is a final score (all tasks, every check met)
-      var ours = b && b[k] !== null && isFinal(b) ? b[k] : null;
-      var best = Math.max(GENIE[k], top[k], ours === null ? -Infinity : ours);
-      tr.appendChild(el("td", { class: "num" + (GENIE[k] === best ? " best" : ""), text: fmt(GENIE[k]) }));
-      tr.appendChild(el("td", { class: "num" + (top[k] === best ? " best" : ""), text: fmt(top[k]) }));
-      var o = el("td", { class: "num" + (ours !== null && ours === best ? " best" : "") });
-      if (b && b[k] !== null) o.textContent = fmt(b[k]); else o.appendChild(el("span", { class: "dash", title: "No run on all practice tasks covers this task type yet; tiny test runs are not counted", text: "none yet" }));
-      tr.appendChild(o);
-      var g = el("td", { class: "num" });
-      if (b && b[k] !== null) {
-        var d = b[k] - GENIE[k];
-        g.appendChild(el("span", { class: "badge " + (isFinal(b) ? (d >= 0 ? "ok" : "bad") : "partial"), title: isFinal(b) ? "" : "Partial run: not comparable to the paper's full-benchmark score", text: (d >= 0 ? "+" : "-") + Math.abs(d).toFixed(2) }));
-      } else dashCell(g);
-      tr.appendChild(g);
+      tr.appendChild(el("td", { class: "exp" }, [el("span", { class: "nm", text: info.name }), el("span", { class: "meta-line q", text: " " + info.q })]));
+      tr.appendChild(el("td", { class: "num", text: fmt(GENIE[k]) }));
+      tr.appendChild(el("td", { class: "num", text: fmt(lb[k]) }));
+      var o = el("td", { class: "num" }); if (b && b[k] !== null) o.textContent = fmt(b[k]); else dashCell(o); tr.appendChild(o);
       tb.appendChild(tr);
     });
     t.appendChild(tb);
   }
 
-  /* ---------- methods ---------- */
-  function rowByExp(name) {
-    var hit = null; ALL.forEach(function (r) { if (r.exp === name && (!hit || (r.t || 0) > (hit.t || 0))) hit = r; });
-    return hit;
+  /* ---------- story content (edit here as work lands) ---------- */
+  var PR = "https://github.com/" + REPO + "/pull/";
+  var FAMINFO = {
+    gc: { name: "Geometry consistency", q: "layout holds as the camera moves" },
+    if: { name: "Interaction fidelity", q: "each action does what was asked" },
+    insight: { name: "Insight evolution", q: "an on-screen process keeps going" },
+    outsight: { name: "Out-of-sight evolution", q: "hidden things change sensibly" }
+  };
+  // group: now (model-side A/B) | parked (player-side, tried) | cand (merged or proposed, unscored)
+  // arms: [label, exp] pairs read from results/experiments.csv; the first is the control. cells: per-task readout from results/reports/.
+  var METHODS = [
+    { group: "now", title: "Turn calibration", arms: [["off", "fx14-model-dev-v2-a1"], ["on", "fx14-model-dev-v2-a2"]],
+      body: "One turn key turns the angle the task prompt names (22.5 degrees sideways, 20 up or down) instead of the default 34 and 11.",
+      links: [["#23", PR + "23"]] },
+    { group: "now", title: "Caption prompt", arms: [["off", "fx14-model-dev-v2-a2"], ["on", "fx14-model-dev-v2-a3"]], also: ["ins14-base-v2", "ins14-caption-v1"],
+      body: "Conditions the model on the task's scene caption instead of the player goal, which reads \"wait and observe\" on 29 of 30 insight tasks. Earlier ins14 runs (closed-loop harness, but insight tasks are wait-only, so the player is never called): the control ins14-base-v2 was generated, and the caption arm ins14-caption-v1 was cancelled.",
+      links: [["#32", PR + "32"], ["#63", PR + "63"]] },
+    { group: "now", title: "Insight director, IF slow translation (re-anchor on, cannot fire with fixed actions)", arms: [["without", "fx14-model-dev-v2-a3"], ["with", "fx14-model-dev-v2-a4"]],
+      body: "Adds an insight prompt cue and half-speed camera translation on IF tasks, on top of the caption prompt. Re-anchoring is switched on in the second arm, but fixed action scripts replay each task as one call, so it never fires there; its test is the scripted-player GC A/B below.",
+      links: [["#46", PR + "46"], ["#90", PR + "90"]] },
+    { group: "now", title: "Conditioning strength per denoising step", arms: [["control", "cs14-fx-v1-a1"], ["schedule", "cs14-fx-v1-a2"], ["+ text 1.0", "cs14-fx-v1-a3"], ["early 4", "cs14-fx-v1-a4"]],
+      body: "Scales camera and text conditioning on the early denoising steps of stationary and third-person chunks and restores it on the late steps. All four arms have the caption prompt and turn calibration on.",
+      links: [["#101", PR + "101"]] },
+    { group: "now", title: "Camera-conditioning weight modulation", arms: [["control", "wm14-fx-v1-a1"], ["weight-mod", "wm14-fx-v1-a2"]], also: ["wm14-ctl-c10-v1", "wm14-arm-c10-v1"],
+      body: "Scales how strongly the model follows the camera command, per chunk: off on still chunks, slightly lower on moving third-person chunks. Both arms have the caption prompt and turn calibration on. The earlier c10 runs were capped smoke checks from the PR branch.",
+      links: [["#87", PR + "87"], ["#104", PR + "104"]] },
+    { group: "now", title: "IF identity cue", arms: [["control", "wm14-fx-v1-a1"], ["cue", "wm14-fx-v1-a3"]],
+      body: "Appends a fixed sentence about keeping each subject's identity to the model prompt on third-person IF tasks.",
+      links: [["#104", PR + "104"]] },
+    { group: "now", title: "Attention window", arms: [["control", "mem14-fx-v1-a1"], ["sink 12", "mem14-fx-v1-a2"], ["local 36", "mem14-fx-v1-a3"], ["both", "mem14-fx-v1-a4"]],
+      body: "Changes how many latent frames the model keeps attending to (sink 6 and local window 18 by default), which sets how far back it remembers. Aimed at insight.",
+      links: [["#104", PR + "104"]] },
+    { group: "now", title: "GC chunk-level flags (scripted player)", arms: [["control", "sp14-gc-v1-a1"], ["chunk director", "sp14-gc-v1-a2"], ["ease turns", "sp14-gc-v1-a3"], ["re-anchor", "sp14-gc-v1-a4"]],
+      body: "The scripted player replays the dataset moves chunk by chunk, so flags that act per chunk can fire. Not a closed-loop score.",
+      links: [["#100", PR + "100"], ["#102", PR + "102"]] },
+    { group: "parked", title: "Return stop", arms: [["off", "rs13-arms-v1-a1"], ["on", "rs13-arms-v1-a2"]], cells: "2 of 3 GC tasks up a full point, 0 of 3 out-of-sight",
+      body: "Ends the rollout once the commanded camera has left and come back to the start. 1.3B model, one run per side, player hint and turn calibration on in both.",
+      links: [["#75", PR + "75"]] },
+    { group: "parked", title: "GC completion hint", arms: [["off", "gch13-arms-v1-a1"], ["on", "gch13-arms-v1-a2"]], cells: "2 of 3 tasks down a full point",
+      body: "Tells the player to run the camera path once and end. 1.3B model, one run per side. It ran before the player's empty-reply fix (#89).",
+      links: [["#78", PR + "78"], ["#89", PR + "89"]] },
+    { group: "parked", title: "Player hint", arms: [["no flags", "smk14-arms-gc-v2-a1"], ["turn cal + hint", "smk14-arms-gc-v2-a2"]],
+      body: "Tells the player how far one action turns the camera and where the commanded camera is. Turn calibration is also on in the second arm. Only capped smoke runs exist, which never count as scores.",
+      links: [["#59", PR + "59"]] },
+    { group: "cand", title: "Proposal batch 2: IF horizon, IF camera hint, history endpoints, IF repeat check",
+      body: "Merged behind opt-in flags. Its insight director and IF slow translation are in the model-side runs above.", links: [["#90", PR + "90"]] },
+    { group: "cand", title: "Proposal batch 3: IF subject director",
+      body: "Merged behind opt-in flags. The batch's GC chunk director and GC ease turns are in the scripted-player GC A/B above.", links: [["#100", PR + "100"]] },
+    { group: "cand", title: "Proposal batch 4: weight-modulation knobs, measured turn",
+      body: "Merged behind opt-in flags and not run yet. Weight modulation, the IF identity cue and the attention window are under test above.", links: [["#104", PR + "104"]] }
+  ];
+  var GROUPS = [
+    ["now", "Testing now: model-side", "Fixed action scripts or the scripted player (no AI player), 14B model, official judge, 4 passes."],
+    ["parked", "Tried and parked: player-side", "AI player, official judge, 4 passes, small task sets. Not adopted."],
+    ["cand", "Candidates, not yet scored", "Off by default. Not results."]
+  ];
+  function rowText(r) {
+    if (!r) return "not logged";
+    if (r.overall !== null && !isCapped(r)) return fmt(r.overall) + " on " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + ", " + r.passes + " passes";
+    if (isCapped(r)) return "capped smoke" + (r.status ? ", " + r.status : "");
+    return isStale(r) ? "no result" : (r.status || "no score");
   }
-  // one row per change: name, status, measured result; description and PR links open on click
+  function armsResult(m) {
+    if (!m.arms) return { text: "not scored", none: true };
+    var rows = m.arms.map(function (a) { return rowByExp(a[1]); });
+    if (rows.every(function (r) { return r && r.overall !== null && !isCapped(r); })) {
+      var s = rows.length === 2 ? fmt(rows[0].overall) + " → " + fmt(rows[1].overall) + " overall, " + rows[1].n_tasks + " tasks"
+        : m.arms.map(function (a, i) { return a[0] + " " + fmt(rows[i].overall); }).join(" · ");
+      return { text: s + (m.cells ? "; " + m.cells : ""), none: false };
+    }
+    if (rows.some(function (r) { return r && isCapped(r); })) return { text: "capped smoke only, no decision", none: true };
+    if (rows.some(function (r) { return r && r.status === "running" && !isStale(r); })) return { text: "running", none: true, run: true };
+    if (rows.some(function (r) { return r && r.status === "generated"; })) return { text: "generated, not scored", none: true };
+    if (rows.some(function (r) { return r && isEnded(r); })) return { text: "no result yet", none: true };
+    return { text: "not scored", none: true };
+  }
   function renderMethods() {
     var box = $("methods"); clear(box);
-    var order = { shipped: 0, testing: 1, planned: 2, dropped: 3 };
-    METHODS.slice().sort(function (a, b) { return order[a.status] - order[b.status]; }).forEach(function (mth) {
-      // evidence is a scored, uncapped run; capped smoke and status rows only feed the "running" note
-      var ev = mth.evidence.map(rowByExp).filter(function (r) { return r && !isLive(r) && !isCapped(r); });
-      if (mth.match) realRows().forEach(function (r) { if (!isLive(r) && !isCapped(r) && mth.match(r) && ev.indexOf(r) < 0) ev.push(r); });
-      // score-less rows still running or generated (capped smoke ends as generated); failed, cancelled and stale rows are not listed
-      var pend = function (r) { return r && isLive(r) && !isEnded(r); };
-      var inflight = mth.evidence.map(rowByExp).filter(pend);
-      if (mth.match) realRows().forEach(function (r) { if (pend(r) && mth.match(r) && inflight.indexOf(r) < 0) inflight.push(r); });
-      var anyRunning = inflight.some(function (r) { return r.status === "running"; });
-      // a testing card counts as measured only with a run big enough to estimate a score (not isSmoke); smaller runs are listed in the
-      // details but give no headline number, because the first match is often the control arm of some other flag's A/B
-      var sized = ev.filter(function (r) { return !isSmoke(r); });
-      var smallOnly = mth.status === "testing" && ev.length > 0 && !sized.length;
-      var measured = mth.status === "testing" && sized.length > 0;
-      if (measured) ev = sized.concat(ev.filter(isSmoke));
-      var st = measured ? "shipped" : mth.status;
-      var stText = measured ? "measured" : smallOnly ? "small tests only" : STATUS_LABEL[mth.status];
-      var result;
-      if (smallOnly) result = el("span", { class: "res none", text: ev.length + " small run" + (ev.length === 1 ? "" : "s") + ", no decision" });
-      else if (ev.length) result = el("span", { class: "res" }, [el("b", { text: fmt(ev[0].overall) }), document.createTextNode(" on " + ev[0].n_tasks + " task" + (ev[0].n_tasks === 1 ? "" : "s"))]);
-      else if (mth.status === "planned") result = el("span", { class: "res none", text: "in review" });
-      else if (mth.status === "dropped") result = el("span", { class: "res none", text: "not run" });
-      else if (inflight.length) result = el("span", { class: "res none", text: inflight.every(isCapped) ? (anyRunning ? "capped smoke running" : "capped smoke, no score") : (anyRunning ? "run in progress" : "generated, not scored") });
-      else if (!mth.fams.length) result = el("span", { class: "res none", text: "tooling" });
-      else result = el("span", { class: "res none", text: mth.baseline ? "no fair comparison yet" : "not tested yet" });
-      var summary = el("summary", null, [
-        el("span", { class: "nm", text: mth.title.replace(/^[A-D]\. /, "") }),
-        el("span", { class: "badge " + ({ shipped: "ok", testing: "warn", planned: "partial" }[st] || ""), text: stText }),
-        result
-      ]);
-      var body = el("div", { class: "more" }, [el("p", { text: mth.what || mth.body })]);
-      if (mth.what && mth.body) body.appendChild(el("p", { class: "std", text: mth.body }));
-      if (ev.length) body.appendChild(el("p", { class: "std", text: "Runs: " + ev.map(function (r) { return r.exp + " (" + fmt(r.overall) + ", " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + (isClosed(r) ? "" : ", open loop") + ")"; }).join("; ") }));
-      else if (inflight.length) body.appendChild(el("p", { class: "std", text: "Logged without a score: " + inflight.map(function (r) { return r.exp + " (" + (isCapped(r) ? "capped smoke, " : "") + (r.status === "running" ? "running" : "generated") + ")"; }).join("; ") + "." }));
-      else if (mth.baseline) { var br = rowByExp(mth.baseline); body.appendChild(el("p", { class: "std", text: "Baseline logged: " + mth.baseline + (br && br.overall !== null ? " (" + fmt(br.overall) + ")" : "") + "." })); }
-      var links = el("p", { class: "links" });
-      mth.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: (/\/issues\//.test(l[1]) ? "Issue " : "PR ") + l[0] })); });
-      if (mth.doc) links.appendChild(el("a", { href: mth.doc, target: "_blank", rel: "noopener", text: "Research note" }));
-      if (links.childNodes.length) body.appendChild(links);
-      box.appendChild(el("li", null, [el("details", null, [summary, body])]));
+    GROUPS.forEach(function (g) {
+      var items = METHODS.filter(function (m) { return m.group === g[0]; });
+      if (!items.length) return;
+      box.appendChild(el("h3", { class: "mgroup", text: g[1] }));
+      box.appendChild(el("p", { class: "mnote", text: g[2] }));
+      var ul = el("ul", { class: "mlist" });
+      items.forEach(function (m) {
+        var res = armsResult(m);
+        var summary = el("summary", null, [el("span", { class: "nm", text: m.title }),
+          el("span", { class: "res" + (res.none ? " none" : "") + (res.run ? " run" : ""), text: res.text })]);
+        var body = el("div", { class: "more" }, [el("p", { text: m.body })]);
+        var exps = (m.arms || []).map(function (a) { return [a[0], a[1]]; }).concat((m.also || []).map(function (e) { return ["", e]; }));
+        if (exps.length) body.appendChild(el("p", { class: "std", text: "Runs: " + exps.map(function (a) { return a[1] + (a[0] ? " (" + a[0] + ")" : "") + ": " + rowText(rowByExp(a[1])); }).join("; ") + "." }));
+        var links = el("p", { class: "links" });
+        m.links.forEach(function (l) { links.appendChild(el("a", { href: l[1], target: "_blank", rel: "noopener", text: "PR " + l[0] })); });
+        body.appendChild(links);
+        ul.appendChild(el("li", null, [el("details", null, [summary, body])]));
+      });
+      box.appendChild(ul);
     });
   }
 
-  /* ---------- record progression ---------- */
-  function renderRecords() {
-    var t = $("records"); clear(t);
-    var hr = el("tr");
-    [["Experiment", "exp"], ["Overall", "num"], ["Gain", "num"], ["Verdict", ""], ["Commit", "hide-sm"]].forEach(function (h) {
-      hr.appendChild(el("th", { class: h[1], scope: "col", text: h[0] }));
+  /* ---------- footer ---------- */
+  function renderFoot() {
+    var f = $("foot"); clear(f);
+    function A(href, text) { return el("a", { href: href, target: "_blank", rel: "noopener", text: text }); }
+    function T(t) { return document.createTextNode(t); }
+    f.appendChild(el("h2", { class: "credhead", text: "Method" }));
+    f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown." }));
+    f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
+    f.appendChild(el("p", null, [T("Rows come from "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "results/experiments.csv"), T(" (" + source + "). "), A("https://github.com/" + REPO, "Repository"), T(".")]));
+    f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
+    var ul = el("ul", { class: "credits", "aria-label": "Credits" });
+    function li(kids) { ul.appendChild(el("li", null, kids)); }
+    li([el("b", { text: "PlayWorld" }), T(" benchmark, harness, verifier and task data: Ding et al., “PlayWorld: Benchmarking World Models with Agent Players over Long-Horizon Objectives”, "), A("https://arxiv.org/abs/2608.13552", "arXiv:2608.13552"), T(", "), A("https://github.com/kxding/PlayWorld", "code"), T(", "), A("https://huggingface.co/datasets/jocelynd/playworld-bench", "data"), T(". Task images come from Pexels and web image search and keep their sources’ terms.")]);
+    li([el("b", { text: "LingBot-World v2" }), T(", Robbyant Team, “Infinite Worlds with Versatile Interactions”, "), A("https://arxiv.org/abs/2607.07534", "arXiv:2607.07534"), T(", "), A("https://github.com/Robbyant/lingbot-world-v2", "code"), T(", CC BY-NC-SA 4.0. Its weights and modules run unchanged at a pinned commit; "), A("https://github.com/" + REPO + "/blob/main/adapters/lingbot_world2/session.py", "our session wrapper"), T(" re-implements its causal sampling loop.")]);
+    li([T("Reference scores for Genie 3 (Google DeepMind), SANA-WM (NVIDIA, "), A("https://github.com/NVlabs/Sana", "Sana"), T("), Matrix-Game 3.0 (Skywork AI, "), A("https://github.com/SkyworkAI/Matrix-Game", "Matrix-Game"), T(") and LingBot-World v2 are as reported in the PlayWorld paper.")]);
+    li([T("Scoring: Gemini 3.1 Pro (Google) via the PlayWorld verifier. Agent player: OpenAI gpt-6-luna for compared runs; the 24-task baseline lb14-session-agent-dev-v1 used gpt-4.1-mini.")]);
+    li([T("Team: "), A("https://github.com/benceruleanlu", "Benjamin Lu"), T(", "), A("https://github.com/Hcoder10", "Hari Gangadharan"), T(", "), A("https://github.com/jpoehnelt", "Justin Poehnelt"), T(", "), A("https://github.com/kevvzhang", "Kevv"), T(". Built at the "), A("https://iterate.inc/ai-research", "Iterate AI Research Hackathon"), T(", San Francisco, November 2026. Site built with "), A("https://astro.build", "Astro"), T(".")]);
+    f.appendChild(ul);
+  }
+
+  /* ---------- watch tabs: compare player or one run's scenes ---------- */
+  var mode = "compare";
+  function setMode(m, user) {
+    mode = m;
+    [["compare", "tab-compare", "compare-clips"], ["scenes", "tab-scenes", "scenes"]].forEach(function (x) {
+      var on = x[0] === m;
+      $(x[1]).setAttribute("aria-selected", String(on));
+      $(x[1]).setAttribute("tabindex", on ? "0" : "-1");
+      $(x[2]).hidden = !on;
+      if (!on) Array.prototype.forEach.call($(x[2]).querySelectorAll("video"), function (v) { if (!v.paused) v.pause(); });
     });
-    t.appendChild(el("thead", null, [hr]));
-    var tb = el("tbody");
-    var rows = realRows().filter(function (r) { return isClosed(r) && !isCapped(r) && r.overall !== null && r.t !== null; })
-      .sort(function (a, b) { return a.t - b.t || a.order - b.order; });
-    var best = {}, recs = [];
-    rows.forEach(function (r) {
-      // "custom" covers any explicit --tasks list; two custom runs may score different tasks, so never compare them
-      var k = r.split === "custom" ? "custom|" + r.exp : r.split + "|" + r.n_tasks, prev = best[k];
-      if (!prev || r.overall > prev.overall) { recs.push([r, prev || null]); best[k] = r; }
+    if (m !== "compare" && $("cv-play").textContent === "Pause") $("cv-play").click();
+    if (!user) return;
+    // the other mode's deep-link params would win on reload, so drop them
+    try {
+      var q = new URLSearchParams(location.search);
+      (m === "scenes" ? ["compare", "a", "b", "c"] : ["scenes", "scene"]).forEach(function (k) { q.delete(k); });
+      var qs = q.toString();
+      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + "#" + (m === "scenes" ? "scenes" : "compare-clips"));
+    } catch (e) { /* sandboxed */ }
+    // each tab writes its own selection back to the URL
+    if (m === "scenes") syncUrl(); else document.dispatchEvent(new CustomEvent("pwa:mode", { detail: m }));
+  }
+  function initMode() {
+    var q = new URLSearchParams(location.search);
+    setMode(q.has("compare") ? "compare" : (q.has("scenes") || location.hash === "#scenes") ? "scenes" : "compare", false);
+    $("tab-compare").addEventListener("click", function () { setMode("compare", true); });
+    $("tab-scenes").addEventListener("click", function () { setMode("scenes", true); });
+    ["tab-compare", "tab-scenes"].forEach(function (id) {
+      $(id).addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+        e.preventDefault();
+        var next = mode === "compare" ? "scenes" : "compare";
+        if (e.key === "Home") next = "compare"; else if (e.key === "End") next = "scenes";
+        setMode(next, true); $(next === "scenes" ? "tab-scenes" : "tab-compare").focus();
+      });
     });
-    if (!recs.length) tb.appendChild(el("tr", null, [el("td", { class: "empty", colspan: "5", text: "No closed-loop runs yet." })]));
-    recs.reverse().forEach(function (p) {
-      var r = p[0], prev = p[1], tr = el("tr");
-      tr.appendChild(el("td", { class: "exp" }, [el("div", { class: "nm", text: r.exp }),
-        el("div", { class: "meta-line", text: r.split + " split, " + r.n_tasks + " task" + (r.n_tasks === 1 ? "" : "s") + " · " + fmtTime(r.t) + " UTC" }), badgesFor(r)]));
-      var o = el("td", { class: "num overall" }, [el("div", { text: fmt(r.overall) })]);
-      if (r.overall_std !== null) o.appendChild(el("div", { class: "std", text: "±" + fmt(r.overall_std) }));
-      tr.appendChild(o);
-      var verdict, g = el("td", { class: "num" });
-      if (prev) {
-        var d = r.overall - prev.overall, thr = thresholdFor(prev, r), real = d >= thr;
-        g.appendChild(el("div", { class: real ? "good" : "", text: "+" + d.toFixed(2) }));
-        g.appendChild(el("div", { class: "std", text: "from " + fmt(prev.overall) }));
-        verdict = el("span", { class: "badge " + (real ? "ok" : ""), title: "Threshold 2x std = " + thr.toFixed(2), text: real ? "real gain" : "too small to count" });
-      } else {
-        dashCell(g);
-        verdict = el("span", { class: "badge", title: r.split === "custom" ? "Run on a hand-picked list of tasks. The log does not record which ones, so it is not compared with other runs." : "", text: r.split === "custom" ? "hand-picked tasks, not compared" : "first run on these tasks" });
-      }
-      tr.appendChild(g);
-      tr.appendChild(el("td", null, [verdict]));
-      var cm = el("td", { class: "hide-sm" });
-      if (r.sha && /^[0-9a-f]{7,40}$/i.test(r.sha)) cm.appendChild(el("a", { href: COMMIT + r.sha, target: "_blank", rel: "noopener", text: r.sha.slice(0, 7) })); else dashCell(cm);
-      tr.appendChild(cm);
-      tb.appendChild(tr);
-    });
-    t.appendChild(tb);
   }
 
   /* ---------- scenes ---------- */
@@ -1083,7 +582,7 @@
     var lb = $("sc-labels"); clear(lb); lb.hidden = true;
     if (!runs.length) {
       empty.hidden = false; empty.textContent = "No scenes published yet. Each run that generates videos adds them to a GitHub Release.";
-      filt2.hidden = true; $("sc-note").hidden = true; $("sc-files").hidden = true; return;
+      filt2.hidden = true; $("sc-files").hidden = true; return;
     }
     filt2.hidden = false;
     var rs = $("sc-run"), fs = $("sc-fam");
@@ -1109,7 +608,7 @@
     var one = scenesTask ? tasks.filter(function (t) { return t.task_id === scenesTask; })[0] : null;
     if (one) {
       // deep link to one rollout: show it with the player open, and a way back to the whole run
-      empty.hidden = true; $("sc-note").hidden = !one.reason;
+      empty.hidden = true;
       grid.appendChild(sceneCard(one, true));
       var back = el("button", { class: "scmore", type: "button", text: "Show all " + tasks.length + " scenes of this run" });
       back.addEventListener("click", function () { scenesTask = ""; renderScenes(); syncUrl(); });
@@ -1119,7 +618,6 @@
     }
     var list = tasks.filter(function (t) { return !scenesFam || t.family === scenesFam; });
     empty.hidden = list.length > 0; if (!list.length) empty.textContent = "No tasks in this family for this run.";
-    $("sc-note").hidden = !list.some(function (t) { return t.reason; });
     var shown = scenesAll ? list : list.slice(0, SCENES_SHOWN);
     shown.forEach(function (t) { grid.appendChild(sceneCard(t)); });
     if (list.length > SCENES_SHOWN) {
@@ -1169,36 +667,31 @@
 
   /* ---------- render all ---------- */
   function renderAll() {
-    var vis = visible();
-    pruneSel(vis);
-    renderStatus(); renderRuler(); renderFams(); renderMethods(); renderRecords(); renderSpeed();
-    renderTiles(); renderBoard(); renderBarChips(vis); renderBars(vis); renderLine(vis); renderCompare(vis);
+    renderStatus(); renderRuler(); renderFams(); renderFull(); renderMethods();
+    renderToggles(); renderBoard();
     syncUrl();
     var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
   }
   /* ---------- shareable URL state ---------- */
-  var URLKEYS = [["runner", "runner"], ["split", "split"], ["action", "action"], ["branch", "branch"]];
   function readUrl() {
     var q = new URLSearchParams(location.search);
-    URLKEYS.forEach(function (k) { filt[k[1]] = q.get(k[0]) || ""; }); // unknown values are dropped by renderFilters
     filt.tests = q.get("tests") === "1";
+    filt.capped = q.get("capped") === "1";
     filt.ended = q.get("ended") === "1";
-    var sv = q.get("sort") || "", d = sv.charAt(0) === "-" ? -1 : 1, sk = sv.replace(/^-/, "");
+    var sv2 = q.get("sort") || "", d = sv2.charAt(0) === "-" ? -1 : 1, sk = sv2.replace(/^-/, "");
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
     scenesExp = q.get("scenes") || "";
     scenesTask = scenesExp ? (q.get("scene") || "") : "";
-    cmpBase = q.get("base") || ""; // unknown values fall back to the default in renderCompare
   }
   function syncUrl() {
     try {
       var q = new URLSearchParams(location.search);
-      URLKEYS.forEach(function (k) { if (filt[k[1]]) q.set(k[0], filt[k[1]]); else q.delete(k[0]); });
-      if (filt.tests) q.set("tests", "1"); else q.delete("tests");
-      if (filt.ended) q.set("ended", "1"); else q.delete("ended");
+      ["tests", "capped", "ended"].forEach(function (k) { if (filt[k]) q.set(k, "1"); else q.delete(k); });
       if (sort.key === "overall" && sort.dir < 0) q.delete("sort"); else q.set("sort", (sort.dir < 0 ? "-" : "") + sort.key);
-      if (cmpBase && cmpBase !== cmpAuto) q.set("base", cmpBase); else q.delete("base");
-      if (scenesExp && (scenesExp !== scenesDefault || scenesTask)) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
-      if (scenesTask) q.set("scene", scenesTask); else if (scenesIdx) q.delete("scene");
+      if (mode === "scenes") {
+        if (scenesExp && (scenesExp !== scenesDefault || scenesTask)) q.set("scenes", scenesExp); else if (scenesDefault) q.delete("scenes");
+        if (scenesTask) q.set("scene", scenesTask); else if (scenesIdx) q.delete("scene");
+      }
       var qs = q.toString();
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed or file: origins may refuse */ }
@@ -1213,7 +706,7 @@
       var timer = null;
       h.parentNode.insertBefore(wrap, h); wrap.appendChild(h); wrap.appendChild(a); wrap.appendChild(note);
       a.addEventListener("click", function (e) {
-        if (!(navigator.clipboard && navigator.clipboard.writeText)) return; // plain navigation
+        if (!(navigator.clipboard && navigator.clipboard.writeText)) return;
         e.preventDefault();
         var url = location.origin + location.pathname + location.search + "#" + id;
         navigator.clipboard.writeText(url).then(function () {
@@ -1225,18 +718,13 @@
     });
   }
   function wire() {
-    $("f-runner").addEventListener("change", function (e) { filt.runner = e.target.value; renderAll(); });
-    $("f-split").addEventListener("change", function (e) { filt.split = e.target.value; renderAll(); });
-    $("f-action").addEventListener("change", function (e) { filt.action = e.target.value; renderAll(); });
-    $("f-branch").addEventListener("change", function (e) { filt.branch = e.target.value; renderAll(); });
-    $("f-tests").addEventListener("change", function (e) { filt.tests = e.target.checked; renderFilters(); renderAll(); });
-    $("f-ended").addEventListener("change", function (e) { filt.ended = e.target.checked; renderAll(); });
-    $("charts-wrap").addEventListener("toggle", function () { if ($("charts-wrap").open) { var v = visible(); renderBars(v); renderLine(v); } });
-    $("cmp-base").addEventListener("change", function (e) { cmpBase = e.target.value; renderCompare(visible()); syncUrl(); });
+    ["tests", "capped", "ended"].forEach(function (k) {
+      $("f-" + k).addEventListener("change", function (e) { filt[k] = e.target.checked; renderBoard(); syncUrl(); });
+    });
     var rz = null, lastW = window.innerWidth;
     window.addEventListener("resize", function () {
       if (window.innerWidth === lastW) return; lastW = window.innerWidth;
-      clearTimeout(rz); rz = setTimeout(function () { var v = visible(); renderRuler(); renderBars(v); renderLine(v); }, 120);
+      clearTimeout(rz); rz = setTimeout(renderRuler, 120);
     });
   }
 
@@ -1263,10 +751,10 @@
       return get("experiments.csv", 6000).then(function (t) { return { rows: toRows(t), s: "bundled snapshot (live fetch from GitHub failed)" }; });
     });
   }
-  wire(); wireScenes(); addAnchors();
+  initMode(); wire(); wireScenes(); addAnchors();
   load().then(function (o) { ALL = o.rows; source = o.s; })
     .catch(function () { ALL = []; source = "unavailable: could not load the live or the bundled CSV"; })
-    .then(function () { readUrl(); renderFilters(); renderFoot(); renderCkLegend(); renderAll(); loadScenes(); shareData(); });
+    .then(function () { readUrl(); renderFoot(); renderAll(); loadScenes(); shareData(); });
   // hand the loaded rows and shared helpers to the Compare player (src/scripts/compare.js)
   function shareData() {
     window.PWA_SITE = { rows: ALL, getJson: getJson, famName: function (f) { return FAMINFO[f] ? FAMINFO[f].name : (f || "-"); },
