@@ -29,6 +29,40 @@ import * as RunInfo from "./runinfo.js";
     (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
     return e;
   }
+  // The judge's reason: the English display copy (translated after scoring) with a toggle for the judge's original,
+  // which is authoritative; the original alone, marked untranslated, when no copy exists.
+  // A failing pass (gate, IF/OE check, error) that is not the representative one keeps its own reason under it.
+  function judgeComment(t, open) {
+    if (!t.reason) return null;
+    var attrs = open ? { open: "" } : null;
+    var failSt = (t.status || []).filter(function (s) { return s !== "ok"; }).join(", ") || "failed";
+    var failHead = t.fail_reason ? "Pass " + (t.fail_pass === null || t.fail_pass === undefined ? "?" : t.fail_pass) + " (" + failSt + "): " : "";
+    if (t.reason_en) {
+      var origs = [el("p", { class: "jorig", text: t.reason })];
+      var kids = [el("summary", { text: "Judge's comment (translated from the judge's original)" }), el("p", { text: t.reason_en })];
+      if (t.fail_reason) {
+        kids.push(el("p", { class: "jfail", text: failHead + (t.fail_reason_en || t.fail_reason) }));
+        if (t.fail_reason_en) origs.push(el("p", { class: "jorig", text: failHead + t.fail_reason }));
+      }
+      origs.forEach(function (o) { o.hidden = true; });
+      var btn = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
+      btn.addEventListener("click", function () {
+        var hide = !origs[0].hidden;
+        origs.forEach(function (o) { o.hidden = hide; });
+        btn.textContent = hide ? "show original" : "hide original";
+        btn.setAttribute("aria-expanded", hide ? "false" : "true");
+      });
+      return el("details", attrs, kids.concat([btn]).concat(origs));
+    }
+    var plain = [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })];
+    if (t.fail_reason) plain.push(el("p", { class: "jfail", text: failHead + t.fail_reason }));
+    plain.push(el("p", { class: "jnote", text: "judge's own words, untranslated" }));
+    return el("details", attrs, plain);
+  }
+  function passesText(t) {
+    var ps = t.pass_scores || [];
+    return ps.length ? "per pass " + ps.map(function (v) { return typeof v === "number" ? String(Math.round(v * 100) / 100) : "-"; }).join("/") : null;
+  }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
   function noop() {}
   function fmtT(s) {
@@ -309,7 +343,7 @@ import * as RunInfo from "./runinfo.js";
     var sj = screeningJudge(m), score, judge;
     if (runScored(m) && typeof t.mean === "number") {
       score = api.fmt(t.mean) + " / 5";
-      judge = "official judge (Gemini 3.1 Pro)" + (row && row.passes ? ", mean of " + row.passes + " passes" : "");
+      judge = "official judge (Gemini 3.1 Pro)" + (row && row.passes ? ", mean of " + row.passes + " passes" : "") + (passesText(t) ? " (" + passesText(t) + ")" : "");
     } else if (runScored(m)) { score = "no score"; judge = "official judge, no usable score for this task"; }
     else if (row && row.overall !== null) { score = "no score"; judge = "scored by the official judge (run mean " + api.fmt(row.overall) + "), but this clip's manifest has no per-task score"; }
     else if (sj) { score = "no score"; judge = "screening judge " + sj + " only; screening scores are not shown"; }
@@ -350,7 +384,7 @@ import * as RunInfo from "./runinfo.js";
       sel.mode !== "group" ? el("p", { class: "cvdesc", text: info ? info.label : "" }) : null,
       el("details", { class: "cvmore" }, [el("summary", { text: "Run details" }), dl])
     ];
-    if (t.reason) kids.push(el("details", { open: "" }, [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })]));
+    var jc = judgeComment(t, true); if (jc) kids.push(jc);
     if (model && model.name) {
       var cred = el("p", { class: "cvcred" }, ["Generated with "]);
       if (model.url && /^https:/.test(model.url)) cred.appendChild(el("a", { href: model.url, target: "_blank", rel: "noopener", text: model.name }));

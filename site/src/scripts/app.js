@@ -30,6 +30,40 @@ import * as RunInfo from "./runinfo.js";
     (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
     return e;
   }
+  // The judge's reason: the English display copy (translated after scoring) with a toggle for the judge's original,
+  // which is authoritative; the original alone, marked untranslated, when no copy exists.
+  // A failing pass (gate, IF/OE check, error) that is not the representative one keeps its own reason under it.
+  function judgeComment(t, open) {
+    if (!t.reason) return null;
+    var attrs = open ? { open: "" } : null;
+    var failSt = (t.status || []).filter(function (s) { return s !== "ok"; }).join(", ") || "failed";
+    var failHead = t.fail_reason ? "Pass " + (t.fail_pass === null || t.fail_pass === undefined ? "?" : t.fail_pass) + " (" + failSt + "): " : "";
+    if (t.reason_en) {
+      var origs = [el("p", { class: "jorig", text: t.reason })];
+      var kids = [el("summary", { text: "Judge's comment (translated from the judge's original)" }), el("p", { text: t.reason_en })];
+      if (t.fail_reason) {
+        kids.push(el("p", { class: "jfail", text: failHead + (t.fail_reason_en || t.fail_reason) }));
+        if (t.fail_reason_en) origs.push(el("p", { class: "jorig", text: failHead + t.fail_reason }));
+      }
+      origs.forEach(function (o) { o.hidden = true; });
+      var btn = el("button", { type: "button", class: "jtoggle", "aria-expanded": "false", text: "show original" });
+      btn.addEventListener("click", function () {
+        var hide = !origs[0].hidden;
+        origs.forEach(function (o) { o.hidden = hide; });
+        btn.textContent = hide ? "show original" : "hide original";
+        btn.setAttribute("aria-expanded", hide ? "false" : "true");
+      });
+      return el("details", attrs, kids.concat([btn]).concat(origs));
+    }
+    var plain = [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })];
+    if (t.fail_reason) plain.push(el("p", { class: "jfail", text: failHead + t.fail_reason }));
+    plain.push(el("p", { class: "jnote", text: "judge's own words, untranslated" }));
+    return el("details", attrs, plain);
+  }
+  function passesText(t) {
+    var ps = t.pass_scores || [];
+    return ps.length ? "per pass " + ps.map(function (v) { return typeof v === "number" ? String(Math.round(v * 100) / 100) : "-"; }).join("/") : null;
+  }
   var SVGNS = "http://www.w3.org/2000/svg";
   function sv(tag, attrs, kids) {
     var e = document.createElementNS(SVGNS, tag);
@@ -467,7 +501,7 @@ import * as RunInfo from "./runinfo.js";
     function A(href, text) { return el("a", { href: href, target: "_blank", rel: "noopener", text: text }); }
     function T(t) { return document.createTextNode(t); }
     f.appendChild(el("h2", { class: "credhead", text: "Method" }));
-    f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown." }));
+    f.appendChild(el("p", { text: "Every score comes from PlayWorld's own verifier with Gemini 3.1 Pro at the benchmark's settings. Cheaper screening judges are never shown. The judge writes its comments mostly in Chinese; English copies are machine-translated for display after scoring, never feed a score, and the judge's original text is authoritative." }));
     f.appendChild(el("p", { text: "Model-side A/Bs use fixed action scripts or the scripted player; player-side A/Bs use the AI player. Both get 4 official judge passes, and a task counts as moved only when it changes by a full point. A final score needs the AI player, all 171 tasks and 2 or more passes." }));
     f.appendChild(el("p", null, [T("Rows come from "), A("https://github.com/" + REPO + "/blob/main/results/experiments.csv", "results/experiments.csv"), T(" (" + source + "). "), A("https://github.com/" + REPO, "Repository"), T(".")]));
     f.appendChild(el("h2", { class: "credhead", text: "Credits" }));
@@ -572,7 +606,7 @@ import * as RunInfo from "./runinfo.js";
     var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
     var row = el("div", { class: "row" }, [
       el("b", { text: t.task_id }),
-      el("span", { class: "sc", text: typeof t.mean === "number" ? fmt(t.mean) : (runScored(scenesMan) ? "unscored" : "no score") })
+      el("span", { class: "sc", title: passesText(t), text: typeof t.mean === "number" ? fmt(t.mean) : (runScored(scenesMan) ? "unscored" : "no score") })
     ]);
     var row2 = el("div", { class: "row" }, [
       el("span", { class: "fam", text: famName }),
@@ -581,7 +615,7 @@ import * as RunInfo from "./runinfo.js";
     var kids = [media, row, row2];
     if (t.video && /^https:/.test(t.video)) kids.push(el("div", { class: "row" }, [el("a", { class: "sclink", href: sceneLink(scenesExp, t.task_id), text: "Link to this scene" }),
       el("a", { class: "sclink", href: t.video, rel: "noopener", text: "Download mp4" })]));
-    if (t.reason) kids.push(el("details", null, [el("summary", { text: "Judge's comment" }), el("p", { text: t.reason })]));
+    var jc = judgeComment(t, false); if (jc) kids.push(jc);
     return el("article", { class: "scene" }, kids);
   }
   // grouped run picker (runinfo.js): one optgroup per arm group, arms named by what they add

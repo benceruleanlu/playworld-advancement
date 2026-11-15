@@ -1,0 +1,53 @@
+name: translate
+
+# Backfill English display copies (reason_en) of the judge's reasons in the scenes manifests on main.
+# Display only: runs after scoring, never touches a score, and the judge's original text stays in every manifest
+# and is authoritative. One commit to main touching only results/media/, through push_results.sh.
+run-name: "translate · ${{ inputs.exps }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      exps:
+        description: 'Comma-separated experiment names (results/media/EXP.json), or "all"'
+        default: "all"
+
+concurrency:
+  group: translate-media
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate input
+        env:
+          EXPS_IN: ${{ inputs.exps }}
+        run: |
+          [[ "$EXPS_IN" =~ ^(all|[A-Za-z0-9._-]+(,[A-Za-z0-9._-]+)*)$ ]] \
+            || { echo "exps must be \"all\" or comma-separated names matching [A-Za-z0-9._-]+" >&2; exit 2; }
+      - name: Install pwa
+        # translate-media is stdlib only; no verifier dependencies
+        run: pip install -q -e .
+      - name: Translate and commit to main
+        env:
+          EXPS_IN: ${{ inputs.exps }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          [[ -n "$GEMINI_API_KEY" ]] || { echo "::error::GEMINI_API_KEY secret is not set"; exit 1; }
+          # the cache keeps a push retry from calling the API again for strings already translated
+          .github/scripts/push_results.sh "results: English judge comments ($EXPS_IN)" '
+            pwa translate-media --dir "$MAIN_DIR/results/media" --exps "$EXPS_IN" \
+              --cache "$RUNNER_TEMP/translations.json" > "$RUNNER_TEMP/translate.txt"
+            other=$(git -C "$MAIN_DIR" status --porcelain -- results | grep -v " results/media/" || true)
+            [[ -z "$other" ]] || { echo "unexpected change outside results/media: $other" >&2; exit 1; }'
+          # written once, after the push loop, so a push retry does not repeat the lines
+          cat "$RUNNER_TEMP/translate.txt" >> "$GITHUB_STEP_SUMMARY"

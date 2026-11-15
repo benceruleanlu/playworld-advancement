@@ -154,6 +154,37 @@ def test_report_compare_failures_ls(env):
     assert ls["a"]["gen"] == "done" and ls["a"]["passes"] == [1, 2] and ls["a"]["overall"] is not None
 
 
+def test_reason_from_pass_closest_to_mean(env):
+    runs = Path(env["PWA_RUNS"])
+    pwa(env, "gen", "r", "--runner", FAKE, "--tasks", "OE001", check=0)
+    for k, v in enumerate([1.0, 5.0, 5.0, 5.0], 1):
+        d = runs / "r" / "eval" / f"pass{k}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "OE001_score.json").write_text(json.dumps({"score": {
+            "final_score_1_to_5": v, "summary_zh": f"pass{k} says {v}",
+            }}))
+    rep = json.loads(pwa(env, "report", "r", "--json", check=0).stdout)
+    t = rep["tasks"]["OE001"]
+    assert t["mean"] == pytest.approx(4.0)  # the mean is unchanged
+    assert t["pass_scores"] == [1.0, 5.0, 5.0, 5.0] and t["reason"] == "pass2 says 5.0" and t["reason_pass"] == 2
+    assert t["reason_en"] == ""  # English already: nothing to translate, no key needed
+    md = pwa(env, "failures", "r", "--all", "--md", check=0).stdout
+    assert "| OE001 | insight | 4.00 | 1/5/5/5 | ok | pass2 says 5.0 |" in md
+
+
+def test_gate_fail_pass_keeps_its_reason(env):
+    # passes gate_fail (1.0), 4, 4, 4: mean 3.25, representative reason from pass 2, the gate's reason kept too
+    runs = Path(env["PWA_RUNS"])
+    pwa(env, "gen", "g", "--runner", FAKE, "--tasks", "GC005", check=0)
+    for k, ok in enumerate([False, True, True, True], 1):
+        _fake_eval(runs, "g", k, {"GC005": (4.0, ok)})
+    f = {r["task_id"]: r for r in json.loads(pwa(env, "failures", "g", "--all", "--json", check=0).stdout)}["GC005"]
+    assert f["status"] == ["gate_fail"] and f["reason_pass"] != 1
+    assert f["fail_reason"] == "no motion" and f["fail_pass"] == 1
+    md = pwa(env, "failures", "g", "--all", "--md", check=0).stdout
+    assert "sum GC005<br>pass 1 gate_fail: no motion |" in md
+
+
 def test_screening_judge_never_touches_official_outputs(env):
     runs = Path(env["PWA_RUNS"])
     hy, slug = "gemini-4-hydrogen", "eval-gemini-4-hydrogen"
