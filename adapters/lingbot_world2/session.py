@@ -27,6 +27,9 @@ no files. Differences from upstream, all deliberate:
   * opt-in noisy KV writes (kv_noise=KVNoise, --lingbot-kv-noise, off by default): the
     KV-write forward of a generated chunk sees add_noise(x0, eps, t_kv) at t_kv instead of
     x0 at t=0, eps from its own generator (kv_noise.py); chunks with an image latent stay clean.
+  * opt-in early-step self-guidance (stg=stg.SkipGuidance, --lingbot-stg, off by default):
+    one extra forward with chosen blocks' self-attention skipped on the first denoising
+    step(s) of each chunk, combined with the full prediction before the x0 conversion.
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -250,7 +253,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None, kv_noise=None):
+                 cond_sched=None, kv_noise=None, stg=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -268,6 +271,8 @@ class LingBotSession:
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
         self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
         self.kv_noise, self.kv_noise_chunks = kv_noise, 0  # --lingbot-kv-noise (flag_stats reads deltas)
+        # --lingbot-stg: an stg.SkipGuidance; latent chunks with a guided step, and extra skip forwards (deltas)
+        self.stg, self.stg_chunks, self.stg_calls = stg, 0, 0
         self._free()
 
     def _free(self):
@@ -496,7 +501,7 @@ class LingBotSession:
         with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
                 torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
-                cid, chunk_hit = self.chunk_id, False
+                cid, chunk_hit, stg_hit = self.chunk_id, False, False
                 rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
@@ -524,8 +529,18 @@ class LingBotSession:
                         self.cond_sched_calls += 1
                         chunk_hit = True
                     t = torch.stack([ts[i]]).to(pipe.device)
+                    pred_skip = None
+                    if self.stg is not None and self.stg.guided(i):
+                        # before the full pass, which then rewrites this chunk's KV slot and sees main's caches
+                        with self.stg.skipped():
+                            pred_skip = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init,
+                                                   **kwargs)[0]
+                        self.stg_calls += 1
+                        stg_hit = True
                     pred = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init, **kwargs)[0]
                     self.cross_init = True
+                    if pred_skip is not None:
+                        pred = self.stg.combine(pred, pred_skip)
                     if c == 0 and i == 0:
                         mark("step0.first_forward", "(first DiT call after reset: includes any warm-up)")
                     x0 = pipe._convert_flow_pred_to_x0(flow_pred=pred, xt=latent, timestep=ts[i],
@@ -540,6 +555,7 @@ class LingBotSession:
                     self.cond_sched.reset()
                 if chunk_hit:
                     self.cond_sched_chunks += 1
+                self.stg_chunks += stg_hit
                 # weight_mod.end_chunk() and cond_sched.reset() ran above, so either KV write below uses
                 # cond scales 1.0 and the chunk's base weight-mod scale.
                 if (self.kv_noise is not None and cid > 0

@@ -50,6 +50,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       measured_yaw, commanded_tilt, measured_tilt (totals up to the last decision)
   --lingbot-cond-schedule             cond_sched=on|skip, cond_sched_chunks, cond_sched_calls (session chunks and
                                       DiT forward calls whose early-step cam/text scales differed from 1.0)
+  --lingbot-stg                       stg=on|skip, stg_chunks, stg_calls (session latent chunks with a guided
+                                      denoising step, and the extra layer-skip DiT forwards; skip = stateless)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
                                       wait-only insight), scripted_planned (script + tail chunks),
@@ -77,10 +79,11 @@ class FlagStats:
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
-                 kv_noise: str = "off", kv_noise_t: float = 0.0):
+                 kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off"):
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.kv_noise, self.kv_noise_t = kv_noise, kv_noise_t
+        self.stg = stg
         self.measured_turn = bool(measured_turn)
         self.if_identity = bool(if_identity)
         self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
@@ -108,7 +111,7 @@ class FlagStats:
                        "if_subject_prompts": 0, "weight_mod_steps": 0, "weight_mod_chunks": 0,
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
                        "scripted_chunks": 0, "scripted_ends": 0,
-                       "kv_noise_chunks": 0}
+                       "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -127,6 +130,7 @@ class FlagStats:
         self.cond_sched_chunks = self.cond_sched_calls = 0
         self.scripted_planned = self.scripted_chunks = self.scripted_end = 0
         self.kv_noise_chunks = 0
+        self.stg_chunks = self.stg_calls = 0
         self.caption_used = self.caption_fallback = 0
         self.reanchor_armed = False
         self.reanchor_events = 0
@@ -195,6 +199,9 @@ class FlagStats:
 
     def kv_noised(self, chunks: int = 0):
         self.kv_noise_chunks += int(chunks)
+    def stg_counted(self, chunks: int = 0, calls: int = 0):
+        self.stg_chunks += int(chunks)
+        self.stg_calls += int(calls)
 
     def completion_summary(self, counts) -> dict:
         if not self.gc_completion:
@@ -271,6 +278,8 @@ class FlagStats:
                      cond_sched_calls=self.cond_sched_calls)
         if self.kv_noise != "off":
             s.update(kv_noise=self.kv_noise, kv_noise_t=f"{self.kv_noise_t:g}", kv_noise_chunks=self.kv_noise_chunks)
+        if self.stg != "off":
+            s.update(stg=self.stg, stg_chunks=self.stg_chunks, stg_calls=self.stg_calls)
         if self.measured_turn:
             m = self.measured
             s.update(measured_turn="on" if m else "skip", measured_chunks=m.get("chunks", 0),
@@ -307,6 +316,8 @@ class FlagStats:
                    f" cond_sched_calls={t['cond_sched_calls']}" if self.cond_sched != "off" else "")
                 + (f" kv_noise={self.kv_noise} kv_noise_t={self.kv_noise_t:g} kv_noise_chunks={t['kv_noise_chunks']}"
                    if self.kv_noise != "off" else "")
+                + (f" stg={self.stg} stg_chunks={t['stg_chunks']} stg_calls={t['stg_calls']}"
+                   if self.stg != "off" else "")
                 + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
                    if self.weight_mod else "")
                 + (f" window={self.window}" if self.window else "")
@@ -344,6 +355,8 @@ class FlagStats:
         t["cond_sched_chunks"] += self.cond_sched_chunks
         t["cond_sched_calls"] += self.cond_sched_calls
         t["kv_noise_chunks"] += self.kv_noise_chunks
+        t["stg_chunks"] += self.stg_chunks
+        t["stg_calls"] += self.stg_calls
         print(self.line(s), flush=True)
         return s
 

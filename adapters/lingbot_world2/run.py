@@ -91,6 +91,12 @@ generated chunk into the KV cache from add_noise(x0, eps, t_kv) at t_kv (--lingb
 snapped to the scheduler table) instead of x0 at t=0; eps has its own generator, so denoising and the
 returned frames of the current chunk are unchanged. Chunks with an image latent or overlapping the attention
 sink stay clean (58 of 60 chunks noised at sink 6); T is capped at 250. See kv_noise.py.
+Early-step self-guidance (off by default, session only): `--lingbot-stg` or LINGBOT_STG=1. On the first
+--lingbot-stg-steps N (LINGBOT_STG_STEPS, default 1) denoising steps of every latent chunk, one extra DiT forward
+runs with the self-attention residual of blocks --lingbot-stg-blocks (LINGBOT_STG_BLOCKS, default mid = block
+num_blocks // 2) bypassed, and the flow prediction becomes v_full + w * (v_full - v_skip), w = --lingbot-stg-w
+(LINGBOT_STG_W, default 0.3). The skip pass runs before the full pass; the t=0 KV write is never guided. Cost
++1 forward per guided step (+20% per chunk at N=1). Ignored (stg=skip) with --lingbot-stateless. See stg.py.
 
 Weight modulation (off by default): `--lingbot-weight-mod` or LINGBOT_WEIGHT_MOD=1 multiplies the outputs of
 every DiT block's cam_scale_layer / cam_shift_layer (camera FiLM) and cross_attn.o (text cross-attention) by a
@@ -162,6 +168,7 @@ Env:
   LINGBOT_SCRIPTED_TAIL  WAIT chunks after the script (default ceil(--tail-frames / (--chunk-frames - 1)) = 2)
   LINGBOT_MEASURED_TURN  1 = same as --lingbot-measured-turn; LINGBOT_MEASURED_TURN_TELL  task-id regex told (GC)
   LINGBOT_IF_IDENTITY_CUE  1 = same as --lingbot-if-identity-cue
+  LINGBOT_STG  1 = same as --lingbot-stg (LINGBOT_STG_W / LINGBOT_STG_BLOCKS / LINGBOT_STG_STEPS)
   LINGBOT_WEIGHT_MOD  1 = same as --lingbot-weight-mod (scale knobs above)
   LINGBOT_SINK_SIZE / LINGBOT_LOCAL_ATTN_SIZE   attention window (6 / 18)
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
@@ -234,6 +241,7 @@ from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import scripted_player as SP  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
+from adapters.lingbot_world2 import stg as STGM  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 from adapters.lingbot_world2 import weight_mod as WM  # noqa: E402
 
@@ -348,6 +356,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["cond_sched"].enabled and flags["weight_mod"]:
         raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
     flags["kv_noise"], argv = KVN.parse(argv, environ)
+    flags["stg"], argv = STGM.parse(argv, environ)
     window, argv = _window(argv, environ)
     flags.update(window)
     if flags["if_slow"] and flags["stateless"]:
@@ -369,6 +378,7 @@ CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None =
 STALL = W.Limits()
 COND_SCHED = CS.ScheduleConfig()
 KV_NOISE = KVN.KVNoiseConfig()  # --lingbot-kv-noise / LINGBOT_KV_NOISE=1, session only, off by default
+STG = STGM.StgConfig()  # --lingbot-stg / LINGBOT_STG=1, off by default; session only
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -471,6 +481,8 @@ class LingBotWorld2Engine:
         sched = (CS.CondScheduler(self.pipe.model, COND_SCHED)
                  if COND_SCHED.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
         self.weight_mod = WM.WeightModulator(self.pipe.model) if WEIGHT_MOD and hasattr(self.pipe, "model") else None
+        stg = (STGM.SkipGuidance(self.pipe.model, STG)
+               if STG.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
         if self.weight_mod is not None:
             STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
         self.session = None
@@ -480,7 +492,8 @@ class LingBotWorld2Engine:
                                             stream_encode=FAST.fast_y, t5_cache=self.t5_cache,
                                             weight_mod=self.weight_mod,
                                             **({"cond_sched": sched} if sched is not None else {}),
-                                            **({"kv_noise": KVN.KVNoise(KV_NOISE)} if KV_NOISE.enabled else {}))
+                                            **({"kv_noise": KVN.KVNoise(KV_NOISE)} if KV_NOISE.enabled else {}),
+                                            **({"stg": stg} if stg is not None else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
@@ -493,6 +506,8 @@ class LingBotWorld2Engine:
                  if COND_SCHED.enabled else "")
               + ((", kv-noise ignored (stateless)" if STATELESS else f", {KV_NOISE.describe()}")
                  if KV_NOISE.enabled else "")
+              + ((", stg ignored (stateless)" if STATELESS else f", {stg.describe()}" if stg is not None
+                  else ", stg on (no DiT found)") if STG.enabled else "")
               + (f", weight-mod on ({self.weight_mod.describe()})" if self.weight_mod is not None
                  else ", weight-mod on (no DiT found)" if WEIGHT_MOD else "")
               + (", player hint on" if PLAYER_HINT else "")
@@ -613,6 +628,7 @@ class LingBotWorld2Engine:
         cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
         cs_calls = getattr(self.session, "cond_sched_calls", 0)
         kvn_chunks = getattr(self.session, "kv_noise_chunks", 0)
+        stg_chunks, stg_calls = getattr(self.session, "stg_chunks", 0), getattr(self.session, "stg_calls", 0)
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
@@ -621,6 +637,9 @@ class LingBotWorld2Engine:
                              getattr(self.session, "cond_sched_calls", 0) - cs_calls)
         if KV_NOISE.enabled:
             STATS.kv_noised(getattr(self.session, "kv_noise_chunks", 0) - kvn_chunks)
+        if STG.enabled:
+            STATS.stg_counted(getattr(self.session, "stg_chunks", 0) - stg_chunks,
+                              getattr(self.session, "stg_calls", 0) - stg_calls)
         if self.weight_mod is not None:
             STATS.modulated(self.session.weight_mod_steps - modded[0], self.session.weight_mod_chunks - modded[1])
         output_dir = Path(output_dir)
@@ -684,7 +703,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -699,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     KV_NOISE = flags["kv_noise"]
     kvn_mode = "off" if not KV_NOISE.enabled else ("skip" if STATELESS else "on")
+    STG = flags["stg"]
+    stg_mode = "off" if not STG.enabled else ("skip" if STATELESS else "on")
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
@@ -708,7 +729,7 @@ def main(argv: list[str] | None = None) -> int:
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
                                  measured_turn=flags["measured_turn"], cond_sched=cs_mode,
-                                 kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t,
+                                 kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"])
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
