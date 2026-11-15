@@ -236,7 +236,7 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
               "--lingbot-if-slow-translation", "--lingbot-gc-chunk-director", "--lingbot-gc-ease-turns",
               "--lingbot-if-subject-director", "--lingbot-weight-mod", "--lingbot-if-identity-cue",
-              "--lingbot-measured-turn", "--lingbot-scripted-player")
+              "--lingbot-measured-turn", "--lingbot-scripted-player", "--lingbot-noise-mean-coupling")
 
 
 def _take_value(argv: list[str], name: str) -> tuple[str | None, list[str]]:
@@ -316,6 +316,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "if_repeat": "--lingbot-if-repeat-check" in argv or environ.get("LINGBOT_IF_REPEAT_CHECK", "0") == "1",
         "if_slow": "--lingbot-if-slow-translation" in argv
                    or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
+        "noise_mean": "--lingbot-noise-mean-coupling" in argv or environ.get("LINGBOT_NOISE_MEAN_COUPLING", "0") == "1",
         "gc_director": "--lingbot-gc-chunk-director" in argv or environ.get("LINGBOT_GC_CHUNK_DIRECTOR", "0") == "1",
         "gc_ease_turns": "--lingbot-gc-ease-turns" in argv or environ.get("LINGBOT_GC_EASE_TURNS", "0") == "1",
         "if_subject": "--lingbot-if-subject-director" in argv or environ.get("LINGBOT_IF_SUBJECT_DIRECTOR", "0") == "1",
@@ -334,6 +335,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-gc-ease-turns requires session mode")
     if flags["if_subject"] and mode == "goal":
         raise SystemExit("--lingbot-if-subject-director requires caption prompting")
+    if flags["noise_mean"] and flags["stateless"]:
+        raise SystemExit("--lingbot-noise-mean-coupling requires session mode")
     if flags["if_identity"] and mode != "auto":
         raise SystemExit("--lingbot-if-identity-cue requires auto caption prompting (scene plus IF goal)")
     flags["stall"], argv = W.parse(argv, environ)
@@ -349,6 +352,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
 
 
 # Set by main() from configure(); the engine reads them at call time.
+NOISE_MEAN = False  # --lingbot-noise-mean-coupling / LINGBOT_NOISE_MEAN_COUPLING=1, off by default
 GC_DIRECTOR = False  # --lingbot-gc-chunk-director / LINGBOT_GC_CHUNK_DIRECTOR=1 (requires caption + session)
 GC_EASE_TURNS = False  # --lingbot-gc-ease-turns / LINGBOT_GC_EASE_TURNS=1; session-only, off by default
 IF_SUBJECT = False  # --lingbot-if-subject-director / LINGBOT_IF_SUBJECT_DIRECTOR=1, off by default
@@ -486,6 +490,7 @@ class LingBotWorld2Engine:
               + (", player hint on" if PLAYER_HINT else "")
               + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else "")
+              + (", noise mean coupling on" if NOISE_MEAN else "")
               + (", IF horizon on" if IF_HORIZON else "")
               + (", IF camera hint on" if STATS.if_camera else "")
               + (", player history endpoints on" if STATS.history_endpoints else "")
@@ -588,7 +593,8 @@ class LingBotWorld2Engine:
             mod = {"third_person": WM.is_third_person(prompts._current.get("task"), name)} if self.weight_mod else {}
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
-                               reanchor=reanchor, **mod)
+                               reanchor=reanchor,
+                               noise_mean=bool(NOISE_MEAN and parsed and parsed[0].startswith(("GC", "IF"))), **mod)
             self.session.third_person = CS.is_third_person(prompts._current.get("task"), name)
             if reanchor:
                 STATS.armed()
@@ -597,12 +603,15 @@ class LingBotWorld2Engine:
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
+        coupler = self.session.noise_mean if NOISE_MEAN else None
+        coupled = getattr(coupler, "count", 0)
         modded = (self.session.weight_mod_steps, self.session.weight_mod_chunks) if self.weight_mod is not None else None
         cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
         cs_calls = getattr(self.session, "cond_sched_calls", 0)
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
+        STATS.noise_mean_samples += getattr(coupler, "count", 0) - coupled
         STATS.reanchored(self.session.reanchor_events - anchored)
         STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
                              getattr(self.session, "cond_sched_calls", 0) - cs_calls)
@@ -669,7 +678,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED
+    global IF_IDENTITY, COND_SCHED, NOISE_MEAN
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -682,6 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
     COND_SCHED = flags["cond_sched"]
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
+    NOISE_MEAN = flags["noise_mean"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
@@ -691,7 +701,8 @@ def main(argv: list[str] | None = None) -> int:
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
                                  gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, weight_mod=WEIGHT_MOD, if_identity=IF_IDENTITY,
                                  measured_turn=flags["measured_turn"], cond_sched=cs_mode,
-                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"])
+                                 window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
+                                 noise_mean=NOISE_MEAN)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:

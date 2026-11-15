@@ -267,6 +267,7 @@ class LingBotSession:
         self._free()
 
     def _free(self):
+        self.noise_mean = None
         self.kv = self.cross = self.y = None
         self._feat_map = None
         self._enc_feat_map = None
@@ -277,7 +278,8 @@ class LingBotSession:
 
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
-              reanchor: bool = False, third_person: bool = False):
+              reanchor: bool = False, third_person: bool = False,
+              noise_mean: bool = False):
         import torch  # noqa: PLC0415
         import torchvision.transforms.functional as TF  # noqa: PLC0415
         from wan.utils.cam_utils import get_Ks_transformed  # noqa: PLC0415
@@ -286,6 +288,9 @@ class LingBotSession:
         dev = pipe.device
         t_reset = time.time()
         self._free()
+        if noise_mean:
+            from .noise_mean import CoupledMean  # noqa: PLC0415
+            self.noise_mean = CoupledMean()
         torch.cuda.empty_cache()
 
         img = TF.to_tensor(image).sub_(0.5).div_(0.5).to(dev)
@@ -440,6 +445,9 @@ class LingBotSession:
         return emb.to(self.pipe.param_dtype)
 
     # -- step --------------------------------------------------------------
+    def _couple_noise(self, noise, stage):
+        return noise if self.noise_mean is None else self.noise_mean.apply(noise, stage)
+
     def update_prompt(self, prompt: str) -> bool:
         """Refresh text cross-attention only; preserve visual KV, camera and decoder state."""
         if not self.started:
@@ -497,6 +505,7 @@ class LingBotSession:
                     emb = self._plucker(rel_c)
                 latent = torch.randn(16, CHUNK, self.lat_h, self.lat_w, dtype=torch.float32,
                                      generator=self.gen, device=pipe.device)
+                latent = self._couple_noise(latent, 0)
                 kwargs = {
                     "context": [self.context[0]],
                     "seq_len": self.max_seq_len,
@@ -524,6 +533,7 @@ class LingBotSession:
                                                        scheduler=pipe.scheduler)
                     if i < len(ts) - 1:
                         noise = torch.randn(x0.shape, generator=self.gen, device=x0.device, dtype=x0.dtype)
+                        noise = self._couple_noise(noise, i + 1)
                         latent = pipe.scheduler.add_noise(x0, noise, ts[i + 1])
                 new.append(x0)
                 if self.weight_mod is not None:

@@ -74,7 +74,8 @@ class FlagStats:
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
-                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False):
+                 if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
+                 noise_mean: bool = False):
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
         self.measured_turn = bool(measured_turn)
@@ -88,6 +89,7 @@ class FlagStats:
         self.insight_director = bool(insight_director)
         self.if_repeat = bool(if_repeat)
         self.if_slow = bool(if_slow)
+        self.noise_mean = bool(noise_mean)
         self.gc_director = bool(gc_director)
         self.gc_ease_turns = bool(gc_ease_turns)
         self.if_subject = bool(if_subject)
@@ -96,7 +98,7 @@ class FlagStats:
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
         self.gc_completion = bool(gc_completion)
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
-                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
+                       "noise_mean_samples": 0, "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
@@ -113,6 +115,7 @@ class FlagStats:
         self.insight_director_prompts = 0
         self.if_repeat_checks = 0
         self.if_translation_frames = 0
+        self.noise_mean_samples = 0
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
         self.if_subject_prompts = 0
@@ -240,6 +243,8 @@ class FlagStats:
             s.update(if_repeat="on", if_repeat_checks=self.if_repeat_checks)
         if self.if_slow:
             s.update(if_slow="on", if_translation_frames=self.if_translation_frames)
+        if self.noise_mean:
+            s.update(noise_mean="on", noise_mean_samples=self.noise_mean_samples)
         s.update(self.director_summary(vars(self)))
         if self.gc_ease_turns:
             s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
@@ -285,6 +290,7 @@ class FlagStats:
                 + (f" insight_director_prompts={t['insight_director_prompts']}" if self.insight_director else "")
                 + (f" if_repeat_checks={t['if_repeat_checks']}" if self.if_repeat else "")
                 + (f" if_translation_frames={t['if_translation_frames']}" if self.if_slow else "")
+                + (f" noise_mean=on noise_mean_samples={t['noise_mean_samples']}" if self.noise_mean else "")
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
                 + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
@@ -310,6 +316,7 @@ class FlagStats:
         t["if_repeat_checks"] += self.if_repeat_checks
         t["if_translation_frames"] += self.if_translation_frames
         t["tasks"] += 1
+        t["noise_mean_samples"] += self.noise_mean_samples
         t["gc_director_chunks"] += self.gc_director_chunks
         t["gc_director_updates"] += self.gc_director_updates
         t["gc_eased_turns"] += self.gc_eased_turns
