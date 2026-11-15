@@ -39,6 +39,7 @@ from adapters.lingbot_world2 import camera_probe as CP
 from adapters.lingbot_world2 import measured_turn as MT
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import session as S
+from adapters.lingbot_world2 import yaw_servo as YSV
 
 MAX_STDOUT = 20_000            # characters of cell output sent back
 MAX_ARTIFACT_BYTES = 24 << 20  # per cell
@@ -156,7 +157,7 @@ class Workspace:
     def namespace(self) -> dict:
         import torch  # noqa: PLC0415
         return {"ws": self, "pipe": self.pipe, "model": self.model, "torch": torch, "np": np,
-                "P": P, "S": S, "CP": CP, "MT": MT}
+                "P": P, "S": S, "CP": CP, "MT": MT, "YSV": YSV}
 
     def status(self) -> dict:
         import torch  # noqa: PLC0415
@@ -288,45 +289,30 @@ class Workspace:
                     "script": [[k, a] for k, a in segments]})
         return frames, out
 
-    def servo_trial(self, task, segments, rate_deg: float = CP.RATE_DEG, adapt: bool = True, prior=(1.0, 1.0),
-                    prompt: str = "caption", seed: int = 42, **servo_kw) -> tuple[np.ndarray, dict]:
-        """The same script as turn_trial, generated one latent chunk at a time with camera_probe.Servo choosing
-        each chunk's pose gain from the rotation measured so far. adapt=False is the open-loop control in the
-        same chunking (it must reproduce turn_trial's frames). The readout adds the servo's per-chunk log."""
+    def servo_trial(self, task, segments, rate_deg: float = CP.RATE_DEG, prompt: str = "caption", seed: int = 42,
+                    rigid=YSV.rigid_share, **servo_kw) -> tuple[np.ndarray, dict]:
+        """The same script as turn_trial under --lingbot-yaw-servo: the runner's own yaw_servo.step generates it
+        chunk by chunk and sets each chunk's pose gain from the yaw the earlier chunks rendered. The readout adds
+        the servo's estimates, its heading against the intended one, and one line per chunk."""
         import math  # noqa: PLC0415
         rec = task.get("record", {})
         text = {"caption": rec.get("image_caption") or DEFAULT_PROMPT, "goal": task.get("prompt") or DEFAULT_PROMPT}.get(prompt, prompt)
-        servo = CP.Servo(segments, rate_deg, prior=prior, adapt=adapt, **servo_kw)
+        keys, spans, n = CP.build(segments, rate_deg)
+        servo, lines = YSV.YawServo(**servo_kw), []
         old = P.YAW
         P.YAW = math.radians(rate_deg)
-        parts, used = [], []
         try:
-            self.session.reset(task["image"], text, int(seed),
-                               horizon_frames=S.frames_returned(servo.n_chunks, first=True))
-            last = None
-            while not servo.done:
-                keys, gain = servo.next_chunk()
-                self.session.track.yaw_gain = gain if adapt else None
-                out = self.session.step(keys)          # first step: input frame + 12; later: previous last + 16
-                chunk = out if last is None else out   # either way frame 0 of `out` is the frame before the chunk
-                rendered, trusted = CP.measure_chunk(chunk, keys)
-                servo.observe(rendered, trusted)
-                parts.append(out if last is None else out[1:])
-                used += keys
-                last = out[-1]
+            self.session.reset(task["image"], text, int(seed), horizon_frames=S.frames_returned(n, first=True))
+            frames = YSV.step(self.session, servo, keys, rate_deg, MT.chunk_turn, rigid=rigid, log=lines.append)
         finally:
             P.YAW = old
-        frames = np.concatenate(parts)
         self.probes += 1
-        spans = CP.build(segments, rate_deg)[1]
         out = CP.summarize(frames, spans)
         out.update({"task": task.get("task_id"), "rate_deg": rate_deg, "prompt": prompt if prompt in ("caption", "goal") else "custom",
-                    "seed": int(seed), "chunks": servo.n_chunks, "script": [[k, a] for k, a in segments],
-                    "servo": {"adapt": adapt, "prior": list(prior), "k": servo.k, "beta": servo.beta, "tol": servo.tol,
-                              "trim": servo.trim, "est": {k: round(v, 3) for k, v in servo.est.items()},
-                              "final_heading": round(servo.heading, 2), "final_target": round(servo.target[-1], 2),
-                              "final_error": round(servo.target[-1] - servo.heading, 2), "log": servo.log,
-                              "keys_used": "".join({"j": "L", "l": "R"}.get(k, ".") for k in used)}})
+                    "seed": int(seed), "chunks": n, "script": [[k, a] for k, a in segments],
+                    "servo": {"adapt": True, "k": servo.k, "beta": servo.beta, "est": {k: round(v, 3) for k, v in servo.est.items()},
+                              "heading": round(servo.heading, 2), "intended": round(servo.intended, 2),
+                              "chunks": servo.chunks, "untrusted": servo.untrusted, "log": lines}})
         return frames, out
 
     # -- sending images back -----------------------------------------------

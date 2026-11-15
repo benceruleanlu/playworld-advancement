@@ -94,7 +94,7 @@ def test_workspace_reads_parameters_and_status(tmp_path):
     assert ws.W("0.weight") is dict(model.named_parameters())["0.weight"]
     st = ws.status()
     assert st["dit_params"] == 8 * 16 + 16 + 16 * 4 + 4 and st["variant"] == "1.3b" and st["passes"] == 0
-    assert set(ws.namespace()) == {"ws", "pipe", "model", "torch", "np", "P", "S", "CP", "MT"}
+    assert set(ws.namespace()) == {"ws", "pipe", "model", "torch", "np", "P", "S", "CP", "MT", "YSV"}
 
 
 def test_workspace_counts_passes_and_captures(tmp_path):
