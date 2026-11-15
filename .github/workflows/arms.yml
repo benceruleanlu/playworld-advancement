@@ -5,7 +5,10 @@ name: arms
 # (linked from the step summary) and an `experiment` run with stage=score-only is dispatched per arm, which
 # scores, reports, publishes scenes and records the csv row exactly like any other run.
 # Manual: Actions tab -> arms -> Run workflow. Needs a runner with main(argv): lingbot_world2 or lingbot_world2_1p3b.
-run-name: "arms ${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }} · ${{ inputs.arms }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
+# warm=on generates on the deployed Modal app playworld-warm (warm_app.py, pwa/warm.py) instead of an ephemeral
+# app, so a container that is still up from an earlier warm run skips the model load and first-step warm-up.
+# Each warm container bills the GPU rate for up to warm_idle_minutes after its last call; warm=stop ends them now.
+run-name: "${{ inputs.warm == 'stop' && 'warm stop' || format('arms {0} · {1} · {2} · {3} · {4}{5}{6}', inputs.exp, inputs.runner, inputs.tasks || inputs.split, inputs.action_source, inputs.arms, inputs.stage != 'full' && format(' · {0}', inputs.stage) || '', inputs.warm == 'on' && ' · warm' || '') }}"
 
 on:
   workflow_dispatch:
@@ -14,7 +17,7 @@ on:
         description: Arm group name; arm i is experiment EXP-a<i> (new name per run)
         required: true
       arms:
-        description: "'|'-separated runner arg strings, one per arm; an empty one is the baseline, e.g. ' | --lingbot-turn-cal --lingbot-player-hint'"
+        description: "'|'-separated runner arg strings, one per arm; an empty one or 'base' is the baseline, e.g. 'base | --lingbot-turn-cal --lingbot-player-hint'"
         required: true
       tasks:
         description: Comma-separated task IDs (overrides split)
@@ -58,6 +61,17 @@ on:
       player_model:
         description: Player (agent) model for closed-loop runs; passed to the runner as --agent-model
         default: "gpt-6-luna"
+      warm:
+        description: "off = ephemeral app (default). on = deployed warm app; containers stay up warm_idle_minutes after the last call and bill the GPU the whole time. stop = terminate warm containers now (other inputs ignored)"
+        type: choice
+        options: ["off", "on", "stop"]
+        default: "off"
+      warm_idle_minutes:
+        description: "warm=on: idle window per container before it scales down (1-20; a change redeploys, cold)"
+        default: "10"
+      warm_max_containers:
+        description: "warm=on: max warm containers per runner (1-8; a change redeploys, cold)"
+        default: "3"
 
 concurrency:
   group: arms-${{ inputs.exp }}
@@ -79,9 +93,27 @@ env:
   MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
   PWA_MODAL_GPU: ${{ inputs.gpu }}
   PWA_RUNNER: ${{ inputs.runner }}
+  MODAL_VERSION: "1.6.4"  # warm path only: the version pwa/warm.py and warm_app.py were checked against
 
 jobs:
+  stop-warm:
+    if: inputs.warm == 'stop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Stop the warm app
+        run: |
+          pip install -q "modal==$MODAL_VERSION"
+          python -m pwa.warm stop
+          echo "Stopped Modal app \`playworld-warm\` (warm containers terminated)." >> "$GITHUB_STEP_SUMMARY"
+
   run:
+    if: inputs.warm != 'stop'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -97,8 +129,15 @@ jobs:
           EXTRA: ${{ inputs.extra }}
           ACTION_SOURCE: ${{ inputs.action_source }}
           PLAYER_MODEL_IN: ${{ inputs.player_model }}
+          WARM: ${{ inputs.warm }}
+          WARM_IDLE: ${{ inputs.warm_idle_minutes }}
+          WARM_MAX: ${{ inputs.warm_max_containers }}
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+          if [[ "$WARM" == on ]]; then
+            [[ "$WARM_IDLE" =~ ^[0-9]+$ ]] && (( WARM_IDLE >= 1 && WARM_IDLE <= 20 )) || { echo "warm_idle_minutes must be 1-20" >&2; exit 2; }
+            [[ "$WARM_MAX" =~ ^[0-9]+$ ]] && (( WARM_MAX >= 1 && WARM_MAX <= 8 )) || { echo "warm_max_containers must be 1-8" >&2; exit 2; }
+          fi
           [[ "$EXTRA$ARMS" != *$'\n'* ]] || { echo "extra and arms must be one line" >&2; exit 2; }
           # The args every arm gets, computed once so the labels below match what gen-arms runs.
           if [[ "$ACTION_SOURCE" != "dataset" && "$EXTRA" != *"--agent-model"* ]]; then
@@ -118,7 +157,12 @@ jobs:
           [[ "$PLAYER_MODEL" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "player_model must match [A-Za-z0-9._:-]+" >&2; exit 2; }
           timeout 30s python -m adapters.common.agent_api
       - name: Install Python dependencies
-        run: pip install -q modal huggingface_hub -e .
+        # warm=on pins the Modal client the warm path was checked against; warm=off keeps the unpinned install.
+        env:
+          WARM: ${{ inputs.warm }}
+        run: |
+          if [[ "$WARM" == on ]]; then modal_req="modal==$MODAL_VERSION"; else modal_req=modal; fi
+          pip install -q "$modal_req" huggingface_hub -e .
       - name: Set up FFmpeg
         # pwa media (libx264, thumbnail, +faststart) uses the pinned static build from imageio-ffmpeg, as experiment.yml does.
         run: |
@@ -175,8 +219,11 @@ jobs:
         id: gen
         # Fails if any arm has a failed task or runner error. Fetch, publish and dispatch still run after a failure,
         # so one bad arm or task never hides the arms that did generate, but only if generation started: modal_app.py
-        # writes claimed.txt (the arm names it generates into) only after its overwrite guard passed, and this step
-        # then sets output started=true. A rejected launch (reused name, bad args) stops everything downstream.
+        # (or pwa.warm with warm=on) writes claimed.txt (the arm names it generates into) only after its overwrite
+        # guard passed, and this step then sets output started=true. A rejected launch (reused name, bad args)
+        # stops everything downstream. warm=on calls the deployed app playworld-warm instead of `modal run`; it
+        # deploys warm_app.py first when this commit or the warm settings differ (that call starts cold) and
+        # always when the checkout has uncommitted changes.
         env:
           SPLIT: ${{ inputs.split }}
           TASKS: ${{ inputs.tasks }}
@@ -184,17 +231,45 @@ jobs:
           ACTION_SOURCE: ${{ inputs.action_source }}
           NUM_SHARDS: ${{ inputs.num_shards }}
           NOTES: ${{ inputs.notes }}
+          WARM: ${{ inputs.warm }}
+          PWA_WARM_IDLE_MIN: ${{ inputs.warm_idle_minutes }}
+          PWA_WARM_MAX_CONTAINERS: ${{ inputs.warm_max_containers }}
           PWA_CLAIM_FILE: ${{ runner.temp }}/claimed.txt
           PWA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           rm -f "$PWA_CLAIM_FILE"
           rc=0
-          modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
-            --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
-            --extra="$ARMS_EXTRA" --arms="$ARMS" || rc=$?
+          if [[ "$WARM" == on ]]; then
+            [[ "$NUM_SHARDS" =~ ^[0-9]+$ ]] || { echo "num_shards must be a number" >&2; exit 2; }
+            python -m pwa.warm run --exp "$EXP" --arms="$ARMS" --runner "$RUNNER" --action-source "$ACTION_SOURCE" \
+              --tasks="$TASKS" --split="$SPLIT" --num-shards "$NUM_SHARDS" --notes="$NOTES" --extra="$ARMS_EXTRA" \
+              --summary "$RUNNER_TEMP/warm.json" || rc=$?
+          else
+            modal run --detach modal_app.py --exp "$EXP" --split "$SPLIT" --tasks "$TASKS" \
+              --runner "$RUNNER" --action-source "$ACTION_SOURCE" --num-shards "$NUM_SHARDS" --notes "$NOTES" \
+              --extra="$ARMS_EXTRA" --arms="$ARMS" || rc=$?
+          fi
           if [[ -s "$PWA_CLAIM_FILE" ]]; then echo "started=true" >> "$GITHUB_OUTPUT"
-          else echo "::error::modal_app.py refused the launch before generating anything; nothing is fetched or published"; fi
+          else echo "::error::the launch was refused before generating anything; nothing is fetched or published"; fi
           exit "$rc"
+      - name: Warm container summary
+        if: always() && inputs.warm == 'on'
+        continue-on-error: true
+        env:
+          IDLE: ${{ inputs.warm_idle_minutes }}
+        run: |
+          [[ -f "$RUNNER_TEMP/warm.json" ]] || exit 0
+          python - "$RUNNER_TEMP/warm.json" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print("### Warm containers\n")
+          print(f"Deployed this run: {'yes (cold start)' if d['deployed'] else 'no'}; wall clock {d['wall_s']} s\n")
+          print("| Shard | Container call | Warm | Pipe load at enter (s) | Call (s) | rc |\n|---|---|---|---|---|---|")
+          for r in d["shards"]:
+              print(f"| {r['shard']} | {r['call']} | {r['warm']} | {r['pipe_loaded_in_s']} | {r.get('seconds', '')} | {r['rc']} |")
+          PY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Idle warm containers bill the GPU for up to $IDLE min after their last call. Stop them now: run this workflow with warm=stop." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch arms from Modal
         # Only arms this run claimed, and of those only ones whose meta.json carries this run's PWA_RUN_ID, go into
