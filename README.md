@@ -48,7 +48,7 @@ Generation needs a CUDA GPU and runs on Modal from the GitHub Actions `experimen
 - `pwa` drives the loop: generate rollouts, score them with the official Gemini 3.1 Pro rubric verifier, report per-family means with pass-to-pass variance, and compare experiments.
 - `adapters/` plug world models into the upstream closed-loop harness. LingBot-World v2 14B is the model we work on: a persistent session carries the KV cache across agent steps, and the method flags listed under Status are opt-in. A SANA-WM adapter (one smoke run), a LingBot 1.3B runner and a Matrix-Game 3.0 stub remain but are not used for decisions. Our methods wrap the engine's `generate()` call.
 - Generation runs on Modal GPUs, launched from the GitHub Actions `experiment` workflow; every run's row lands in `results/experiments.csv` on `main` and on the results site.
-- `splits/` fixes a 24-task dev set for iteration and keeps the other 147 tasks held out until the final run.
+- `splits/` fixes two 24-task dev sets for iteration (`dev`, and `dev2` drawn later from the held-out tasks before any of them was scored; `dev48` is both) and keeps the other 123 tasks held out until the final run.
 
 In the dev baseline the player's actions decided most geometry and out-of-sight scores. It flipped between left and right for whole rollouts, and in 4 of 6 out-of-sight rollouts the camera never returned to the start view, so the judge graded no content. On insight, with no player involved, four of six rollouts were flagged static in at least one scoring. Two scorings of the same video differed by 0.5 or more on 10 of 24 tasks. The census, recomputed from the raw judge files: [research/baseline-census.md](research/baseline-census.md).
 
