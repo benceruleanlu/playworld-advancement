@@ -23,6 +23,11 @@ With --lingbot-gc-completion-hint, also add gc_completion=on,
 gc_completion_hints (GC decisions receiving the reminder), and gc_completion_ends
 (END replies from those decisions). They are observations, not forced stops.
 
+Only with --lingbot-if-horizon the line also ends with:
+  if_horizon         on (an IF task the player was asked about) | skip (not IF, or no player)
+  if_horizon_chunks  the task's chunk budget (0 when skipped)
+  if_horizon_ends    1 when the wrapper ended the rollout at the budget, 0 when the player ended it earlier
+
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
 """
@@ -34,13 +39,16 @@ from pathlib import Path
 
 class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
-                 return_stop: bool = False, gc_completion: bool = False):
+                 return_stop: bool = False, gc_completion: bool = False,
+                 if_horizon: bool = False):
+        self.if_horizon = bool(if_horizon)
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
         self.gc_completion = bool(gc_completion)
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
-                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0}
+                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
+                       "if_horizon_tasks": 0, "if_horizon_ends": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -52,6 +60,8 @@ class FlagStats:
         self.return_stop_armed = False
         self.return_stops = 0
         self.gc_completion_hints = self.gc_completion_ends = 0
+        self.if_horizon_cap = 0
+        self.if_horizon_ends = 0
 
     def caption(self, used: bool):
         if used:
@@ -88,6 +98,12 @@ class FlagStats:
                 ("gc_completion_hints", "gc_completion_ends")}}
 
     # -- output ----------------------------------------------------------------
+    def if_horizon_event(self, kind: str, cap: int):
+        """if_horizon.wrap on_event: "armed" or "end", with the task's chunk budget."""
+        self.if_horizon_cap = int(cap)
+        if kind == "end":
+            self.if_horizon_ends += 1
+
     def summary(self, task_id) -> dict:
         if self.prompt_mode == "goal":
             caption = "off"
@@ -102,6 +118,9 @@ class FlagStats:
         if self.return_stop:
             s.update(return_stop="on" if self.return_stop_armed else "skip", return_stops=self.return_stops)
         s.update(self.completion_summary(vars(self)))
+        if self.if_horizon:
+            s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
+                     if_horizon_ends=self.if_horizon_ends)
         return s
 
     @staticmethod
@@ -114,7 +133,9 @@ class FlagStats:
                 f"caption_used={t['caption_used']} caption_fallback={t['caption_fallback']} "
                 f"reanchor_events={t['reanchor_events']} player_hints={t['player_hints']}"
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
-                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items()))
+                + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
+                + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
+                   if self.if_horizon else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -127,6 +148,8 @@ class FlagStats:
         t["return_stops"] += self.return_stops
         t["gc_completion_hints"] += self.gc_completion_hints
         t["gc_completion_ends"] += self.gc_completion_ends
+        t["if_horizon_tasks"] += bool(self.if_horizon_cap)
+        t["if_horizon_ends"] += self.if_horizon_ends
         print(self.line(s), flush=True)
         return s
 
