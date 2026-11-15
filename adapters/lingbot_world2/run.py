@@ -46,6 +46,8 @@ Insight director (off by default): --lingbot-insight-director / LINGBOT_INSIGHT_
 Scene caption + original goal + fixed activity-continuation text on insight tasks only.
 IF repeat check (off by default): --lingbot-if-repeat-check / LINGBOT_IF_REPEAT_CHECK=1.
 After four identical IF actions, ask the player to recheck visible goal progress.
+IF slow translation (off by default, session only): --lingbot-if-slow-translation /
+LINGBOT_IF_SLOW_TRANSLATION=1 halves IF per-frame camera translation before normalization.
 
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
@@ -127,7 +129,8 @@ from adapters.lingbot_world2 import session as S  # noqa: E402
 from adapters.lingbot_world2 import watchdog as W  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-if-camera-hint", "--lingbot-player-history-endpoints", "--lingbot-stateless",
-              "--lingbot-insight-director", "--lingbot-if-repeat-check", "--lingbot-turn-cal", "--lingbot-caption-prompt",
+              "--lingbot-insight-director", "--lingbot-if-repeat-check", "--lingbot-if-slow-translation",
+              "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon")
 
@@ -154,8 +157,12 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "insight_director": "--lingbot-insight-director" in argv
                             or environ.get("LINGBOT_INSIGHT_DIRECTOR", "0") == "1",
         "if_repeat": "--lingbot-if-repeat-check" in argv or environ.get("LINGBOT_IF_REPEAT_CHECK", "0") == "1",
+        "if_slow": "--lingbot-if-slow-translation" in argv
+                   or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
     }
     flags["stall"], argv = W.parse(argv, environ)
+    if flags["if_slow"] and flags["stateless"]:
+        raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
@@ -312,6 +319,12 @@ class LingBotWorld2Engine:
                 return self._generate_stateless(image_path, prompt, action, output_dir, name, num_frames)
             return self._generate_session(image_path, prompt, action, output_dir, name, num_frames)
 
+    def _configure_if_motion(self, name, keys):
+        slow = STATS.if_slow and str(name).startswith("IF")
+        self.session.track.translation_gain = 0.5 if slow else 1.0
+        if slow:
+            STATS.if_scaled(sum(bool(set(k.lower().split("+")) & {"w", "s", "a", "d"}) for k in keys))
+
     def _generate_session(self, image_path, prompt, action, output_dir, name, num_frames):
         """Continue (or reset and start) the persistent session; write <output_dir>/<name>.mp4.
         Frame counts follow session.frames_returned (33 -> 29 first, 33 after)."""
@@ -335,6 +348,7 @@ class LingBotWorld2Engine:
                                reanchor=reanchor)
             if reanchor:
                 STATS.armed()
+        self._configure_if_motion(name, keys)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
         frames = self.session.step(keys)
@@ -404,9 +418,12 @@ def main(argv: list[str] | None = None) -> int:
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
                                  if_horizon=IF_HORIZON, if_camera=flags["if_camera"],
                                  history_endpoints=flags["history_endpoints"],
-                                 insight_director=flags["insight_director"], if_repeat=flags["if_repeat"])
+                                 insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
+                                 if_slow=flags["if_slow"])
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
+    if flags["if_slow"]:
+        print("[lingbot] IF slow translation: on (gain=0.5, session only)", flush=True)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
@@ -419,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
         print("[lingbot] player history endpoints: on", flush=True)
     if PLAYER_HINT:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
-                                         session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
+                                         session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
         print("[lingbot] player hint: on", flush=True)
     if flags["if_camera"]:
         run_agent.decide_action = IC.wrap(run_agent.decide_action, STATS.if_camera_hint)
