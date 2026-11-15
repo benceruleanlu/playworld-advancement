@@ -238,14 +238,16 @@
     if (r.notes && !r.ref) td.appendChild(el("div", { class: "meta-line notes", text: r.notes }));
     tr.appendChild(td);
     var o = el("td", { class: "num overall" });
+    // same rows renderBoard leaves out of BEST: a smoke or capped row that ties a fair best is not underlined
+    var fair = !isSmoke(r);
     if (r.overall === null) dashCell(o);
     else {
-      o.appendChild(el("div", { class: r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
+      o.appendChild(el("div", { class: fair && r.overall === BEST.overall ? "best" : "", text: fmt(r.overall) }));
       if (typeof r.overall_std === "number") o.appendChild(el("div", { class: "std", text: "±" + fmt(r.overall_std) }));
     }
     tr.appendChild(o);
     FAMS.forEach(function (f) {
-      var t = el("td", { class: "num" + (r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
+      var t = el("td", { class: "num" + (fair && r[f[0]] !== null && r[f[0]] === BEST[f[0]] ? " best" : "") }); if (r[f[0]] === null) dashCell(t); else t.textContent = fmt(r[f[0]]); tr.appendChild(t);
     });
     var ckt = el("td", { class: "hide-sm" }); if (r.ref) dashCell(ckt); else ckt.appendChild(checksEl(r)); tr.appendChild(ckt);
     var nt = el("td", { class: "num hide-sm" });
