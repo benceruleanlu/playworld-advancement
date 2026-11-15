@@ -39,6 +39,8 @@ Each of these flags adds its fields only when it is on (the total line adds the 
   --lingbot-if-repeat-check           if_repeat=on, if_repeat_checks (IF decisions that got the repeat reminder)
   --lingbot-if-slow-translation       if_slow=on, if_translation_frames (IF session frames whose W/S/A/D
                                       translation was halved)
+  --lingbot-cond-schedule             cond_sched=on|skip, cond_sched_chunks, cond_sched_calls (session chunks and
+                                      DiT forward calls whose early-step cam/text scales differed from 1.0)
 
 The same fields go into <task_id>_result.json under "lingbot_flags". Nothing here changes
 what is generated or what the player is asked.
@@ -55,7 +57,7 @@ class FlagStats:
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
                  insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
                  gc_director: bool = False, gc_ease_turns: bool = False,
-                 if_subject: bool = False):
+                 if_subject: bool = False, cond_sched: str = "off"):
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -68,14 +70,14 @@ class FlagStats:
         self.return_stop = bool(return_stop)
         self.turn_cal, self.prompt_mode = bool(turn_cal), prompt_mode
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
-        self.gc_completion = bool(gc_completion)
+        self.gc_completion, self.cond_sched = bool(gc_completion), cond_sched
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
                        "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
                        "gc_director_chunks": 0, "gc_director_updates": 0, "gc_eased_turns": 0,
-                       "if_subject_prompts": 0}
+                       "if_subject_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -97,6 +99,7 @@ class FlagStats:
         self.gc_completion_hints = self.gc_completion_ends = 0
         self.if_horizon_cap = 0
         self.if_horizon_ends = 0
+        self.cond_sched_chunks = self.cond_sched_calls = 0
 
     def caption(self, used: bool):
         if used:
@@ -144,6 +147,10 @@ class FlagStats:
 
     def completion_end(self):
         self.gc_completion_ends += 1
+
+    def cond_scheduled(self, chunks: int = 0, calls: int = 0):
+        self.cond_sched_chunks += int(chunks)
+        self.cond_sched_calls += int(calls)
 
     def completion_summary(self, counts) -> dict:
         if not self.gc_completion:
@@ -194,6 +201,9 @@ class FlagStats:
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
                      if_horizon_ends=self.if_horizon_ends)
+        if self.cond_sched != "off":
+            s.update(cond_sched=self.cond_sched, cond_sched_chunks=self.cond_sched_chunks,
+                     cond_sched_calls=self.cond_sched_calls)
         return s
 
     @staticmethod
@@ -216,7 +226,9 @@ class FlagStats:
                    if self.if_horizon else "")
                 + "".join(f" {k}={v}" for k, v in self.director_summary(t).items())
                 + (f" gc_ease_turns=on gc_eased_turns={t['gc_eased_turns']}" if self.gc_ease_turns else "")
-                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else ""))
+                + (f" if_subject=on if_subject_prompts={t['if_subject_prompts']}" if self.if_subject else "")
+                + (f" cond_sched={self.cond_sched} cond_sched_chunks={t['cond_sched_chunks']}"
+                   f" cond_sched_calls={t['cond_sched_calls']}" if self.cond_sched != "off" else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -240,6 +252,8 @@ class FlagStats:
         t["gc_completion_ends"] += self.gc_completion_ends
         t["if_horizon_tasks"] += bool(self.if_horizon_cap)
         t["if_horizon_ends"] += self.if_horizon_ends
+        t["cond_sched_chunks"] += self.cond_sched_chunks
+        t["cond_sched_calls"] += self.cond_sched_calls
         print(self.line(s), flush=True)
         return s
 

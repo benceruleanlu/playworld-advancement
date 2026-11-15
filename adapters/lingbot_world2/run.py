@@ -77,6 +77,10 @@ Model prompt composition, in order: caption prompt (prompts.model_prompt), insig
 tasks), GC chunk director (GC chunks; appends to the caption), IF subject director (third-person IF;
 replaces the prompt with its structured form). Each applies to one family, so at most one rewrites a task.
 
+Conditioning schedule (off by default, session only): `--lingbot-cond-schedule` or LINGBOT_COND_SCHEDULE=1
+scales DiT camera FiLM and cross-attention output on early denoising steps of stationary and third-person
+chunks, restoring (1, 1) on late steps and the t=0 KV write (--lingbot-cond-early/cam/3p/text; cond_schedule.py).
+
 decide_action wrappers, innermost first: player hint, IF repeat check, IF camera hint, GC completion hint,
 return stop, IF horizon. The goal the player reads is therefore goal + GC completion | (IF camera, then
 IF repeat) + player hint; return stop and IF horizon answer without asking the player, so their WAIT/END
@@ -159,6 +163,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
+from adapters.lingbot_world2 import cond_schedule as CS  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_director as D  # noqa: E402
@@ -217,6 +222,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["if_subject"] and mode == "goal":
         raise SystemExit("--lingbot-if-subject-director requires caption prompting")
     flags["stall"], argv = W.parse(argv, environ)
+    flags["cond_sched"], argv = CS.parse(argv, environ)
     if flags["if_slow"] and flags["stateless"]:
         raise SystemExit("--lingbot-if-slow-translation requires session mode (stateless normalizes away scale)")
     flags["player"], argv = agent_api.configure(argv, environ)
@@ -232,6 +238,7 @@ PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
 CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
 STALL = W.Limits()
+COND_SCHED = CS.ScheduleConfig()
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -325,17 +332,23 @@ class LingBotWorld2Engine:
         # upstream's in-memory embeddings are keyed by prompt only: drop them when the CPU T5 thread count changed
         FS.partition_t5_memory(self.pipe, CPU_THREADS if t5_cpu else "gpu")
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
+        CS.detach_model(getattr(self.pipe, "model", None))
+        sched = (CS.CondScheduler(self.pipe.model, COND_SCHED)
+                 if COND_SCHED.enabled and not STATELESS and hasattr(self.pipe, "model") else None)
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
                                             horizon_frames=int(getattr(args, "max_total_frames", 961) or 961),
-                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache)
+                                            stream_encode=FAST.fast_y, t5_cache=self.t5_cache,
+                                            **({"cond_sched": sched} if sched is not None else {}))
         self._last_chunk = None
         print(f"[lingbot] mode: {'stateless' if STATELESS else 'session'}"
               + ("" if STATELESS else f" (stream_decode={self.session.stream_decode})")
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
+              + ((", cond-schedule ignored (stateless)" if STATELESS else f", {COND_SCHED.describe()}")
+                 if COND_SCHED.enabled else "")
               + (", player hint on" if PLAYER_HINT else "")
               + (", return stop on" if RETURN_STOP else "")
               + (", GC completion hint on" if GC_COMPLETION else "")
@@ -427,6 +440,7 @@ class LingBotWorld2Engine:
             self.session.reset(Image.open(image_path).convert("RGB"), prompt or DEFAULT_PROMPT,
                                int(self.args.seed), horizon_frames=horizon,
                                reanchor=reanchor)
+            self.session.third_person = CS.is_third_person(prompts._current.get("task"), name)
             if reanchor:
                 STATS.armed()
         self._configure_if_motion(name, keys)
@@ -434,10 +448,14 @@ class LingBotWorld2Engine:
             STATS.gc_director_updates += self.session.update_prompt(prompt or DEFAULT_PROMPT)
         start = self.session.chunk_id
         anchored = self.session.reanchor_events
+        cs_chunks = getattr(self.session, "cond_sched_chunks", 0)
+        cs_calls = getattr(self.session, "cond_sched_calls", 0)
         ease = bool(GC_EASE_TURNS and parsed and parsed[0].startswith("GC") and S.is_pure_turn(keys))
         frames = self.session.step(keys, ease_turns=True) if ease else self.session.step(keys)
         STATS.gc_eased_turns += ease
         STATS.reanchored(self.session.reanchor_events - anchored)
+        STATS.cond_scheduled(getattr(self.session, "cond_sched_chunks", 0) - cs_chunks,
+                             getattr(self.session, "cond_sched_calls", 0) - cs_calls)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / f"{name}.mp4"
@@ -492,21 +510,22 @@ def main(argv: list[str] | None = None) -> int:
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
-    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT
+    global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, COND_SCHED
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
-    IF_SUBJECT = flags["if_subject"]
+    IF_SUBJECT, COND_SCHED = flags["if_subject"], flags["cond_sched"]
     # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
     CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
+    cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
                                  if_horizon=IF_HORIZON, if_camera=flags["if_camera"],
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
                                  if_slow=flags["if_slow"], gc_director=GC_DIRECTOR,
-                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT)
+                                 gc_ease_turns=GC_EASE_TURNS, if_subject=IF_SUBJECT, cond_sched=cs_mode)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
