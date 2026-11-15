@@ -51,5 +51,6 @@ jobs:
           npm ci --no-audit --no-fund
           mkdir -p public
           cp ../results/experiments.csv public/experiments.csv
+          node src/scripts/runinfo.check.mjs
           npm run build
           test -s dist/index.html

@@ -1,0 +1,229 @@
+{
+ "exp": "win14-fx-v1-a2",
+ "release_tag": "run-win14-fx-v1-a2",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a2",
+ "generated": "2026-11-15T05:43:15Z",
+ "git_sha": "6804889ff4c495357c46c7c5391f905c28697093",
+ "branch": "main",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-local-attn",
+  "22"
+ ],
+ "player_model": "",
+ "notes": "larger attention cache on out-of-sight and GC returns: sink 10 + cache 22, cache 22 only, and a second seed for control and treatment; seed-0 control is sks14-fx-v1-a1 / mem14-fx-v1-a1 (generation is deterministic) [arm 2/4 of win14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-local-attn 22]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "win14-fx-v1-a2.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC031",
+   "family": "gc",
+   "mean": 2.95,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.8,
+    2.6,
+    2.4,
+    5.0
+   ],
+   "reason": "镜头虽然进行了向右的环视，但未能完成完整的360度旋转并回到初始视角，未满足重访要求。",
+   "reason_en": "Although the camera panned to the right, it failed to complete a full 360-degree rotation and return to the initial viewpoint, failing to meet the revisit requirement.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/GC031.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/GC031.jpg"
+  },
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 3.55,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.8,
+    3.2,
+    3.2,
+    4.0
+   ],
+   "reason": "The video successfully executes the requested camera motion, and the objects in the display window reappear with consistent identity, layout, and color, with only minor degradation of the sign text.",
+   "reason_en": "",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/GC033.jpg"
+  },
+  {
+   "task_id": "GC036",
+   "family": "gc",
+   "mean": 2.05,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    2.0,
+    2.2,
+    2.0
+   ],
+   "reason": "HATS招牌在镜头平移过程中发生变异，从灰色店面转移到洋红色店面，随后拼写变为HATTS，导致身份、颜色和相对位置严重不一致。",
+   "reason_en": "The HATS sign morphed during the camera pan, shifting from a gray storefront to a magenta storefront, and then its spelling changed to HATTS, resulting in severe inconsistencies in identity, color, and relative position.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/GC036.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/GC036.jpg"
+  },
+  {
+   "task_id": "OE034",
+   "family": "outsight",
+   "mean": 1.75,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    1.0,
+    4.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频执行了要求的镜头往返运动，但未能保持视野外物体的状态，镜头返回后初始的三只斑马、鸵鸟和生菜完全消失，被全新的斑马和背景取代，发生了严重的场景重置和幻觉。",
+   "reason_en": "The video executed the required back-and-forth camera movement, but failed to maintain the state of off-screen objects. After the camera returned, the initial three zebras, ostrich, and lettuce completely disappeared and were replaced by brand-new zebras and a different background, causing severe scene resets and hallucinations.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE034.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE034.jpg"
+  },
+  {
+   "task_id": "OE039",
+   "family": "outsight",
+   "mean": 3.25,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.5,
+    2.0,
+    4.0,
+    3.5
+   ],
+   "reason": "相机成功完成了360度旋转并后退，狗在视野外合理地从椅子跳到了地板上，但狗的胸背带和红色椅子的形状在重新出现时发生了严重的突变。",
+   "reason_en": "The camera successfully completed a 360-degree rotation and pulled back, and the dog plausibly jumped from the chair to the floor while off-screen, but the shapes of the dog's harness and the red chair underwent severe mutations upon reappearing.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE039.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE039.jpg"
+  },
+  {
+   "task_id": "OE047",
+   "family": "outsight",
+   "mean": 1.5,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    1.0,
+    2.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头未执行向右转动并返回的指令。",
+   "reason_en": "The camera failed to execute the instruction to turn right and return.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE047.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE047.jpg"
+  },
+  {
+   "task_id": "OE048",
+   "family": "outsight",
+   "mean": 3.25,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    3.0,
+    3.0,
+    4.0,
+    3.0
+   ],
+   "reason": "视频成功展示了镜头向右转动并返回的过程，期间画面外的咖啡液面合理上升，但在回到初始视角后镜头继续向左过度平移，导致背景中出现了多个重复的盆栽幻觉。",
+   "reason_en": "The video successfully showed the camera turning right and returning, during which the off-screen coffee level rose plausibly. However, after returning to the initial viewpoint, the camera continued panning excessively to the left, causing multiple duplicate potted plant hallucinations to appear in the background.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE048.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE048.jpg"
+  },
+  {
+   "task_id": "OE058",
+   "family": "outsight",
+   "mean": 1.25,
+   "status": [
+    "gate_fail"
+   ],
+   "pass_scores": [
+    1.0,
+    1.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头未返回初始视角，且主体随镜头移动，未实现离开视线的效果。",
+   "reason_en": "The camera failed to return to the initial viewpoint, and the subject moved along with the camera, failing to achieve the effect of leaving the field of view.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE058.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE058.jpg"
+  },
+  {
+   "task_id": "OE069",
+   "family": "outsight",
+   "mean": 1.75,
+   "status": [
+    "ok"
+   ],
+   "pass_scores": [
+    2.0,
+    2.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头成功完成左右旋转，但视线外的人物未随扶梯向下移动，且重新出现时背包颜色改变并多出围巾，缺乏合理的物理演变。",
+   "reason_en": "The camera successfully completed the left-and-right rotation, but the off-screen person did not move down with the escalator, and upon reappearing, their backpack changed color and an extra scarf appeared, lacking plausible physical evolution.",
+   "fail_reason": "",
+   "fail_pass": null,
+   "fail_reason_en": "",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE069.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a2/OE069.jpg"
+  }
+ ]
+}

@@ -29,7 +29,7 @@ env overrides: PWA_ROOT (repo), PWA_RUNS (runs dir), PWA_RESULTS_CSV (experiment
 
 
 def _sel_args(p, default_split=None):
-    p.add_argument("--split", default=None, help="dev | heldout | all | path to TSV (default: "
+    p.add_argument("--split", default=None, help="dev | dev2 | dev48 | heldout | all | path to TSV (default: "
                    + (default_split or "the task list recorded by `pwa gen`") + "; --tasks alone may name any task)")
     p.add_argument("--family", nargs="+", choices=FAMILIES, help="restrict to families")
     p.add_argument("--tasks", nargs="+", metavar="ID", help="restrict to task ids")
@@ -190,7 +190,16 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--site-url", default="", help="results site for the play links in SCENES.md (default: the public site)")
     p.add_argument("--label", action="append", default=[], help="extra manifest label (repeatable; the arms workflow adds the arm's args)")
 
-    p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason")
+    p = mk("translate-media", "fill missing English reason_en fields in scenes manifests in place (display only; "
+                              "one batched Gemini call, GEMINI_API_KEY; the original reason stays authoritative)")
+    p.add_argument("--dir", required=True, help="directory of EXP.json manifests, e.g. results/media")
+    p.add_argument("--exps", default="", help="comma-separated experiment names, or all (default: every manifest)")
+    p.add_argument("--cache", default="", help="translation cache JSON (sha256 of the source text -> English), "
+                                               "so a retry calls the API only for strings not yet translated")
+    p.add_argument("--json", action="store_true")
+
+    p = mk("failures", "tasks that are missing, gate-failed, or scored 1.0, with the verifier's reason "
+                       "(pass closest to the task's mean; English copy when translated)")
     p.add_argument("exp")
     _sel_args(p)
     p.add_argument("--all", action="store_true", help="every task, not only failures")
@@ -419,10 +428,29 @@ def dispatch(a) -> int:  # noqa: C901
               "n_videos": sum(1 for t in man["tasks"] if t["video"])}, True)
         return 0
 
+    if a.cmd == "translate-media":
+        from . import translate
+        d = Path(a.dir)
+        if not d.is_dir():
+            raise PwaError(f"{d} is not a directory")
+        exps = [x.strip() for x in a.exps.split(",") if x.strip() and x.strip() != "all"]
+        stats: dict = {}
+        done = translate.translate_media(d, exps or None, cache_path=Path(a.cache) if a.cache else None, stats=stats)
+        emit(done, a.json, "\n".join(f"{k}\t{v} reason(s) translated" for k, v in done.items()) or "(no manifests)")
+        if stats.get("untranslated"):
+            log(f"[pwa] translate-media: {stats['untranslated']} of {stats['pending']} reason(s) left untranslated")
+        # a backfill that translated nothing it was asked to is a failure (report and media never fail on this)
+        if stats.get("pending") and stats.get("untranslated") == stats["pending"]:
+            return 1
+        return 0
+
     if a.cmd == "failures":
         rows = report.failures(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), a.all, judge)
+        # English display copy first when there is one, then the judge's original (authoritative)
         text = "\n".join(f"{r['task_id']}\t{r['family']}\t{report.f2(r['mean']).strip()}\t"
-                         f"{','.join(r['status'])}\t{r['reason']}" for r in rows)
+                         f"{report.passes_cell(r.get('pass_scores'))}\t{','.join(r['status'])}\t"
+                         + (f"{r['reason_en']}\toriginal: {r['reason']}" if r.get("reason_en") else r["reason"])
+                         for r in rows)
         if a.md:
             text = report.render_failures_md(rows)
         if judge:

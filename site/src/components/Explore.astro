@@ -1,0 +1,68 @@
+---
+// Reference material behind the story, as four tabs of one section. The panel ids are the old section ids, so deep links still land.
+import Section from "./Section.astro";
+---
+<Section id="watch" title="Explore" lede="Compare any two runs, browse one run's clips, or read every test and every run.">
+  <div class="tabs" role="tablist" aria-label="Explore">
+    <button type="button" role="tab" id="tab-compare" aria-controls="compare-clips" aria-selected="true">Compare clips</button>
+    <button type="button" role="tab" id="tab-scenes" aria-controls="scenes" aria-selected="false">Browse a run</button>
+    <button type="button" role="tab" id="tab-tests" aria-controls="testing" aria-selected="false">All tests</button>
+    <button type="button" role="tab" id="tab-runs" aria-controls="runs" aria-selected="false">All runs</button>
+  </div>
+  <div id="compare-clips" role="tabpanel" aria-labelledby="tab-compare">
+    <div class="filters" id="cv-pick" hidden>
+      <label class="wide">Test <select id="cv-test"></select></label>
+      <label id="cv-trt-wrap">Treatment <select id="cv-trt"></select></label>
+      <label id="cv-o1-wrap" hidden>Control <select id="cv-o1"></select></label>
+      <label id="cv-o2-wrap" hidden>Treatment <select id="cv-o2"></select></label>
+      <label>Task <select id="cv-task"></select></label>
+    </div>
+    <p class="scnote" id="cv-help" hidden></p>
+    <p class="cvdiff" id="cv-diff" hidden></p>
+    <p class="cvctl" id="cv-ctl" hidden></p>
+    <p class="callout" id="cv-empty" style="margin-top:0">Loading published clips.</p>
+    <div class="sclabels" id="cv-notes" hidden></div>
+    <div class="cvbar" id="cv-bar" role="group" aria-label="Playback for all clips" hidden>
+      <button type="button" class="cvbtn" id="cv-play" aria-label="Play all">Play</button>
+      <button type="button" class="cvbtn" id="cv-back" aria-label="Back one frame" title="Back one frame">&#9664;|</button>
+      <button type="button" class="cvbtn" id="cv-fwd" aria-label="Forward one frame" title="Forward one frame">|&#9654;</button>
+      <input type="range" id="cv-seek" min="0" max="1" step="0.001" value="0" aria-label="Position in all clips">
+      <span class="cvtime" id="cv-time" aria-live="off">0:00.0 / 0:00.0</span>
+      <span class="cvspeed" role="group" aria-label="Playback speed">
+        <button type="button" class="cvbtn" data-rate="0.5" aria-pressed="false">0.5x</button>
+        <button type="button" class="cvbtn" data-rate="1" aria-pressed="true">1x</button>
+        <button type="button" class="cvbtn" data-rate="2" aria-pressed="false">2x</button>
+      </span>
+      <label class="cvloop"><input type="checkbox" id="cv-loop" checked> Loop</label>
+      <button type="button" class="cvbtn" id="cv-link">Copy link</button>
+      <span class="copied" id="cv-copied" role="status" aria-live="polite"></span>
+    </div>
+    <div class="cvgrid" id="cv-grid" aria-live="polite"></div>
+    <p class="scnote" id="cv-note" hidden>A shorter clip holds its last frame.</p>
+  </div>
+  <div id="scenes" role="tabpanel" aria-labelledby="tab-scenes" hidden>
+    <div class="filters" id="scenes-filters" hidden>
+      <label>Run <select id="sc-run"></select></label>
+      <label>Family <select id="sc-fam"></select></label>
+    </div>
+    <p class="scdesc" id="sc-desc" hidden></p>
+    <div class="sclabels" id="sc-labels" hidden></div>
+    <p class="callout" id="sc-empty" style="margin-top:0">Loading scenes.</p>
+    <div class="scenes" id="sc-grid" aria-live="polite"></div>
+    <p class="scnote" id="sc-attr"><span id="sc-model"></span><a id="sc-files" href="https://github.com/benceruleanlu/playworld-advancement/releases" target="_blank" rel="noopener" hidden>All files of this run</a></p>
+  </div>
+  <div id="testing" role="tabpanel" aria-labelledby="tab-tests" hidden>
+    <p class="sub">Off by default. Kept only if tasks move a full point on two seeds.</p>
+    <div id="methods"><div class="sk" style="height:140px"></div></div>
+  </div>
+  <div id="runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+    <div class="filters" id="filters">
+      <label class="check"><input type="checkbox" id="f-capped"> Capped smoke runs <span id="capped-count" class="std"></span></label>
+      <label class="check"><input type="checkbox" id="f-ended"> Runs without a score <span id="ended-count" class="std"></span></label>
+      <label class="check"><input type="checkbox" id="f-tests"> Pipeline tests <span id="tests-count" class="std"></span></label>
+    </div>
+    <div class="scroll"><table id="board"><tbody><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr><tr class="skrow"><td><div class="sk"></div></td></tr></tbody></table></div>
+    <button type="button" class="scmore" id="runs-more" hidden></button>
+    </div>
+  <p class="scnote" id="watch-note">English judge comments were machine-translated after scoring; "show original" has the judge's own text. Task images come from <a href="https://github.com/kxding/PlayWorld" target="_blank" rel="noopener">PlayWorld</a> (Pexels and web image search, their terms). Videos: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial. <a href="https://github.com/benceruleanlu/playworld-advancement/issues/new?title=Scene+removal+request" target="_blank" rel="noopener">Request removal</a>.</p>
+</Section>

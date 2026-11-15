@@ -192,10 +192,10 @@ def _arm_man(exp, videos):
                                   for t, v in videos.items()]}
 
 
-def test_compare_url_names_up_to_three_slots():
+def test_compare_url_names_control_and_treatment():
     assert (media.compare_url("https://s.test/base/", "GC036", ["g-a1", "g-a2"])
-            == "https://s.test/base/?compare=GC036&a=g-a1&b=g-a2#compare-clips")
-    assert media.compare_url("https://s.test", "GC0", ["x", "y", "z", "w"]).endswith("a=x&b=y&c=z#compare-clips")
+            == "https://s.test/base/?compare=GC036&b=g-a1&c=g-a2#compare-clips")
+    assert media.compare_url("https://s.test", "GC0", ["x", "y", "z"]).endswith("compare=GC0&b=x&c=y#compare-clips")
 
 
 def test_arms_md_links_every_arm_and_compares_against_arm_one():
@@ -205,11 +205,11 @@ def test_arms_md_links_every_arm_and_compares_against_arm_one():
     md = media.arms_md(site, mans)
     gc36 = next(x for x in md.splitlines() if x.startswith("| GC036 |"))
     assert f"[g-a1]({site}?scenes=g-a1&scene=GC036#scenes)" in gc36 and "[g-a4](" in gc36
-    # three slots: arm 1 is a= in every link, the others fill b= / c=
-    assert f"({site}?compare=GC036&a=g-a1&b=g-a2&c=g-a3#compare-clips)" in gc36
-    assert f"[g-a1 vs g-a4]({site}?compare=GC036&a=g-a1&b=g-a4#compare-clips)" in gc36
+    # one link per other arm: arm 1 is Control b=, the arm is Treatment c=
+    for arm in ("g-a2", "g-a3", "g-a4"):
+        assert f"[g-a1 vs {arm}]({site}?compare=GC036&b=g-a1&c={arm}#compare-clips)" in gc36
     gc5 = next(x for x in md.splitlines() if x.startswith("| GC005 |"))
-    assert "g-a2" not in gc5 and f"({site}?compare=GC005&a=g-a1&b=g-a3#compare-clips)" in gc5
+    assert "g-a2" not in gc5 and f"({site}?compare=GC005&b=g-a1&c=g-a3#compare-clips)" in gc5
     one = media.arms_md(site, [_arm_man("h-a1", {"GC005": True})])
     assert one.rstrip().endswith(f"| GC005 | [h-a1]({site}?scenes=h-a1&scene=GC005#scenes) | - |")
 
@@ -219,4 +219,4 @@ def test_arms_md_cli(tmp_path):
     b = _write(tmp_path / "b.json", _arm_man("g-a2", {"GC036": True}))
     r = subprocess.run([sys.executable, "-m", "pwa.media", "arms-md", "https://s.test/", str(a), str(b)],
                        capture_output=True, text=True, cwd=ROOT)
-    assert r.returncode == 0 and "https://s.test/?compare=GC036&a=g-a1&b=g-a2#compare-clips" in r.stdout
+    assert r.returncode == 0 and "https://s.test/?compare=GC036&b=g-a1&c=g-a2#compare-clips" in r.stdout

@@ -52,7 +52,8 @@
    ],
    "reason": "视频较好地展现了男子走向宝塔并抬头的过程，背景和主体颜色、纹理相对稳定，但男子手中的相机在走动过程中消失。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC016.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC016.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC016.jpg",
+   "reason_en": "The video fairly well depicts the man walking toward the pagoda and looking up, with the background and the subject's colors and textures remaining relatively stable, but the camera in the man's hand disappears while he walks."
   },
   {
    "task_id": "GC031",
@@ -63,7 +64,8 @@
    ],
    "reason": "相机完成了360度旋转并经过了初始视角，但由于持续向右旋转，未能停在并保持在初始视角，而是继续旋转了第二圈并最终停在其他视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC031.jpg",
+   "reason_en": "The camera completes a 360-degree rotation and passes through the initial viewpoint, but because it continues rotating to the right, it fails to stop and stay at the initial viewpoint, instead continuing into a second rotation and eventually stopping at another viewpoint."
   },
   {
    "task_id": "GC033",
@@ -74,7 +76,8 @@
    ],
    "reason": "镜头在向右回转后没有停止在初始视角，而是继续向右平移，且画面内容完全改变，未能完整实现返回并面对展示窗的目标。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC033.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC033.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC033.jpg",
+   "reason_en": "After rotating back to the right, the camera does not stop at the initial viewpoint but continues panning right, and the content of the frame completely changes, failing to fully achieve the goal of returning to face the display window."
   },
   {
    "task_id": "GC036",
@@ -85,7 +88,8 @@
    ],
    "reason": "镜头仅持续向左平移，未能执行向右平移以及回到中心的指令。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC036.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC036.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC036.jpg",
+   "reason_en": "The camera only keeps panning left and fails to execute the instructions to pan right and return to the center."
   },
   {
    "task_id": "GC038",
@@ -96,7 +100,8 @@
    ],
    "reason": "视频虽然执行了先右后左的转向动作，但未能准确到达壁炉，且后半段场景完全崩坏，未能完成回到初始方向的完整轨迹。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC038.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC038.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/GC038.jpg",
+   "reason_en": "Although the video executes a right-then-left turning motion, it fails to accurately reach the fireplace, and the scene completely collapses in the second half, failing to complete the full trajectory back to the initial direction."
   },
   {
    "task_id": "IF002",
@@ -118,7 +123,8 @@
    ],
    "reason": "视频中机器狗在转向后突变为真狗，且工厂环境发生硬重置变为走廊，物理连贯性严重受损。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF010.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF010.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF010.jpg",
+   "reason_en": "In the video, the robotic dog suddenly mutates into a real dog after turning, and the factory environment undergoes a hard reset into a hallway, severely impairing physical coherence."
   },
   {
    "task_id": "IF017",
@@ -129,7 +135,8 @@
    ],
    "reason": "男子向前行走越过悬崖边缘后，违背物理规律在半空中继续悬空行走而未下落，且手中的武器发生了无端的替换与增生。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF017.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF017.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF017.jpg",
+   "reason_en": "After walking forward past the cliff edge, the man defies physics by continuing to walk in mid-air without falling, and the weapon in his hand undergoes inexplicable replacement and multiplication."
   },
   {
    "task_id": "IF031",
@@ -140,7 +147,8 @@
    ],
    "reason": "男子向前行走，接触到树干后被合理阻挡并停下，未发生穿模，整体物理交互连贯自然。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF031.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF031.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF031.jpg",
+   "reason_en": "The man walks forward, is reasonably blocked upon contacting the tree trunk and stops without clipping, resulting in coherent and natural overall physical interaction."
   },
   {
    "task_id": "IF034",
@@ -151,7 +159,8 @@
    ],
    "reason": "场景在接触前发生硬重置，导致交互未能发生。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF034.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF034.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF034.jpg",
+   "reason_en": "The scene undergoes a hard reset before contact, preventing the interaction from occurring."
   },
   {
    "task_id": "IF052",
@@ -162,7 +171,8 @@
    ],
    "reason": "主体未执行提示词要求的行走动作，仅为镜头运动。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF052.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF052.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/IF052.jpg",
+   "reason_en": "The subject does not perform the walking action required by the prompt; there is only camera movement."
   },
   {
    "task_id": "OE001",
@@ -250,7 +260,8 @@
    ],
    "reason": "视频完成了360度旋转和后退的相机运动，狗在重新出现时姿态发生了合理变化，但初始场景布局在旋转后发生了严重的复制和重置错误。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE039.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE039.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE039.jpg",
+   "reason_en": "The video completes the 360-degree rotation and backward camera movement, and the dog's posture changes reasonably when it reappears, but the initial scene layout suffers from severe duplication and reset errors after the rotation."
   },
   {
    "task_id": "OE047",
@@ -261,7 +272,8 @@
    ],
    "reason": "镜头转回后男子完全消失，随后在扶梯底部重置出现，且画面中凭空生成了巨大的镜头遮挡物，导致严重的连续性和物理逻辑失败。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE047.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE047.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE047.jpg",
+   "reason_en": "After the camera turns back, the man completely disappears and subsequently resets at the bottom of the escalator, while a huge camera obstruction appears out of nowhere in the frame, causing severe continuity and physical logic failures."
   },
   {
    "task_id": "OE048",
@@ -272,7 +284,8 @@
    ],
    "reason": "未执行返回原视角的动作。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE048.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE048.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE048.jpg",
+   "reason_en": "The action of returning to the original viewpoint is not executed."
   },
   {
    "task_id": "OE058",
@@ -283,7 +296,8 @@
    ],
    "reason": "镜头未能按照指令要求转回初始视角。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE058.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE058.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE058.jpg",
+   "reason_en": "The camera failed to rotate back to the initial viewpoint as instructed."
   },
   {
    "task_id": "OE069",
@@ -294,7 +308,8 @@
    ],
    "reason": "视频成功展示了镜头旋转180度并返回的过程，期间人物随自动扶梯合理下降，身份保持一致。",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE069.mp4",
-   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE069.jpg"
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-fx14-model-dev-v2-a1/OE069.jpg",
+   "reason_en": "The video successfully shows the camera rotating 180 degrees and returning, during which the person reasonably descends with the escalator while maintaining consistent identity."
   }
  ]
 }
