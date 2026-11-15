@@ -1,6 +1,16 @@
 {
  "runs": [
   {
+   "exp": "cs14-fx-v1-a2",
+   "generated": "2026-11-15T03:38:58Z",
+   "n_tasks": 7,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-cs14-fx-v1-a2",
+   "scored": true,
+   "labels": [
+    "replayed dataset moves (open loop), A/B only"
+   ]
+  },
+  {
    "exp": "cs14-fx-v1-a4",
    "generated": "2026-11-15T03:35:57Z",
    "n_tasks": 7,
@@ -22,18 +32,6 @@
     "not scored",
     "replayed dataset moves (open loop), A/B only",
     "arm 3/4 of cs14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule --lingbot-cond-text=1.0"
-   ]
-  },
-  {
-   "exp": "cs14-fx-v1-a2",
-   "generated": "2026-11-15T03:35:43Z",
-   "n_tasks": 7,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-cs14-fx-v1-a2",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "replayed dataset moves (open loop), A/B only",
-    "arm 2/4 of cs14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule"
    ]
   },
   {
