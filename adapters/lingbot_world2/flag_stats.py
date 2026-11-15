@@ -54,9 +54,12 @@ Each of these flags adds its fields only when it is on (the total line adds the 
                                       denoising step, and the extra layer-skip DiT forwards; skip = stateless)
   --lingbot-sink-size / --lingbot-local-attn   window=LOCAL:SINK (only when not the default 18:6)
   --lingbot-sink-key-scale            sink_scale=on (session reset of a task matching --lingbot-sink-scale-tasks,
-                                      sink > 0) | skip (stateless, sink 0 or task not matched),
+                                      sink > 0) | skip (task not matched; stateless and sink 0
+                                      are refused),
                                       sink_scaled_chunks (latent chunks whose denoising forwards ran with
                                       scaled sink keys)
+  --lingbot-turn-step DEG             turn_step=DEG (yaw degrees one closed-loop chunk turns; turn_cal=1 with it),
+                                      or turn_step=inactive for a task run as one dataset call (`<task>_full`)
   --lingbot-scripted-player           scripted=on (the script answered a decision) | skip (no decision asked:
                                       wait-only insight), scripted_planned (script + tail chunks),
                                       scripted_chunks (decisions answered from the script), scripted_end
@@ -84,7 +87,7 @@ class FlagStats:
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
-                 sink_scale: bool = False):
+                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0):
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
         self.cond_sched = cond_sched
@@ -92,6 +95,7 @@ class FlagStats:
         self.stg = stg
         self.measured_turn = bool(measured_turn)
         self.if_identity = bool(if_identity)
+        self.turn_step = float(turn_step or 0)  # --lingbot-turn-step: yaw degrees per closed-loop chunk
         self.window = str(window)  # "local:sink" when --lingbot-local-attn / --lingbot-sink-size differ from 18:6
         self.weight_mod = bool(weight_mod)
         self.weight_mod_late = ""  # set by the engine: WeightModulator.late_schedule()
@@ -101,6 +105,7 @@ class FlagStats:
         self.insight_director = bool(insight_director)
         self.if_repeat = bool(if_repeat)
         self.if_slow = bool(if_slow)
+        self.noise_mean = bool(noise_mean)
         self.gc_director = bool(gc_director)
         self.gc_ease_turns = bool(gc_ease_turns)
         self.if_subject = bool(if_subject)
@@ -109,7 +114,7 @@ class FlagStats:
         self.reanchor, self.player_hint = bool(reanchor), bool(player_hint)
         self.gc_completion = bool(gc_completion)
         self.totals = {"tasks": 0, "caption_used": 0, "caption_fallback": 0, "reanchor_events": 0, "player_hints": 0,
-                       "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
+                       "noise_mean_samples": 0, "return_stops": 0, "gc_completion_hints": 0, "gc_completion_ends": 0,
                        "if_horizon_tasks": 0, "if_horizon_ends": 0, "if_camera_hints": 0,
                        "player_frames_removed": 0, "insight_director_prompts": 0,
                        "if_repeat_checks": 0, "if_translation_frames": 0,
@@ -127,11 +132,13 @@ class FlagStats:
         self.insight_director_prompts = 0
         self.if_repeat_checks = 0
         self.if_translation_frames = 0
+        self.noise_mean_samples = 0
         self.gc_director_chunks = self.gc_director_updates = 0
         self.gc_eased_turns = 0
         self.if_subject_prompts = 0
         self.weight_mod_steps = self.weight_mod_chunks = 0
         self.if_identity_prompts = 0
+        self.turn_step_dataset = False  # a `<task>_full` call ran: the step does not apply there
         self.measured = {}
         self.cond_sched_chunks = self.cond_sched_calls = 0
         self.sink_scale_armed, self.sink_scaled_chunks = False, 0
@@ -269,6 +276,8 @@ class FlagStats:
             s.update(if_repeat="on", if_repeat_checks=self.if_repeat_checks)
         if self.if_slow:
             s.update(if_slow="on", if_translation_frames=self.if_translation_frames)
+        if self.noise_mean:
+            s.update(noise_mean="on", noise_mean_samples=self.noise_mean_samples)
         s.update(self.director_summary(vars(self)))
         if self.gc_ease_turns:
             s.update(gc_ease_turns="on", gc_eased_turns=self.gc_eased_turns)
@@ -280,6 +289,8 @@ class FlagStats:
                 s.update(weight_mod_late=self.weight_mod_late)
         if self.window:
             s.update(window=self.window)
+        if self.turn_step:
+            s.update(turn_step="inactive" if self.turn_step_dataset else f"{self.turn_step:g}")
         if self.if_identity:
             s.update(if_identity="on", if_identity_prompts=self.if_identity_prompts)
         s.update(self.completion_summary(vars(self)))
@@ -320,6 +331,7 @@ class FlagStats:
                 + (f" insight_director_prompts={t['insight_director_prompts']}" if self.insight_director else "")
                 + (f" if_repeat_checks={t['if_repeat_checks']}" if self.if_repeat else "")
                 + (f" if_translation_frames={t['if_translation_frames']}" if self.if_slow else "")
+                + (f" noise_mean=on noise_mean_samples={t['noise_mean_samples']}" if self.noise_mean else "")
                 + (f" return_stops={t['return_stops']}" if self.return_stop else "")
                 + "".join(f" {k}={v}" for k, v in self.completion_summary(t).items())
                 + (f" if_horizon_tasks={t['if_horizon_tasks']} if_horizon_ends={t['if_horizon_ends']}"
@@ -336,6 +348,7 @@ class FlagStats:
                 + (f" weight_mod=on weight_mod_steps={t['weight_mod_steps']} weight_mod_chunks={t['weight_mod_chunks']}"
                    if self.weight_mod else "")
                 + (f" window={self.window}" if self.window else "")
+                + (f" turn_step={self.turn_step:g}" if self.turn_step else "")
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
                    if self.scripted else "")
@@ -350,6 +363,7 @@ class FlagStats:
         t["if_repeat_checks"] += self.if_repeat_checks
         t["if_translation_frames"] += self.if_translation_frames
         t["tasks"] += 1
+        t["noise_mean_samples"] += self.noise_mean_samples
         t["gc_director_chunks"] += self.gc_director_chunks
         t["gc_director_updates"] += self.gc_director_updates
         t["gc_eased_turns"] += self.gc_eased_turns

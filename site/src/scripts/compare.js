@@ -93,7 +93,23 @@
         || c.filter(function (e) { return !used[e] && official14b(mans[e]); }).slice(-1)[0] || "";
       if (b) out[0] = take(b);
     }
-    var rest = c.filter(function (e) { return !used[e]; }); // newest first
+    // newest first, but runs with an official score and no cap ahead of capped or unscored ones
+    var rest = c.filter(function (e) { return !used[e]; });
+    function good(e) { var r = csvRow(e); return !capOf(mans[e], r) && (runScored(mans[e]) || !!(r && r.overall != null)); }
+    rest = rest.filter(good).concat(rest.filter(function (e) { return !good(e); }));
+    // two arms of one A/B (shared prefix, -a1 / -a2): control as Before, arm as After
+    if (!out[1] && !out[2]) {
+      for (var i = 0; i < rest.length; i++) {
+        var mm = /^(.*-a)(\d+)$/.exec(rest[i]); if (!mm || !good(rest[i])) continue;
+        var sib = rest.filter(function (e) { var k = /^(.*-a)(\d+)$/.exec(e); return k && k[1] === mm[1] && e !== rest[i] && good(e); });
+        if (sib.length) {
+          var pair = [rest[i]].concat(sib).sort(function (a, b) { return +/(\d+)$/.exec(a)[1] - +/(\d+)$/.exec(b)[1]; });
+          out[1] = take(pair[0]); out[2] = take(pair[pair.length - 1]);
+          rest = rest.filter(function (e) { return !used[e]; });
+          break;
+        }
+      }
+    }
     if (!out[2] && rest.length) out[2] = take(rest.shift());
     if (!out[1] && rest.length) out[1] = take(rest.shift());
     if (!out[0] && rest.length) out[0] = take(rest.pop());
@@ -192,7 +208,8 @@
       s.appendChild(el("option", { value: "", text: "none" }));
       clips[task].forEach(function (c) {
         var tags = [];
-        if (!runScored(c.man)) tags.push(screeningJudge(c.man) ? "screening only" : "not scored");
+        var cr = csvRow(c.exp);
+        if (!runScored(c.man) && !(cr && cr.overall !== null)) tags.push(screeningJudge(c.man) ? "screening only" : "not scored");
         if (capOf(c.man, csvRow(c.exp))) tags.push("capped");
         var o = el("option", { value: c.exp, text: c.exp + (tags.length ? " (" + tags.join(", ") + ")" : "") });
         if (slots.indexOf(c.exp) >= 0 && slots[i] !== c.exp) o.disabled = true;
@@ -232,6 +249,7 @@
       score = api.fmt(t.mean);
       judge = "official judge (Gemini 3.1 Pro)" + (row && row.passes ? ", mean of " + row.passes + " passes" : "");
     } else if (runScored(m)) { score = "no score"; judge = "official judge, no usable score for this task"; }
+    else if (row && row.overall !== null) { score = "no score"; judge = "scored by the official judge (run mean " + api.fmt(row.overall) + "), but this clip's manifest has no per-task score"; }
     else if (sj) { score = "no score"; judge = "screening judge " + sj + " only; screening scores are not shown"; }
     else { score = "no score"; judge = "no judge has scored this run"; }
 
@@ -240,13 +258,15 @@
     var st = t.status || [], ok = st.length === 1 && st[0] === "ok";
     if (st.length && !(st.length === 1 && st[0] === "not scored")) badge(ok ? "ok" : "warn", st.join(", "), "Verifier status for this task");
     if (cap) badge("warn", cap > 0 ? "capped smoke, " + cap + " chunks" : "capped smoke", "Each rollout stopped early. A behaviour check, never comparable to a real score.");
-    if (!runScored(m)) badge("warn", sj ? "screening judge only" : "not scored", "No official verifier score for this run.");
+    if (!runScored(m) && !(row && row.overall !== null)) badge("warn", sj ? "screening judge only" : "not scored", "No official verifier score for this run.");
     var branch = (m && m.branch) || (row && row.branch) || "";
     if (branch && branch !== "main") badge("warn", "code not merged", "Run from branch " + branch + ". The code behind it is not merged into main yet.");
     var src = (m && m.action_source) || (row && row.action_source) || "";
-    if (src === "dataset") badge("warn", "replayed moves, test only", "The moves were replayed from the dataset instead of chosen by the AI player.");
+    var scripted = (row && api.isScripted(row)) || /--lingbot-scripted-player/.test(flagsOf(m));
+    if (src === "dataset") badge("warn", "open loop, A/B only", "Fixed action scripts from the dataset, no AI player. Used for A/B tests only, never for final scores.");
+    else if (scripted) badge("warn", "scripted moves, test only", "The scripted player replayed the dataset moves chunk by chunk; no AI player chose them.");
     else if (src === "agent" || src === "refined") badge("ok", "AI played", "An AI player chose every move while the world was being generated.");
-    if (!cap && row && runScored(m) && api.isSmoke(row)) badge("warn", "tiny test run", "Too few tasks or a single scoring pass to estimate a score.");
+    if (!cap && !scripted && row && runScored(m) && api.isSmoke(row)) badge("warn", "tiny test run", "Too few tasks or a single scoring pass to estimate a score.");
 
     var model = m && m.model, runner = (m && m.runner) || (row && row.runner) || "";
     var lenEl = el("dd", { text: "loading" });

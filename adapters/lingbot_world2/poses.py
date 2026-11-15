@@ -21,7 +21,7 @@ import numpy as np
 def reset(environ=os.environ) -> None:
     """Rotation rates and turn-cal angles from the env (their import-time values). calibrate() overwrites
     YAW/PITCH, so a process that runs several arms calls this before each one."""
-    global YAW, PITCH, UNIT_YAW_DEG, UNIT_PITCH_DEG, CHUNK_UNITS
+    global YAW, PITCH, UNIT_YAW_DEG, UNIT_PITCH_DEG, CHUNK_UNITS, CHUNK_YAW_DEG
     YAW = float(environ.get("LINGBOT_YAW_RAD", "0.03"))
     PITCH = float(environ.get("LINGBOT_PITCH_RAD", "0.01"))
     # Turn calibration (off by default; run.py --lingbot-turn-cal). PlayWorld dataset tokens are
@@ -29,9 +29,12 @@ def reset(environ=os.environ) -> None:
     UNIT_YAW_DEG = float(environ.get("LINGBOT_UNIT_YAW_DEG", "22.5"))
     UNIT_PITCH_DEG = float(environ.get("LINGBOT_UNIT_PITCH_DEG", "20"))
     CHUNK_UNITS = float(environ.get("LINGBOT_CHUNK_UNITS", "2"))  # tokens one closed-loop chunk stands for
+    # Turn step (off by default; run.py --lingbot-turn-step DEG): yaw degrees of one closed-loop chunk,
+    # in place of CHUNK_UNITS x UNIT_YAW_DEG. Pitch and dataset mode keep the turn-cal values. 0 = unset.
+    CHUNK_YAW_DEG = float(environ.get("LINGBOT_TURN_STEP_DEG") or 0)
 
 
-YAW = PITCH = UNIT_YAW_DEG = UNIT_PITCH_DEG = CHUNK_UNITS = 0.0
+YAW = PITCH = UNIT_YAW_DEG = UNIT_PITCH_DEG = CHUNK_UNITS = CHUNK_YAW_DEG = 0.0
 reset()
 
 LATENT_CHUNK = 4  # generate.py --chunk_size default; latent frames per causal chunk
@@ -60,6 +63,8 @@ def calibrate(dataset: bool, n_keys: int, action_frame_unit: int = 20) -> tuple[
     if frames <= 0:
         raise ValueError(f"cannot calibrate turns over {frames} frames per token")
     YAW, PITCH = math.radians(UNIT_YAW_DEG) / frames, math.radians(UNIT_PITCH_DEG) / frames
+    if CHUNK_YAW_DEG and not dataset:
+        YAW = math.radians(CHUNK_YAW_DEG) / n_keys
     return YAW, PITCH
 
 
