@@ -57,3 +57,30 @@ def model_prompt(goal: str, name: str, mode: str = "goal") -> str:
     if not task or not str(name or "").startswith(f"{task.get('task_id')}_"):
         task = None
     return compose(task, goal, mode)
+
+
+INSIGHT_DIRECTION = (
+    "The scene continues in a single uninterrupted shot. The ongoing activity described above "
+    "advances naturally over time, with each movement following from the previous one. "
+    "Keep the same participants and objects, and let actions reach their natural outcome."
+)
+
+
+def directed_insight(model_text: str, name: str) -> str:
+    """Insight tasks only: the scene caption plus INSIGHT_DIRECTION. Reads only task_id,
+    sub_category and image_caption, never evaluation-policy fields. The goal is not added:
+    on insight tasks it is the player's "wait and observe", so the arm differs from
+    --lingbot-caption-prompt by the cue alone.
+
+    The session encodes this once at reset, not as a per-chunk text/cache update.
+    A missing caption or unmatched task leaves the existing model text untouched.
+    """
+    task = _current.get("task") or {}
+    if not str(name or "").startswith(f"{task.get('task_id')}_"):
+        return model_text
+    if str(task.get("sub_category", "")).strip().lower() != "insight evolution":
+        return model_text
+    caption = " ".join(str(task.get("image_caption") or "").split())
+    if not caption:
+        return model_text
+    return f"{caption}\n{INSIGHT_DIRECTION}"
