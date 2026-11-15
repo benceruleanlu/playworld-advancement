@@ -1,11 +1,13 @@
 ---
 // Static shell. All numbers are rendered client-side by src/scripts/app.js from the live CSV.
-// Order is the story: the question with the baseline, the findings, the method. Explore holds the reference material.
+// Order: the question, the control/treatment clip pairs, the findings, the scores, the method. Explore holds the reference material.
 import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Header from "../components/Header.astro";
 import Section from "../components/Section.astro";
 import Explore from "../components/Explore.astro";
+import Pairs from "../components/Pairs.astro";
+import Scores from "../components/Scores.astro";
 import Tour from "../components/Tour.astro";
 ---
 <Base>
@@ -15,10 +17,12 @@ import Tour from "../components/Tour.astro";
     <div class="view lead">
       <Header />
     </div>
+    <Pairs />
     <Section id="story" title="Findings" lede="What we tested, what moved and what did not.">
       <div class="vdbox" id="verdicts" hidden></div>
       <ol class="story" id="story-list"><li class="sk" style="height:180px"></li></ol>
     </Section>
+    <Scores />
     <Section id="loop" title="Method" lede="Every proposal is a pull request. Every experiment is a GitHub Actions run that generates, scores and publishes.">
     <ol class="loop" id="loop-steps"><li class="sk" style="height:96px"></li></ol>
     <div class="trail" id="trail"></div>
@@ -36,5 +40,6 @@ import Tour from "../components/Tour.astro";
   <script>
     import "../scripts/app.js";
     import "../scripts/compare.js";
+    import "../scripts/pairsview.js";
   </script>
 </Base>

@@ -3,11 +3,13 @@
 // and the CSV rows app.js has loaded (window.PWA_SITE, announced by the "pwa:data" event).
 // Run names and groups come from runinfo.js. Deep link: ?compare=TASK&b=CONTROL&c=TREATMENT#compare-clips.
 // Older three-slot links (&a=) still open: the last two filled of a, b, c become Control and Treatment.
+// Inside the Pairs section (pairsview.js) it has two modes: pair mode, where pairsview picks the two clips with a
+// pwa:compare event and owns the URL, and hand-pick mode (pwa:hand), the run pickers below with ?compare= links.
 import * as RunInfo from "./runinfo.js";
 import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
 (function () {
   var QKEYS = ["a", "b", "c"];
-  var MAX_RUNS = 80; // manifests fetched, newest first
+  var MAX_RUNS = 400; // manifests fetched, newest first
   var DRIFT = 0.15; // seconds a clip may drift from the shared clock before it is re-seeked
   var END = 0.05; // a clip within this of its end counts as ended
   var api = null, started = false;
@@ -17,6 +19,8 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
   var sel = { mode: "group", group: "", ctl: "", trt: "", task: "" }, ctlOpen = false;
   var wanted = ["", "", ""], wantTask = "", linked = false, scrolled = false;
   var loaded = false, wantPlay = false; // loaded: manifests are in; wantPlay: start playing once the requested clips have metadata
+  // pairsView: the Pairs section drives this player; hand: the run pickers are showing; pending: a pick arrived before the manifests
+  var pairsView = !!$("pairs"), hand = !pairsView, pending = false, heads = null, cross = "", swapped = false, extraNotes = [];
   var S = { t: 0, playing: false, rate: 1, loop: true, fps: 16, fpsKnown: false, raf: 0, last: 0 };
   var live = []; // [{exp, v, d, endEl, lenEl}] for the rendered slots
 
@@ -131,7 +135,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     return q;
   }
   function syncUrl() {
-    if (!linked || !sel.task) return;
+    if (!linked || !sel.task || !hand) return;
     try { history.replaceState(null, "", location.pathname + "?" + linkFor().toString() + "#compare-clips"); } catch (e) { /* sandboxed */ }
   }
 
@@ -154,11 +158,12 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
         });
       });
       RI = RunInfo.build(api.rows, runs, mans);
-      loaded = true; choose();
-    }, function () { runs = []; loaded = true; choose(); });
+      loaded = true; if (!pairsView || pending) choose();
+    }, function () { runs = []; loaded = true; if (!pairsView || pending) choose(); });
   }
   function choose() {
-    var notes = [];
+    pending = false;
+    var notes = extraNotes.slice(); extraNotes = [];
     var pair = wanted.every(Boolean) ? [wanted[1], wanted[2]] : wanted.filter(Boolean);
     if (wanted.every(Boolean)) notes.push("Showing 2 of 3 linked runs.");
     pair.forEach(function (e) { if (!tasksOf(e).length) notes.push("No published clips from " + e + " yet. They appear here once that run publishes its scenes."); });
@@ -202,7 +207,8 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
         : "No published clips yet. Each run that generates videos adds them to a GitHub Release.";
       return;
     }
-    empty.hidden = true; pick.hidden = false; $("cv-help").hidden = false;
+    empty.hidden = true; pick.hidden = !hand; $("cv-help").hidden = !hand;
+    $("cv-auto-wrap").hidden = hand;
     var other = sel.mode === "other";
     // 1. test
     var tsel = $("cv-test"); clear(tsel);
@@ -233,7 +239,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     // control line: plain text; a picker only when the group has more than one plausible control
     var cl = $("cv-ctl"); clear(cl);
     var cs = other ? [] : controlsOf(sel.group);
-    cl.hidden = other || !sel.ctl || !(cs.length > 1 || cs.indexOf(sel.ctl) < 0);
+    cl.hidden = !hand || other || !sel.ctl || !(cs.length > 1 || cs.indexOf(sel.ctl) < 0);
     if (!cl.hidden) {
       var ci = RI.get(sel.ctl);
       cl.appendChild(document.createTextNode("Control: "));
@@ -256,6 +262,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     // the two cards
     var chosen = [[sel.ctl, "Control"], [sel.trt, "Treatment"]].filter(function (x) { return x[0] && sel.task && has(sel.task, x[0]); });
     grid.style.setProperty("--cvn", "2");
+    grid.classList.toggle("swapped", swapped);
     chosen.forEach(function (x) { grid.appendChild(slotCard(clipOf(sel.task, x[0]), x[1])); });
     var df = $("cv-diff");
     clear(df);
@@ -264,16 +271,18 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
       var g = other ? null : RI.groups[sel.group];
       if (g) df.appendChild(el("span", { class: "cvboth", text: "Both arms: " + g.common.join(", ") + (g.setupWords.length ? ", with " + g.setupWords.join(", ") : "") }));
     }
-    df.hidden = chosen.length !== 2;
+    df.hidden = chosen.length !== 2 || !hand;
     bar.hidden = !live.length;
     $("cv-note").hidden = !live.length;
     if (chosen.length < 2) { nb.hidden = false; nb.appendChild(el("span", { class: "badge", text: sel.task ? "Pick a treatment to compare." : "These two runs share no task with a published clip." })); }
     updateBar();
+    document.dispatchEvent(new CustomEvent("pwa:player", { detail: { task: sel.task, ctl: sel.ctl, trt: sel.trt, hand: hand } }));
     if (linked && !scrolled) { scrolled = true; var sec = $("compare-clips"); if (sec && sec.scrollIntoView) setTimeout(function () { sec.scrollIntoView(); }, 0); }
   }
   function dt(k, v) { return v ? [el("dt", { text: k }), el("dd", { text: v })] : []; }
   // card header: the treatment's change, and the control as "without" that change
   function headText(info, role, exp) {
+    if (heads && !hand) return role === "Treatment" ? heads[1] : heads[0];
     if (!info) return exp;
     if (sel.mode !== "group") return info.short;
     var c = RI.get(sel.ctl), t = RI.get(sel.trt);
@@ -314,6 +323,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     if (st.length && !(st.length === 1 && st[0] === "not scored")) badge(ok ? "ok" : "warn", st.join(", "), "Verifier status for this task");
     if (cap) badge("warn", cap > 0 ? "capped smoke, " + cap + " chunks" : "capped smoke", "Each rollout stopped early. A behaviour check, never comparable to a real score.");
     if (!runScored(m) && !(row && row.overall !== null)) badge("warn", sj ? "screening judge only" : "not scored", "No official verifier score for this run.");
+    if (cross && !hand && role === "Control") badge("", "control from " + cross, "The control comes from another run with the same settings minus the treatment's flags.");
     var branch = (m && m.branch) || (row && row.branch) || "";
     if (branch && branch !== "main") badge("warn", "code not merged", "Run from branch " + branch + ". The code behind it is not merged into main yet.");
     var src = (m && m.action_source) || (row && row.action_source) || "";
@@ -340,7 +350,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
       media,
       el("div", { class: "cvscore" }, [el("span", { class: "sc", text: score }), el("span", { class: "judge", text: judge })]),
       b,
-      sel.mode !== "group" ? el("p", { class: "cvdesc", text: info ? info.label : "" }) : null,
+      sel.mode !== "group" && hand ? el("p", { class: "cvdesc", text: info ? info.label : "" }) : null,
       el("details", { class: "cvmore" }, [el("summary", { text: "Run details" }), dl])
     ];
     var jc = judgeComment(t, true); if (jc) kids.push(jc);
@@ -422,7 +432,7 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     if (!hold) S.t += dts * S.rate;
     if (S.t >= D) {
       if (S.loop) { S.t = 0; live.forEach(function (s) { seekOne(s, 0); }); }
-      else { S.t = D; pause(); updateBar(); return; }
+      else { S.t = D; pause(); updateBar(); document.dispatchEvent(new CustomEvent("pwa:ended", { detail: { task: sel.task, ctl: sel.ctl, trt: sel.trt } })); return; }
     }
     live.forEach(function (s) {
       if (s.failed) return;
@@ -455,7 +465,9 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
     $("cv-time").textContent = fmtT(S.t) + " / " + fmtT(D) + " · frame " + frame + (S.fpsKnown ? "" : " (16 fps assumed)");
     var pb = $("cv-play");
     pb.textContent = S.playing ? "Pause" : "Play"; pb.setAttribute("aria-label", S.playing ? "Pause all" : "Play all");
-    pb.disabled = !D;
+    // clips that wait for a tap (preload none) have no length yet; Play is that tap
+    pb.disabled = !D && !live.some(function (s) { return !s.failed && s.v.preload === "none"; });
+    if (S.playing !== S.shown) { S.shown = S.playing; document.dispatchEvent(new CustomEvent("pwa:playing", { detail: S.playing })); }
     live.forEach(function (s) {
       var ended = isFinite(s.d) && D - s.d > END && S.t >= s.d - END;
       if (s.failed) return;
@@ -489,27 +501,45 @@ import { $, el, clear, judgeComment, passesText, toggleFull } from "./ui.js";
         live.forEach(function (s) { s.v.playbackRate = S.rate; });
       });
     });
-    $("cv-loop").addEventListener("change", function (e) { S.loop = e.target.checked; });
+    $("cv-loop").addEventListener("change", function (e) { S.loop = e.target.checked; if (S.loop) $("cv-auto").checked = false; });
+    // auto next plays through the pairs, so it turns looping off
+    $("cv-auto").addEventListener("change", function (e) { if (e.target.checked) { $("cv-loop").checked = false; S.loop = false; } });
+    // swap sides: the clips change places, each keeps its Control or Treatment label
+    $("cv-swap").addEventListener("click", function () {
+      swapped = !swapped; $("cv-swap").setAttribute("aria-pressed", String(swapped));
+      $("cv-grid").classList.toggle("swapped", swapped);
+    });
     $("cv-full").addEventListener("click", function () { toggleFull($("compare-clips")); });
+    // speed from the keyboard (pairsview.js): detail is the rate
+    document.addEventListener("pwa:rate", function (e) {
+      var b = document.querySelector('#cv-bar [data-rate="' + e.detail + '"]'); if (b) b.click();
+    });
     // story cards and the tour (app.js) ask for one task from two runs: detail { task, b: control, c: treatment, play }
     document.addEventListener("pwa:compare", function (e) {
       var d = e.detail || {};
       wantTask = d.task || ""; wanted = ["", d.b || "", d.c || ""]; linked = true; scrolled = true; wantPlay = !!d.play;
-      if (loaded) choose();
+      heads = d.heads || null; cross = d.cross || ""; if (d.pair) hand = false;
+      if (loaded) choose(); else pending = true;
     });
-    // switching back to this tab: write the selection to a/b/c again so a copied link opens it
-    document.addEventListener("pwa:mode", function (e) {
-      if (e.detail === "compare" && sel.task) { linked = true; syncUrl(); }
+    // hand-pick mode: the run pickers; detail { task, a, b, c, note, fromUrl } opens that selection (fromUrl reads ?compare=)
+    document.addEventListener("pwa:hand", function (e) {
+      var d = e.detail || {};
+      hand = true; heads = null; cross = "";
+      if (d.note) extraNotes.push(d.note);
+      if (d.fromUrl) readUrl();
+      else if (d.task) { wantTask = d.task; wanted = [d.a || "", d.b || "", d.c || ""]; linked = true; scrolled = true; wantPlay = !!d.play; }
+      else { linked = true; scrolled = true; }
+      if (loaded) choose(); else pending = true;
     });
     $("cv-link").addEventListener("click", function () {
-      var url = location.origin + location.pathname + "?" + linkFor().toString() + "#compare-clips", note = $("cv-copied");
+      var url = hand ? location.origin + location.pathname + "?" + linkFor().toString() + "#compare-clips" : location.href, note = $("cv-copied");
       linked = true; syncUrl();
       function done(t) { note.textContent = t; setTimeout(function () { note.textContent = ""; }, 1800); }
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { done("Copied"); }, function () { done("Link is in the address bar"); });
       else done("Link is in the address bar");
     });
     // keyboard inside the section: space plays or pauses, comma and period step one frame
-    $("compare-clips").addEventListener("keydown", function (e) {
+    if (!pairsView) $("compare-clips").addEventListener("keydown", function (e) {
       var tg = e.target && e.target.tagName;
       if (tg === "SELECT" || tg === "INPUT" && e.target.type !== "range" || !live.length) return;
       if (e.key === "," || e.key === ".") { e.preventDefault(); step(e.key === "," ? -1 : 1); }

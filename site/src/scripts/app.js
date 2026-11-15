@@ -708,9 +708,10 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       var qs = q.toString(); history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed */ }
   }
+  // the Pairs section (pairsview.js) opens the derived pair for this task and two runs, or hand-pick mode
   function watch(sel) {
-    setMode("compare", false); dropParams(["scenes", "scene"]);
-    document.dispatchEvent(new CustomEvent("pwa:compare", { detail: { task: sel.task, b: sel.b, c: sel.c, play: true } }));
+    dropParams(["scenes", "scene"]);
+    document.dispatchEvent(new CustomEvent("pwa:openpair", { detail: { task: sel.task, b: sel.b, c: sel.c, play: true } }));
     scrollToEl($("compare-clips"));
   }
   function openScene(exp, task) {
@@ -1365,6 +1366,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     steps.push({ el: function () { return $("loop"); }, title: "Method", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
     if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("tests", false); scrollToEl($("watch")); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
     if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("runs", false); scrollToEl($("watch")); }, title: "Every run", line: "Each row links its commit and job." });
+    // appended last so ?tour=N links into the full tour keep their steps
+    if (tourFull && $("pairs")) steps.push({ el: function () { return $("pairs"); }, run: function () { closeInline(); scrollToEl($("pairs")); }, title: "Every pair", line: "Control and treatment clips of one task, side by side on one clock." });
     tourSteps = steps;
     if (tourAt >= 0) tourShow();
   }
@@ -1477,9 +1480,9 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
     f.appendChild(ul);
   }
 
-  /* ---------- explore tabs: compare player, one run's scenes, all tests, all runs ---------- */
-  var MODES = [["compare", "tab-compare", "compare-clips"], ["scenes", "tab-scenes", "scenes"], ["tests", "tab-tests", "testing"], ["runs", "tab-runs", "runs"]];
-  var mode = "compare";
+  /* ---------- explore tabs: one run's scenes, all tests, all runs (the clip pairs have their own section) ---------- */
+  var MODES = [["scenes", "tab-scenes", "scenes"], ["tests", "tab-tests", "testing"], ["runs", "tab-runs", "runs"]];
+  var mode = "scenes";
   function modeOfHash(h) { var hit = MODES.filter(function (x) { return "#" + x[2] === h; })[0]; return hit ? hit[0] : ""; }
   function setMode(m, user) {
     mode = m;
@@ -1490,23 +1493,20 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       $(x[2]).hidden = !on;
       if (!on) Array.prototype.forEach.call($(x[2]).querySelectorAll("video"), function (v) { if (!v.paused) v.pause(); });
     });
-    // the clip footnote belongs to the two clip tabs
-    var note = $("watch-note"); if (note) note.hidden = m !== "compare" && m !== "scenes";
-    if (m !== "compare" && $("cv-play").textContent === "Pause") $("cv-play").click();
     if (!user) return;
     // the other clip tab's deep-link params would win on reload, so drop them
     try {
       var q = new URLSearchParams(location.search);
-      (m === "compare" ? ["scenes", "scene"] : m === "scenes" ? ["compare", "a", "b", "c"] : ["scenes", "scene", "compare", "a", "b", "c"]).forEach(function (k) { q.delete(k); });
+      (m === "scenes" ? [] : ["scenes", "scene"]).forEach(function (k) { q.delete(k); });
       var qs = q.toString(), panel = MODES.filter(function (x) { return x[0] === m; })[0][2];
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + "#" + panel);
     } catch (e) { /* sandboxed */ }
     // each clip tab writes its own selection back to the URL
-    if (m === "scenes") syncUrl(); else if (m === "compare") document.dispatchEvent(new CustomEvent("pwa:mode", { detail: m }));
+    if (m === "scenes") syncUrl();
   }
   function initMode() {
     var q = new URLSearchParams(location.search);
-    setMode(q.has("compare") ? "compare" : q.has("scenes") ? "scenes" : modeOfHash(location.hash) || "compare", false);
+    setMode(q.has("scenes") ? "scenes" : modeOfHash(location.hash) || "scenes", false);
     MODES.forEach(function (x, i) {
       $(x[1]).addEventListener("click", function () { setMode(x[0], true); });
       $(x[1]).addEventListener("keydown", function (e) {
