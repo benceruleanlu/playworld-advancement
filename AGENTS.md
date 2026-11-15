@@ -165,7 +165,7 @@ Agreed with the owner Saturday 16:50 Pacific on issue #9, which is the single pl
 - Official judge: Gemini 3.1 Pro at upstream settings, for every reported number.
 - Screening judge: `gemini-4-hydrogen` (`--judge-model`), for dev loops only, kept in its own eval folder and never written to `results/experiments.csv`. Used only if a calibration on the 24 baseline videos shows it agrees with the official judge.
 - The dataset `image_caption` may be used as model input, and this is disclosed. Upstream's Genie 3 player sends it to Genie 3.
-- The coordinator session launches experiment runs, merges the integration branch (`method/candidate-v1`, PR #63) when CI is green, and freezes and launches the final run.
+- The coordinator session launches experiment runs, merges the integration branch when CI is green (`method/candidate-v1`, merged as #63 with every flag off), and freezes and launches the final run.
 
 ### Timeline (Pacific)
 
