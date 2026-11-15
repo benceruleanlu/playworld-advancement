@@ -69,6 +69,14 @@ def test_capped_gen_report_and_csv(env):
     _fake_eval(runs, "free", 1, {"GC005": (3.0, True)})
     r = pwa(env, "compare", "free", "cap", check=0)
     assert "chunk caps differ" in r.stderr
+    # a two-judge panel warns the same way, and its report keeps the capped banner
+    for exp in ("free", "cap"):
+        for slug in ("j1", "openai-j2"):
+            _fake_eval(runs, exp, 1, {"GC005": (3.0, True)}, dirname=f"eval-{slug}")
+    panel_args = ["--judge-model", "j1", "--judge-model", "openai:j2"]
+    r = pwa(env, "cells", "free", "cap", *panel_args, check=0)
+    assert r.returncode == 0 and "chunk caps differ" in r.stderr and "chunk caps differ (A=none, B=4)" in r.stdout
+    assert "capped smoke run: 4 agent chunks" in pwa(env, "report", "cap", *panel_args, check=0).stdout
 
 
 @needs_ffmpeg

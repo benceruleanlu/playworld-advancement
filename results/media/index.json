@@ -1,6 +1,28 @@
 {
  "runs": [
   {
+   "exp": "smk14-gc-fastdit-ctl-c10-v1",
+   "generated": "2026-11-15T01:46:45Z",
+   "n_tasks": 1,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk14-gc-fastdit-ctl-c10-v1",
+   "scored": false,
+   "labels": [
+    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+    "not scored"
+   ]
+  },
+  {
+   "exp": "smk14-gc-fastdit-c10-v1",
+   "generated": "2026-11-15T01:43:27Z",
+   "n_tasks": 3,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-smk14-gc-fastdit-c10-v1",
+   "scored": false,
+   "labels": [
+    "capped smoke run: 10 agent chunks per rollout (official 30), not comparable to official scores",
+    "not scored"
+   ]
+  },
+  {
    "exp": "smk14-gc-fast-c10-v2",
    "generated": "2026-11-15T01:37:24Z",
    "n_tasks": 3,
