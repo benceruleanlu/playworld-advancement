@@ -34,11 +34,20 @@ const RI = build(rows, index.runs, mans, Date.parse("2026-11-15T06:00:00Z"));
 assert.deepEqual(parseArgs(["--lingbot-stall-abort", "900", "--lingbot-cond-text=1.0", "--lingbot-fast"]),
   [{ flag: "--lingbot-stall-abort", value: "900" }, { flag: "--lingbot-cond-text", value: "1.0" }, { flag: "--lingbot-fast", value: null }]);
 assert.deepEqual(words(["--lingbot-cond-schedule", "--lingbot-cond-text=1.0"]), ["conditioning schedule (text boost off)"]);
+assert.deepEqual(words(["--lingbot-warp-reanchor", "--lingbot-warp-max-deg=35", "--lingbot-warp-focus=0"]),
+  ["warp re-anchor (approach within 35 degrees, focus inf)"]);
+assert.deepEqual(words(["--lingbot-turntable-poses", "--lingbot-turntable-walk=free", "--lingbot-turntable-rescale"]),
+  ["turntable poses (free walk, dataset rescale)"]);
 assert.deepEqual(words(["--lingbot-new-thing=3"]), ["--lingbot-new-thing 3"], "unknown flags show verbatim");
 assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-k=0.5"]),
   ["turn calibration", "yaw servo (error share 0.5)"]);
 assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-tasks=^[GO][CE]\\d"]),
   ["turn calibration", "yaw servo (yaw servo tasks ^[GO][CE]\\d)"]);
+assert.deepEqual(words(["--lingbot-split-sink", "--lingbot-split-sink-fg-scale=0.15", "--lingbot-split-sink-fg-frac=0.3"]),
+  ["split sink scaling (fg scale 0.15, fg fraction 0.3)"]);
+assert.deepEqual(words(["--lingbot-pose-memory", "--lingbot-pose-mem-yaw-scale=1.19", "--lingbot-pose-mem-rule=coverage",
+  "--lingbot-pose-mem-pick=latest", "--lingbot-pose-mem-rel=still"]),
+  ["pose memory (yaw scale 1.19, rule coverage, pick latest, recall motion still)"]);
 
 const lab = (e) => RI.get(e) && RI.get(e).armLabel;
 const expect = {
@@ -50,7 +59,8 @@ const expect = {
   "mem14-fx-v1-a1": "Control", "mem14-fx-v1-a2": "+ keep first 12 latents", "mem14-fx-v1-a3": "+ attend to last 36 latents",
   "mem14-fx-v1-a4": "+ keep first 12 latents, attend to last 36 latents",
   "fx14-model-dev-v2-a1": "Control", "fx14-model-dev-v2-a2": "+ turn calibration",
-  "sp14-gc-v1-a1": "Control", "sp14-gc-v1-a2": "+ GC chunk director", "sp14-gc-v1-a3": "+ GC ease turns", "sp14-gc-v1-a4": "+ re-anchor"
+  "sp14-gc-v1-a1": "Control", "sp14-gc-v1-a2": "+ GC chunk director", "sp14-gc-v1-a3": "+ GC ease turns", "sp14-gc-v1-a4": "+ re-anchor",
+  "pm14-fx-v3-a1": "Control", "pm14-fx-v3-a2": "+ pose memory", "pm14-fx-v3-a3": "+ pose memory (yaw scale 1.19)"
 };
 for (const [e, want] of Object.entries(expect)) assert.equal(lab(e), want, e);
 assert.equal(RI.get("sp14-gc-v1-a1").driver, "scripted moves");

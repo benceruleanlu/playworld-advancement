@@ -20,6 +20,14 @@ export PLAYER_MODEL="gpt-4.1-mini"   # non-reasoning; reasoning models can retur
 # Rubric Verifier (scoring). Must be Gemini 3.1 Pro to match the leaderboard.
 export GEMINI_API_KEY=""
 export GEMINI_MODEL="gemini-3.1-pro-preview"
+# Same judge on Google Cloud billing instead of AI Studio: Gemini Enterprise Agent Platform (formerly Vertex AI).
+# A Google Cloud API key for it (express mode; project with the Agent Platform API, aiplatform.googleapis.com,
+# enabled). Set = `pwa score` calls the global endpoint with it and GEMINI_API_KEY is unused by the judge.
+# export GCP_GEMINI_API_KEY=""
+# Or Application Default Credentials (gcloud auth application-default login), no key:
+# export PWA_JUDGE_BACKEND="gcp"   # aistudio|gcp; default: gcp iff GCP_GEMINI_API_KEY is set
+# export GOOGLE_CLOUD_PROJECT=""
+# export GOOGLE_CLOUD_LOCATION="global"  # Gemini 3.1 Pro preview is served from global only
 # Screening judge on an OpenAI-compatible API (`--judge-model openai:MODEL`, dev loops only).
 # Empty = use PLAYER_API_KEY / PLAYER_API_URL.
 # export JUDGE_API_KEY=""

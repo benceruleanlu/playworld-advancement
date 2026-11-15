@@ -1,6 +1,6 @@
 // Client-side results page: fetches results/experiments.csv from main at view time.
 import * as RunInfo from "./runinfo.js";
-import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from "./ui.js";
+import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFull } from "./ui.js";
 (function () {
   var REPO = "benceruleanlu/playworld-advancement";
   var RAW = "https://raw.githubusercontent.com/" + REPO + "/main/results/experiments.csv";
@@ -286,6 +286,78 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
     box.appendChild(el("p", { class: "vs", text: "Paper, 171 tasks: Genie 3 " + fmt(GENIE.overall) + ", LingBot-World v2 " + fmt(lb.overall) + "." }));
   }
+  // starting model against method on all 171 tasks. Hidden until a closed-loop, uncapped, 171-task run with 2+ passes is scored.
+  // The starting model is the full run with no method flags; the method is the best other full run.
+  // run configuration that is not a method flag: a second seed of the starting model is still the starting model
+  var NOT_METHOD = /^--seed\b/;
+  var FULL_RUNNER = "lingbot_world2", FULL_PLAYER = "gpt-6-luna";
+  // the AI player a run used, from its manifest or the args in its CSV notes; "" when neither records it
+  function playerOfRun(r) {
+    var m = MANS[r.exp]; if (m && m.player_model) return m.player_model;
+    var args = m && Array.isArray(m.runner_args) ? m.runner_args.join(" ") : (r.notes || "");
+    var x = /--agent-model[= ]([^\s\]]+)/.exec(args);
+    return x ? x[1] : "";
+  }
+  function fullRuns() {
+    var rows = realRows().filter(function (r) { return isFull(r) && isClosed(r) && !isCapped(r) && r.overall !== null && r.passes !== null && r.passes >= 2; });
+    // Only the agreed protocol is compared: the 14B runner, and gpt-6-luna as the player where the player is recorded.
+    // A run on another model or player, or with flags not recorded, is named in the note and never shown as starting model or method.
+    var start = null, method = null, unknown = [], other = [];
+    rows.forEach(function (r) {
+      var ri = RI.get(r.exp), keys = ri && ri.keys, player = playerOfRun(r);
+      if (r.runner !== FULL_RUNNER || (player && player !== FULL_PLAYER)) { other.push(r.exp); return; }
+      if (!keys) { unknown.push(r.exp); return; }
+      var methodKeys = keys.filter(function (k) { return !NOT_METHOD.test(String(k)); });
+      if (methodKeys.length === 0) { if (!start || r.t > start.t) start = r; } else if (!method || r.overall > method.overall) method = r;
+    });
+    return { start: start, method: method, unknown: unknown, other: other, any: rows.length > 0 };
+  }
+  // tasks left out of a run's mean: clips never generated (counted as 1.0 by the report) and results the verifier could not use (dropped)
+  function leftOut(r) { return (r.n_missing || 0) + (r.n_dropped || 0);
+  }
+  function renderFullResult() {
+    var box = $("fullres"); if (!box) return; clear(box);
+    var f = fullRuns(); if (!f.start && !f.method) { box.hidden = true; return; }
+    box.hidden = false;
+    var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
+    // [label, short label for phones, row]
+    var cols = [["Genie 3, paper", "G3", GENIE], ["LingBot v2, paper", "LB", lb]];
+    if (f.start) cols.push(["Starting model, ours", "Start", f.start]);
+    if (f.method) cols.push(["Method, ours", "Method", f.method]);
+    var hr = el("tr", null, [el("th", { scope: "col", text: "Task type" })].concat(cols.map(function (c) { return el("th", { class: "num", scope: "col" }, headLabel([0, c[0], 0, 0, c[1]])); })));
+    if (f.start && f.method) hr.appendChild(el("th", { class: "num", scope: "col" }, headLabel([0, "Change", 0, 0, "+/-"])));
+    var tb = el("tbody");
+    FAMS.map(function (x) { return [x[0], FAMINFO[x[0]].name]; }).concat([["overall", "Overall"]]).forEach(function (k) {
+      var tr = el("tr", { class: k[0] === "overall" ? "total" : "" }, [el("th", { scope: "row", text: k[1] })]);
+      cols.forEach(function (c) { var td = el("td", { class: "num" }); if (c[2][k[0]] === null || c[2][k[0]] === undefined) dashCell(td); else td.textContent = fmt(c[2][k[0]]); tr.appendChild(td); });
+      if (f.start && f.method) {
+        var a = f.start[k[0]], b2 = f.method[k[0]], td2 = el("td", { class: "num" });
+        if (typeof a !== "number" || typeof b2 !== "number") dashCell(td2);
+        else { var d = b2 - a; td2.appendChild(el("span", { class: d > 0 ? "good" : d < 0 ? "bad" : "", text: (d > 0 ? "+" : "") + fmt(d) })); }
+        tr.appendChild(td2);
+      }
+      tb.appendChild(tr);
+    });
+    var complete = [f.start, f.method].every(function (r) { return !r || leftOut(r) === 0; });
+    box.appendChild(el("h2", { text: complete ? "All 171 tasks, AI played" : "171-task runs, AI played, not every task scored" }));
+    box.appendChild(el("div", { class: "card flat" }, [el("table", { class: "fullres" }, [el("thead", null, [hr]), tb])]));
+    var note = [];
+    [["Starting model", f.start], ["Method", f.method]].forEach(function (x) {
+      var r = x[1]; if (!r) return;
+      note.push(x[0] + " " + r.exp + ": " + fmt(r.overall) + (typeof r.overall_std === "number" ? " ± " + fmt(r.overall_std) : "") + ", " + r.passes + " passes" + (r.n_missing ? ", " + r.n_missing + " clips missing and counted as 1.0" : "") +
+        (r.n_dropped ? ", " + r.n_dropped + " tasks dropped from the mean" : "") + ".");
+    });
+    var players = [f.start, f.method].filter(Boolean).map(playerOfRun);
+    note.push(players.every(Boolean) ? "Both use the 14B model and the " + FULL_PLAYER + " player." : "14B model. The AI player is not recorded for " + (players.some(Boolean) ? "one of these runs" : "these runs") + ".");
+    if (f.unknown.length) note.push("Not shown, flags not recorded: " + f.unknown.join(", ") + ".");
+    if (f.other.length) note.push("Not shown, another model or player: " + f.other.join(", ") + ".");
+    if (!complete) note.push("A run with tasks left out is not comparable with the paper rows.");
+    if (f.start && f.method) {
+      var d2 = f.method.overall - f.start.overall, sd = Math.max(f.start.overall_std || FALLBACK_STD, f.method.overall_std || FALLBACK_STD);
+      note.push("The overall change is " + (Math.abs(d2) >= 2 * sd ? "larger" : "smaller") + " than twice the pass spread (" + fmt(2 * sd) + ")" + (Math.abs(d2) >= 2 * sd ? "." : ", so it is inside the noise."));
+    }
+    box.appendChild(el("p", { class: "note", text: note.join(" ") }));
+  }
   function renderFull() {
     var full = realRows().filter(function (r) { return isFull(r) && r.overall !== null; });
     var most = 0; realRows().forEach(function (r) { if (r.overall !== null && r.n_tasks > most) most = r.n_tasks; });
@@ -489,7 +561,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       say: "The baseline player turned left and right for the whole rollout.",
       scene: ["lb14-session-agent-dev-v1", "GC036"], sceneLabel: "Watch GC036",
       links: [["baseline census", BLOB + "research/baseline-census.md"]] },
-    { id: "noise", kind: "repeat", title: "Same video, three scorings, different scores",
+    { id: "noise", short: true, kind: "repeat", title: "Same video, three scorings, different scores",
       body: "Three controls with identical settings produce the same video. Their 4-pass means still differ, so a task counts as moved only at a full point, repeated on a second seed.",
       say: "Identical controls disagree. The bar is a full point, twice.",
       runs: [["run 1", "pm14-fx-v1-a1"], ["run 2", "sks14-fx-v1-a1"], ["run 3", "mem14-fx-v1-a1"]],
@@ -504,7 +576,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       say: "Our memory never fired. The flag counters caught it; the scores would have looked like an effect.",
       runs: [["control", "pm14-fx-v1-a1"], ["memory on", "pm14-fx-v1-a2"]], cap: "Both columns score the same video.",
       watch: { task: "GC036", b: "pm14-fx-v1-a1", c: "pm14-fx-v1-a2" } },
-    { id: "sink", prs: [112], label: "Sink key scale", verdict: "dropped", title: "Turning down the opening frames made out-of-sight worse",
+    { id: "sink", short: true, prs: [112], label: "Sink key scale", verdict: "dropped", title: "Turning down the opening frames made out-of-sight worse",
       body: "We expected the pinned opening frames to reset the scene when the camera returns. Turning their attention down lowered every arm, so returns appear to depend on them. Dropped.",
       say: "A hypothesis that failed. Every arm scored below control.",
       ctl: "sks14-fx-v1-a1", arms: [["0.7", "sks14-fx-v1-a2", "key scale 0.7"], ["0.4", "sks14-fx-v1-a3", "key scale 0.4"], ["0.7 early", "sks14-fx-v1-a4", "key scale 0.7 from chunk 4"]],
@@ -514,7 +586,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       say: "Swapping \"wait and observe\" for the scene caption moved nothing by a full point.",
       ctl: "ins14-fx-v2-a1", arms: [["caption", "ins14-fx-v2-a2", "caption prompt"], ["+ cue", "ins14-fx-v2-a3", "caption prompt and insight director"]],
       watch: { task: "OE018", b: "ins14-fx-v2-a1", c: "ins14-fx-v2-a3" } },
-    { id: "window", seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "not adopted", title: "A larger attention window lifted OE039, not the out-of-sight family",
+    { id: "window", short: true, seeds: 2, prs: [104], label: "Larger attention window, two seeds", verdict: "not adopted", title: "A larger attention window lifted OE039, not the out-of-sight family",
       body: "On out-of-sight (win14-fx-v1), sink 10 with window 22 scored 1.81 on seed 0 against a control near 2.0, and window 22 alone 2.13. On seed 1 control scored 1.42 and the larger window 2.04. OE039 scored 3.0 or more in five of six larger-window videos and 2.0 or less in every control video. No family-level effect repeats; one task is consistent. Not adopted.",
       say: "The family score did not move the same way twice. One task, OE039, rose every time but once.",
       ctl: "win14-fx-v1-a3", arms: [["window", "win14-fx-v1-a4", "sink 10, window 22, seed 1"]], cap: "Seed 1. Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.",
@@ -524,7 +596,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       say: "The combined method against no flags on 24 dev tasks at two seeds, and on the 24 dev2 tasks (stk14-fx-dev2-v1), is running now.",
       ctl: "stk14-fx-dev-v1-a1", arms: [["stack", "stk14-fx-dev-v1-a2", "the stack, seed 0"]],
       watch: { task: "OE039", b: "stk14-fx-dev-v1-a1", c: "stk14-fx-dev-v1-a2" } },
-    { id: "open", kind: "note", title: "Still open",
+    { id: "open", short: true, kind: "note", title: "Still open",
       say: "No 171-task score yet, and nothing has repeated on two seeds.",
       points: ["No 171-task score, for the starting model or for a method.",
         "Every A/B here uses fixed moves, and all but one ran on a single seed. Adoption needs the AI player and two seeds.",
@@ -576,8 +648,19 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
   function taskOf(exp, task) { var m = MANS[exp]; return m ? (m.tasks || []).filter(function (t) { return t.task_id === task; })[0] || null : null; }
   // closing a player also cancels its pending start, so a closed player never begins playing detached videos
   var inlineStop = null;
+  function watchSel(s) {
+    if (s.kind !== "repeat") return s.watch;
+    function lab(exp) { var r = s.runs.filter(function (x) { return x[1] === exp; })[0]; return r ? r[0] : exp; }
+    return { task: s.watch.task, b: s.watch.b, c: s.watch.c, roles: [lab(s.watch.b), lab(s.watch.c)] };
+  }
   function closeInline() {
     if (inlineStop) { inlineStop(); inlineStop = null; }
+    // a single clip plays in its poster's place: take it out and put the poster back
+    Array.prototype.forEach.call(document.querySelectorAll(".st-inplace"), function (n) {
+      Array.prototype.forEach.call(n.querySelectorAll("video"), function (v) { v.pause(); });
+      var poster = n.parentNode.querySelector(".st-poster"); if (poster) poster.hidden = false;
+      n.parentNode.removeChild(n);
+    });
     Array.prototype.forEach.call(document.querySelectorAll(".st-play"), function (n) {
       Array.prototype.forEach.call(n.querySelectorAll("video"), function (v) { v.pause(); });
       n.parentNode.removeChild(n);
@@ -585,17 +668,28 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
   }
   function playIn(id, sel) {
     var li = $("story-" + id); if (!li) return;
-    var pairs = [[sel.b, sel.c ? "Control" : ""], [sel.c, "Treatment"]].filter(function (p) { return p[0]; })
+    // sel.roles names the two clips when they are not a control and a treatment (the same settings run twice)
+    var pairs = [[sel.b, sel.roles ? sel.roles[0] : sel.c ? "Control" : ""], [sel.c, sel.roles ? sel.roles[1] : "Treatment"]].filter(function (p) { return p[0]; })
       .map(function (p) { return { exp: p[0], role: p[1], t: taskOf(p[0], sel.task) }; }).filter(function (p) { return p.t && p.t.video; });
     if (!pairs.length) { if (sel.c) watch(sel); else openScene(sel.b, sel.task); return; }
     closeInline();
+    // one clip with a poster in the card: play it right there, in the poster's frame
+    var poster = pairs.length === 1 ? li.querySelector(".st-poster") : null;
+    if (poster) {
+      var one = pairs[0], pv = el("video", { playsinline: "", controls: "", loop: "", preload: "auto", src: one.t.video, poster: one.t.poster || null, "aria-label": "Rollout of " + sel.task + ", " + one.exp });
+      pv.muted = true;
+      poster.hidden = true; poster.parentNode.insertBefore(el("div", { class: "media st-inplace" }, [pv]), poster);
+      var ppr = pv.play(); if (ppr && ppr.catch) ppr.catch(function () {});
+      if (tourAt >= 0) scrollToEl(li);
+      return;
+    }
     var vids = [];
     var slots = pairs.map(function (p) {
       var v = el("video", { playsinline: "", controls: "", preload: "auto", src: p.t.video, poster: p.t.poster || null, "aria-label": (p.role || "Rollout") + ": " + sel.task + ", " + p.exp });
       v.muted = true; vids.push(v);
       var ri = RI.get(p.exp), sc = cellVal(p.t);
       return el("figure", { class: "sp-slot" }, [v, el("figcaption", null, [p.role ? el("span", { class: "cvlab", text: p.role }) : null,
-        el("b", { text: ri && ri.armLabel && p.role ? ri.armLabel : sel.task }), sc !== null ? el("span", { class: "sc", title: passesText(p.t), text: fmt(sc) + " / 5" }) : null,
+        sel.roles ? null : el("b", { text: ri && ri.armLabel && p.role ? ri.armLabel : sel.task }), sc !== null ? el("span", { class: "sc", title: passesText(p.t), text: fmt(sc) + " / 5" }) : null,
         el("code", { class: "rawid", text: p.exp })])]);
     });
     // start together once every clip can play; when all have ended, start again
@@ -608,16 +702,31 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     var startTimer = setTimeout(startAll, 4000);
     inlineStop = function () { closed = true; clearTimeout(startTimer); };
     var close = el("button", { type: "button", class: "linkbtn", text: "Close" }); close.addEventListener("click", closeInline);
-    var bar = el("p", { class: "sp-bar" }, [el("b", { text: sel.task }), close]);
-    if (sel.c) { var full = el("button", { type: "button", class: "linkbtn", text: "Frame by frame in the compare player" }); full.addEventListener("click", function () { closeInline(); watch(sel); }); bar.insertBefore(full, close); }
+    var fs = el("button", { type: "button", class: "linkbtn", title: "Full screen (F)", text: "Full screen" });
+    var bar = el("p", { class: "sp-bar" }, [el("b", { text: sel.task }), fs, close]);
+    if (sel.c) { var full = el("button", { type: "button", class: "linkbtn", text: "Frame by frame" }); full.addEventListener("click", function () { closeInline(); watch(sel); }); bar.insertBefore(full, fs); }
     var box = el("div", { class: "st-play" + (pairs.length === 1 ? " one" : "") }, [bar, el("div", { class: "sp-grid" }, slots)]);
+    fs.addEventListener("click", function () { toggleFull(box); });
+    box.addEventListener("fullscreenchange", function () { fs.textContent = document.fullscreenElement === box ? "Exit full screen" : "Full screen"; });
     li.appendChild(box);
     // in the tour the clips take the screen; on a click they only scroll into view if they are off it
     if (tourAt >= 0) scrollToEl(box); else if (box.scrollIntoView) box.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
+  // the judge's individual passes on a 1 to 5 line, with a tick at their mean: the spread behind each number
+  function passStrip(t) {
+    var ps = (t && t.pass_scores || []).filter(function (x) { return typeof x === "number"; }); if (ps.length < 2) return null;
+    var W = 46, H = 12, x = function (v) { return 3 + (Math.max(1, Math.min(5, v)) - 1) / 4 * (W - 6); };
+    var svg = sv("svg", { class: "pstrip", viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Passes " + ps.map(function (v) { return fmt(v, 1); }).join(", ") });
+    svg.appendChild(sv("title", { text: "Judge passes: " + ps.map(function (v) { return String(Math.round(v * 100) / 100); }).join(", ") }));
+    svg.appendChild(sv("line", { x1: 3, x2: W - 3, y1: H / 2, y2: H / 2, stroke: "var(--axis)" }));
+    ps.forEach(function (v) { svg.appendChild(sv("circle", { cx: x(v), cy: H / 2, r: 2.3, fill: "currentColor", opacity: 0.55 })); });
+    svg.appendChild(sv("line", { x1: x(t.mean), x2: x(t.mean), y1: 1, y2: H - 1, stroke: "currentColor", "stroke-width": 1.5 }));
+    return svg;
+  }
   function numCell(t, cls) {
     var v = cellVal(t), td = el("td", { class: "num" + (cls ? " " + cls : "") });
     if (v === null) { td.appendChild(el("span", { class: "dash", title: t ? "No judged clip for this task in this run" : null, text: t ? "no clip" : "-" })); return td; }
+    var strip = passStrip(t); if (strip) td.appendChild(strip);
     td.appendChild(document.createTextNode(fmt(v)));
     if (gateFail(t)) td.appendChild(el("span", { class: "gf", title: "Failed a gate in at least one judge pass", text: "✕" }));
     return td;
@@ -660,7 +769,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
         el("span", { class: t.down ? "bad" : "", text: t.down + " down" }), document.createTextNode(" of " + t.n + " task" + (t.n === 1 ? "" : "s"))]));
     });
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: s.cap || "Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here." };
+      cap: (s.cap || "Judge's mean per task. ▲ ▼ a full point against control. Click a number to play that pair here.") + " Dots are the judge's passes on a 1 to 5 line." };
   }
   // the same settings run several times: tasks at least two runs judged, and the spread between them
   function repeatEvidence(s) {
@@ -686,7 +795,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     var sum = el("ul", { class: "tally" }, [el("li", null, [document.createTextNode("Largest spread "), el("b", { text: fmt(worst.sp) }),
       document.createTextNode(" on " + worst.k + ". " + over + " of " + ids.length + " tasks differ by 0.5 or more.")])]);
     return { table: el("table", { class: "ev" }, [el("thead", null, [hr]), tb]), sum: sum, gate: anyGate,
-      cap: s.cap || "Judge's mean per task. Identical settings in every column." };
+      cap: (s.cap || "Judge's mean per task. Identical settings in every column.") + " Dots are the judge's passes on a 1 to 5 line." };
   }
   function storyState(s) {
     if (s.kind === "note" || s.kind === "gallery") return "ok";
@@ -697,6 +806,51 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     if (rows.some(function (r) { return r.status === "running" && !isStale(r); })) return "running";
     if (rows.some(function (r) { return r.status === "generated"; })) return "generated";
     return rows.length ? "ended" : "none";
+  }
+  // the full record behind a finding, built when it is opened: every run with its flags, commit and job, then per task
+  // every run's mean, passes, gate status and the judge's comment. ?finding=ID opens it.
+  function findingDetail(s, exps) {
+    var labels = {};
+    if (s.kind === "repeat") s.runs.forEach(function (r) { labels[r[1]] = r[0]; });
+    else { labels[s.ctl] = "control"; s.arms.forEach(function (a) { labels[a[1]] = a[2] || a[0]; }); }
+    var body = el("div", { class: "more-body" }), built = false;
+    var d = el("details", { class: "st-more", id: "detail-" + s.id }, [el("summary", { text: "Every score, judge comment and run" }), body]);
+    d.addEventListener("toggle", function () {
+      if (!d.open || built) return; built = true;
+      // commit and passes are secondary: hidden on narrow screens, where the job link still leads to both
+      var hr = el("tr", null, [["Run", ""], ["Flags", ""], ["Commit", "hide-sm"], ["Job", "nw"], ["Passes", "num hide-sm"]].map(function (h) { return el("th", { scope: "col", class: h[1] || null, text: h[0] }); }));
+      var tb = el("tbody");
+      exps.forEach(function (e) {
+        var r = rowByExp(e), ri = RI.get(e), m = MANS[e]; if (!m) return;
+        var sha = (m.git_sha || (r && r.sha) || "");
+        tb.appendChild(el("tr", null, [
+          el("th", { scope: "row" }, [document.createTextNode(labels[e] || e), el("code", { class: "rawid", text: e })]),
+          el("td", { class: "wrapcell", text: ri && ri.words ? (ri.words.length ? ri.words.join(", ") : "no flags") : "not recorded" }),
+          el("td", { class: "hide-sm" }, [/^[0-9a-f]{7,40}$/i.test(sha) ? el("a", { href: COMMIT + sha, target: "_blank", rel: "noopener", text: sha.slice(0, 7) }) : el("span", { class: "dash", text: "-" })]),
+          el("td", { class: "nw" }, [r && /^https:\/\/github\.com\//.test(r.run_url || "") ? el("a", { href: r.run_url, target: "_blank", rel: "noopener", text: "job" }) : el("span", { class: "dash", text: "-" })]),
+          el("td", { class: "num hide-sm", text: r && r.passes !== null ? String(r.passes) : "-" })]));
+      });
+      body.appendChild(el("table", { class: "ev runs-ev" }, [el("thead", null, [hr]), tb]));
+      var ids = {}; exps.forEach(function (e) { var tm = tasksOfRun(e); if (tm) Object.keys(tm).forEach(function (k) { ids[k] = 1; }); });
+      Object.keys(ids).sort().forEach(function (k) {
+        var blk = el("div", { class: "task-blk" }, [el("h4", { text: k })]);
+        exps.forEach(function (e) {
+          var t = (tasksOfRun(e) || {})[k]; if (!t) return;
+          var v = cellVal(t), st = (t.status || []).join(", ");
+          var head = el("p", { class: "task-run" }, [el("b", { text: labels[e] || e }), el("span", { class: "sc", text: v === null ? "no clip" : fmt(v) }),
+            el("span", { class: "std", text: (passesText(t) || "") + (st ? (passesText(t) ? " · " : "") + st : "") })]);
+          blk.appendChild(head);
+          var jc = judgeComment(t, true); if (jc) blk.appendChild(jc);
+        });
+        body.appendChild(blk);
+      });
+    });
+    return d;
+  }
+  function openFinding(id) {
+    var d = $("detail-" + id), li = $("story-" + id); if (!li) return;
+    if (d) d.open = true;
+    scrollToEl(li);
   }
   var storyShown = [];
   function renderStory() {
@@ -711,6 +865,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
           el("div", { class: "gal", id: "gal" }), el("p", { class: "st-cap", id: "gal-note" })]);
         ol.appendChild(gli); storyShown.push({ s: s, li: gli, ev: false }); return;
       }
+      var moreFor = null;
       var ev = st !== "ok" ? null : s.kind === "repeat" ? repeatEvidence(s) : s.kind === "note" ? null : abEvidence(s);
       var n = storyShown.length + 1;
       var text = el("div", { class: "st-text" }, [
@@ -719,7 +874,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       var acts = el("p", { class: "st-acts" });
       if (s.watch && ev) {
         var wb = el("button", { type: "button", class: "cvbtn primary", text: s.watchLabel || "Watch " + s.watch.task });
-        wb.addEventListener("click", function () { playIn(s.id, s.watch); }); acts.appendChild(wb);
+        wb.addEventListener("click", function () { playIn(s.id, watchSel(s)); }); acts.appendChild(wb);
       }
       if (s.scene && MANS[s.scene[0]]) {
         var sb = el("button", { type: "button", class: "cvbtn primary", text: s.sceneLabel || "Watch " + s.scene[1] });
@@ -747,6 +902,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
           if (r.run_url && /^https:\/\/github\.com\//.test(r.run_url)) prov.appendChild(el("a", { href: r.run_url, target: "_blank", rel: "noopener", title: "GitHub Actions job that generated and scored " + r.exp, text: r.exp + " job" }));
         });
         if (prov.firstChild) side.appendChild(prov);
+        moreFor = findingDetail(s, exps);
       } else if (s.kind !== "note") {
         side.appendChild(el("p", { class: "st-pend" }, [el("span", { class: "badge " + (st === "running" ? "warn" : ""), text: st === "running" ? "running now" : st === "generated" ? "generated, not scored yet" : "loading scores" }),
           document.createTextNode(" Scores appear here when the judge has scored every arm.")]));
@@ -759,6 +915,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
         }
       }
       var li = el("li", { class: "st" + (ev || s.kind === "note" ? "" : " pend") + (side.firstChild ? "" : " solo"), id: "story-" + s.id }, side.firstChild ? [text, side] : [text]);
+      if (moreFor) li.appendChild(moreFor);
       ol.appendChild(li); storyShown.push({ s: s, li: li, ev: !!ev });
     });
     if (!storyShown.length) ol.appendChild(el("li", { class: "empty", text: "No findings to show yet." }));
@@ -940,6 +1097,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     function start(withControls) {
       var v = el("video", { playsinline: "", loop: "", preload: "metadata", poster: c.t.poster || null, src: c.t.video, "aria-label": "Rollout of " + c.t.task_id + " from " + c.exp });
       v.muted = true; if (withControls) v.setAttribute("controls", "");
+      else { v.title = "Click for full screen"; v.addEventListener("click", function () { toggleFull(v); }); }
       clear(media); media.appendChild(v);
       var pr = v.play(); if (pr && pr.catch) pr.catch(function () { v.setAttribute("controls", ""); });
     }
@@ -1093,22 +1251,25 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
   }
 
   /* ---------- guided tour: a bar that walks the page in order; arrow keys step, Esc exits, ?tour=N deep links ---------- */
-  var tourSteps = [], tourAt = -1;
+  // two lengths: the short tour (about 90 seconds on Auto: question, verdicts, three findings, what is open, method) and the full one
+  var tourSteps = [], tourAt = -1, tourFull = false;
+  function tourStart(full) { tourFull = !!full; buildTour(); tourGo(0); $("tour-next").focus(); }
   function buildTour() {
     var shown = bestFinal() || bestClosed();
     var steps = [{ el: function () { return $("top"); }, title: "The question", line: "Can we lift an open world model past Genie 3 (" + fmt(TARGET) + ") without retraining it?" }];
-    steps.push({ el: function () { return $("scores"); }, title: "Where we start",
+    if (tourFull) steps.push({ el: function () { return $("scores"); }, title: "Where we start",
       line: shown ? "Best official score, AI played: " + fmt(shown.overall) + " on " + shown.n_tasks + " tasks (" + shown.exp + "). Genie 3: " + fmt(TARGET) + "." : "No run big enough to estimate a score yet." });
     if ($("verdicts") && !$("verdicts").hidden) steps.push({ el: function () { return $("verdicts"); }, title: "The bar, and the verdicts", line: "A full point, on two seeds, with the AI player. Nothing has cleared it yet." });
     storyShown.forEach(function (x) {
       var s = x.s;
+      if (!tourFull && !s.short) return;
       steps.push({ el: function () { return x.li; }, title: s.title, line: s.say || "" });
-      if (s.watch && x.ev) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, s.watch); }, title: "Watch " + s.watch.task, line: "Control left, treatment right. " + (s.say || "") });
+      if (s.watch && x.ev && (tourFull || s.id !== "window")) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, watchSel(s)); }, title: "Watch " + s.watch.task, line: (s.kind === "repeat" ? "" : "Control left, treatment right. ") + (s.say || "") });
       else if (s.scene && MANS[s.scene[0]]) steps.push({ el: function () { return x.li; }, run: function () { playIn(s.id, { task: s.scene[1], b: s.scene[0] }); }, title: "Watch " + s.scene[1], line: s.say || "" });
     });
     steps.push({ el: function () { return $("loop"); }, title: "Method", line: "Proposals are pull requests. GitHub Actions runs, scores and publishes every experiment." });
-    steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("tests", false); scrollToEl($("watch")); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
-    steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("runs", false); scrollToEl($("watch")); }, title: "Every run", line: "Each row links its commit and job." });
+    if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("tests", false); scrollToEl($("watch")); }, title: "Every change we tested", line: "Each row is an A/B with its runs, including the ones that failed." });
+    if (tourFull) steps.push({ el: function () { return $("watch"); }, run: function () { closeInline(); setMode("runs", false); scrollToEl($("watch")); }, title: "Every run", line: "Each row links its commit and job." });
     tourSteps = steps;
     if (tourAt >= 0) tourShow();
   }
@@ -1131,6 +1292,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     try {
       var q = new URLSearchParams(location.search);
       if (tourAt >= 0) q.set("tour", String(tourAt + 1)); else q.delete("tour");
+      if (tourAt >= 0 && tourFull) q.set("full", "1"); else q.delete("full");
       var qs = q.toString();
       history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     } catch (e) { /* sandboxed */ }
@@ -1151,7 +1313,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     var b = $("tour-auto"); if (b) b.setAttribute("aria-pressed", String(tourAuto));
     if (!tourAuto || tourAt < 0) return;
     if (tourAt >= tourSteps.length - 1) { tourAuto = false; if (b) b.setAttribute("aria-pressed", "false"); return; }
-    tourTimer = setTimeout(function () { tourGo(tourAt + 1); }, tourSteps[tourAt].run ? 10000 : 6000);
+    tourTimer = setTimeout(function () { tourGo(tourAt + 1); }, tourSteps[tourAt].run ? 12000 : 7000);
   }
   function tourExit() {
     tourAuto = false; tourArm(); closeInline();
@@ -1160,13 +1322,17 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     tourUrl();
   }
   function wireTour() {
-    $("hero-tour").addEventListener("click", function () { tourGo(0); $("tour-next").focus(); });
-    $("nav-tour").addEventListener("click", function () { if (tourAt >= 0) tourExit(); else { tourGo(0); $("tour-next").focus(); } });
+    $("hero-tour").addEventListener("click", function () { tourStart(false); });
+    $("hero-tour-full").addEventListener("click", function () { tourStart(true); });
+    $("nav-tour").addEventListener("click", function () { if (tourAt >= 0) tourExit(); else tourStart(false); });
     $("tour-prev").addEventListener("click", function () { tourGo(tourAt - 1); });
     $("tour-next").addEventListener("click", function () { tourGo(tourAt + 1); });
     $("tour-exit").addEventListener("click", tourExit);
     $("tour-auto").addEventListener("click", function () { tourAuto = !tourAuto; tourArm(); });
     document.addEventListener("keydown", function (e) {
+      if ((e.key === "f" || e.key === "F") && !e.altKey && !e.ctrlKey && !e.metaKey && !/^(SELECT|INPUT|TEXTAREA)$/.test(e.target && e.target.tagName || "")) {
+        var open = document.querySelector(".st-play") || document.querySelector(".st-inplace video"); if (open) { e.preventDefault(); toggleFull(open); return; }
+      }
       if (tourAt < 0 || e.altKey || e.ctrlKey || e.metaKey) return;
       var tg = e.target && e.target.tagName;
       if (tg === "SELECT" || tg === "INPUT" || tg === "TEXTAREA" || tg === "VIDEO") return;
@@ -1189,9 +1355,10 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     Object.keys(links).forEach(function (id) { var n = $(id); if (n) io.observe(n); });
   }
   // ?tour=N opens the tour at step N once the clips' manifests are in
-  var tourWanted = 0;
+  var tourWanted = 0, findingWanted = "";
   function tourFromUrl() {
-    if (!tourWanted) return;
+    if (findingWanted) { var f = findingWanted; findingWanted = ""; openFinding(f); }
+    if (!tourWanted) return; buildTour();
     var n = tourWanted; tourWanted = 0; tourGo(Math.min(n, tourSteps.length) - 1);
   }
 
@@ -1421,7 +1588,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
       refreshRI();
       // every manifest, for task families and recorded flags in the run names
       Promise.all(runs.map(function (r) { return getJson(r.exp + ".json").then(function (m) { if (m && m.exp === r.exp) MANS[r.exp] = m; }, function () {}); }))
-        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGallery(); renderGlance(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
+        .then(function () { refreshRI(); renderScenes(); renderBoard(); renderMethods(); renderStory(); renderGallery(); renderGlance(); renderFullResult(); document.dispatchEvent(new CustomEvent("pwa:runinfo")); tourFromUrl(); });
       return scenesExp ? loadManifest() : null;
     }).catch(function () { scenesIdx = null; }).then(function () { renderScenes(); renderBoard(); syncUrl(); });
   }
@@ -1437,7 +1604,7 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
 
   /* ---------- render all ---------- */
   function renderAll() {
-    renderStatus(); renderVerdict(); renderGlance(); renderRuler(); renderFams(); renderFull(); renderStory(); renderGallery(); renderLoop(); renderTimeline(); renderMethods();
+    renderStatus(); renderVerdict(); renderGlance(); renderRuler(); renderFams(); renderFull(); renderFullResult(); renderStory(); renderGallery(); renderLoop(); renderTimeline(); renderMethods();
     renderToggles(); renderBoard();
     syncUrl();
     var top = $("top"); if (top) top.setAttribute("aria-busy", "false");
@@ -1452,6 +1619,8 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented } from ".
     if (COLS.some(function (c) { return c[0] === sk; })) { sort.key = sk; sort.dir = d; }
     tourWanted = Math.max(0, parseInt(q.get("tour") || "0", 10) || 0);
     if (q.get("auto") === "1") tourAuto = true;
+    tourFull = q.get("full") === "1";
+    findingWanted = q.get("finding") || "";
     scenesExp = q.get("scenes") || "";
     scenesTask = scenesExp ? (q.get("scene") || "") : "";
   }
