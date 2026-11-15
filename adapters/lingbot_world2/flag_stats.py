@@ -114,13 +114,15 @@ class FlagStats:
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
                  sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
                  pose_mem: bool = False, yaw_servo: bool = False, warp_reanchor: bool = False,
-                 turntable: str = "", turntable_rescale: bool = False, split_sink: bool = False):
+                 turntable: str = "", turntable_rescale: bool = False, split_sink: bool = False,
+                 if_settle: bool = False):
         self.split_sink = bool(split_sink)
         self.warp_reanchor = bool(warp_reanchor)
         self.pose_mem = bool(pose_mem)
         self.yaw_servo = bool(yaw_servo)  # --lingbot-yaw-servo
         self.turntable = str(turntable)  # --lingbot-turntable-poses walk mode ("" = off)
         self.turntable_rescale = bool(turntable_rescale)
+        self.if_settle = bool(if_settle)
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
@@ -159,6 +161,7 @@ class FlagStats:
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
                        "split_sink_chunks": 0, "split_sink_fg_tokens": 0,
                        "yaw_gain_frames": 0, "yaw_servo_chunks": 0, "yaw_servo_untrusted": 0,
+                       "if_settle_tasks": 0, "if_settle_frames": 0,
                        "turntable_frames": 0, "turntable_rescaled": 0,
                        **{f"pose_mem_{k}": 0 for k in POSE_MEM_FIELDS},
                        "warp_events": 0, "warp_patches": 0}
@@ -201,6 +204,7 @@ class FlagStats:
         self.gc_completion_hints = self.gc_completion_ends = 0
         self.if_horizon_cap = 0
         self.if_horizon_ends = 0
+        self.if_settle_budget = self.if_settle_frames = 0
 
     def caption(self, used: bool):
         if used:
@@ -318,6 +322,9 @@ class FlagStats:
         if kind == "end":
             self.if_horizon_ends += 1
 
+    def if_settled(self, budget: int, frames: int = 0):
+        self.if_settle_budget, self.if_settle_frames = int(budget), self.if_settle_frames + int(frames)
+
     def scripted_event(self, kind: str, n: int):
         """scripted_player.wrap on_event: "plan", "chunk" or "end", with the plan length."""
         self.scripted_planned = int(n)
@@ -406,6 +413,8 @@ class FlagStats:
         if self.scripted:
             s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
+        if self.if_settle:
+            s.update(if_settle="on" if self.if_settle_budget else "skip", if_settle_budget=self.if_settle_budget, if_settle_frames=self.if_settle_frames)
         return s
 
     @staticmethod
@@ -454,7 +463,8 @@ class FlagStats:
                    if self.split_sink else "")
                 + ("".join(f" {k}={v}" for k, v in self.pose_mem_summary(
                     {k: t[f"pose_mem_{k}"] for k in POSE_MEM_FIELDS}).items()) if self.pose_mem else "")
-                + (f" warp_events={t['warp_events']} warp_patches={t['warp_patches']}" if self.warp_reanchor else ""))
+                + (f" warp_events={t['warp_events']} warp_patches={t['warp_patches']}" if self.warp_reanchor else "")
+                + (f" if_settle_tasks={t['if_settle_tasks']} if_settle_frames={t['if_settle_frames']}" if self.if_settle else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -501,6 +511,8 @@ class FlagStats:
             t[f"pose_mem_{k}"] += self.pose_mem_counts[k]
         t["warp_events"] += self.warp_events
         t["warp_patches"] += self.warp_patches
+        t["if_settle_tasks"] += bool(self.if_settle_budget)
+        t["if_settle_frames"] += self.if_settle_frames
         print(self.line(s), flush=True)
         return s
 
