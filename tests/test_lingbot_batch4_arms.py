@@ -155,3 +155,11 @@ def test_weight_mod_schedule_shows_only_when_set(harness, capsys, monkeypatch):
     arm = _run(capsys, "--lingbot-weight-mod")
     assert "text static 1.3, late steps 2, static late 1.0" in arm["mode"]
     assert "weight_mod_late=2:static=1.0,3p=0.85" in arm["lines"][0]
+
+
+def test_weight_mod_and_cond_schedule_are_refused_together(monkeypatch):
+    for key in tuple(R.os.environ):
+        if key.startswith("LINGBOT_"):
+            monkeypatch.delenv(key)
+    with pytest.raises(SystemExit, match="both wrap"):
+        R.configure(["run.py", "--lingbot-weight-mod", "--lingbot-cond-schedule"], {})

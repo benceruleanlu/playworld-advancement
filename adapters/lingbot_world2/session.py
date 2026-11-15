@@ -246,7 +246,8 @@ class LingBotSession:
     """Stateful wrapper around a loaded wan.WanI2VCausal (causal_fast)."""
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
-                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None):
+                 stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
+                 cond_sched=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -262,6 +263,7 @@ class LingBotSession:
         self.reanchor_events = 0  # _anchor_y calls over the session's life (flag_stats reads deltas)
         # --lingbot-weight-mod: steps with any modulated latent chunk, and modulated latent chunks (flag_stats reads deltas)
         self.weight_mod, self.weight_mod_steps, self.weight_mod_chunks, self.third_person = weight_mod, 0, 0, False
+        self.cond_sched, self.cond_sched_chunks, self.cond_sched_calls = cond_sched, 0, 0
         self._free()
 
     def _free(self):
@@ -339,6 +341,8 @@ class LingBotSession:
         self.third_person = bool(third_person)
         if self.weight_mod is not None:
             self.weight_mod.reset()
+        if self.cond_sched is not None:
+            self.cond_sched.reset()
         if self.stream_decode:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._feat_map = [None] * count_conv3d(pipe.vae.model.decoder)
@@ -481,9 +485,10 @@ class LingBotSession:
                 self._anchor_y(self.chunk_id * CHUNK + i)
 
         new, modulated = [], False
-        with (self.weight_mod or contextlib.nullcontext()), torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
+        with (self.weight_mod or contextlib.nullcontext()), (self.cond_sched or contextlib.nullcontext()), \
+                torch.amp.autocast("cuda", dtype=pipe.param_dtype), torch.no_grad():
             for c in range(n_chunks):
-                cid = self.chunk_id
+                cid, chunk_hit = self.chunk_id, False
                 rel_c = rel[c * CHUNK:(c + 1) * CHUNK]
                 if self.weight_mod is not None and self.weight_mod.step(rel_c, third_person=self.third_person):
                     modulated = True
@@ -507,6 +512,9 @@ class LingBotSession:
                 for i in range(len(ts)):
                     if self.weight_mod is not None:
                         self.weight_mod.denoise_step(i, len(ts))
+                    if self.cond_sched is not None and self.cond_sched.set_step(rel_c, i, third_person=self.third_person):
+                        self.cond_sched_calls += 1
+                        chunk_hit = True
                     t = torch.stack([ts[i]]).to(pipe.device)
                     pred = pipe.model(x=[latent], t=t, cross_attn_first_call=not self.cross_init, **kwargs)[0]
                     self.cross_init = True
@@ -520,6 +528,10 @@ class LingBotSession:
                 new.append(x0)
                 if self.weight_mod is not None:
                     self.weight_mod.end_chunk()  # the clean KV write uses the chunk's base scale
+                if self.cond_sched is not None:
+                    self.cond_sched.reset()
+                if chunk_hit:
+                    self.cond_sched_chunks += 1
                 # write clean keys/values for this chunk into the KV cache
                 t0 = torch.stack([ts[-1] * 0.0]).to(pipe.device)
                 pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
