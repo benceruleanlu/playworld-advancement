@@ -251,6 +251,7 @@ from adapters.lingbot_world2 import if_camera as IC  # noqa: E402
 from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
 from adapters.lingbot_world2 import if_identity as IFI  # noqa: E402
 from adapters.lingbot_world2 import if_repeat as IR  # noqa: E402
+from adapters.lingbot_world2 import if_settle as IS  # noqa: E402
 from adapters.lingbot_world2 import kv_noise as KVN  # noqa: E402
 from adapters.lingbot_world2 import measured_turn as MT  # noqa: E402
 from adapters.lingbot_world2 import if_subject as IFS  # noqa: E402
@@ -395,6 +396,11 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         raise SystemExit("--lingbot-cond-schedule and --lingbot-weight-mod both wrap the DiT conditioning layers; use one")
     flags["kv_noise"], argv = KVN.parse(argv, environ)
     flags["stg"], argv = STGM.parse(argv, environ)
+    flags["if_settle"], argv = IS.parse(argv, environ)
+    if flags["if_settle"].enabled and flags["stateless"]:
+        raise SystemExit("--lingbot-if-settle requires session mode")
+    if flags["if_settle"].enabled and flags["if_horizon"]:
+        raise SystemExit("--lingbot-if-settle and --lingbot-if-horizon both bound IF duration; use one")
     window, argv = _window(argv, environ)
     flags["turn_step"], argv = _turn_step(argv, environ)
     flags["turn_cal"] = flags["turn_cal"] or bool(flags["turn_step"])  # a step is a calibrated rate
@@ -430,6 +436,8 @@ KV_NOISE = KVN.KVNoiseConfig()  # --lingbot-kv-noise / LINGBOT_KV_NOISE=1, sessi
 STG = STGM.StgConfig()  # --lingbot-stg / LINGBOT_STG=1, off by default; session only
 SINK_SCALE = SK.SinkScaleConfig()  # --lingbot-sink-key-scale (scale 1.0 = off)
 YAW_GAIN = YG.YawGain()  # --lingbot-yaw-gain / LINGBOT_YAW_GAIN, off by default; requires turn-cal
+IF_SETTLE = IS.SettleConfig()
+SETTLE: IS.SettleBudget | None = None
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -519,6 +527,7 @@ class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
     weight_mod = None  # --lingbot-weight-mod: a WeightModulator, set in __init__
+    if_settle = None   # --lingbot-if-settle: a SettleBudget, set in __init__
 
     def __init__(self, args):
         self.args = args
@@ -538,6 +547,7 @@ class LingBotWorld2Engine:
             STATS.stg = "skip"  # stateless or no DiT: the flags line must not read stg=on with 0 calls
         if self.weight_mod is not None:
             STATS.weight_mod_late = "" if STATELESS else self.weight_mod.late_schedule()  # stateless: schedule inert
+        self.if_settle = SETTLE
         self.session = None
         if not STATELESS:
             self.session = S.LingBotSession(self.pipe, MAX_AREA, self.cfg.sample_shift,
@@ -574,6 +584,7 @@ class LingBotWorld2Engine:
               + (", GC completion hint on" if GC_COMPLETION else "")
               + (", noise mean coupling on" if NOISE_MEAN else "")
               + (", IF horizon on" if IF_HORIZON else "")
+              + (f", {IF_SETTLE.describe()}" if IF_SETTLE.enabled else "")
               + (", IF camera hint on" if STATS.if_camera else "")
               + (", player history endpoints on" if STATS.history_endpoints else "")
               + (", insight director on" if STATS.insight_director else "")
@@ -689,6 +700,9 @@ class LingBotWorld2Engine:
                 self.session.sink_scale_on = SINK > 0 and SINK_SCALE.applies(name)
                 if self.session.sink_scale_on:
                     STATS.sink_armed()
+        if (settle := self.if_settle or SETTLE) is not None:
+            keys = settle.step(keys, cont, prompts._current.get("task"), name,
+                               int(getattr(self.args, "action_frame_unit", 20) or 20), STATS.if_settled)
         self._configure_if_motion(name, keys)
         if YAW_GAIN.enabled:  # only with the flag, so the no-flag track stays main's
             self.session.track.yaw_gain = YAW_GAIN.pair()
@@ -786,7 +800,7 @@ def main(argv: list[str] | None = None) -> int:
     loaded pipe (_PIPES) is shared between calls in one process."""
     global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
     global CPU_THREADS, STALL, IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS, IF_SUBJECT, WEIGHT_MOD, LOCAL_ATTN, SINK
-    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN
+    global IF_IDENTITY, COND_SCHED, KV_NOISE, STG, SINK_SCALE, NOISE_MEAN, YAW_GAIN, IF_SETTLE, SETTLE
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     LOCAL_ATTN, SINK = flags["local_attn"], flags["sink"]
     window = (LOCAL_ATTN, SINK) != (LOCAL_ATTN_DEFAULT, SINK_DEFAULT)
@@ -797,8 +811,7 @@ def main(argv: list[str] | None = None) -> int:
     RETURN_STOP, GC_COMPLETION, STALL = flags["return_stop"], flags["gc_completion"], flags["stall"]
     IF_HORIZON, GC_DIRECTOR, GC_EASE_TURNS = flags["if_horizon"], flags["gc_director"], flags["gc_ease_turns"]
     IF_SUBJECT, WEIGHT_MOD, IF_IDENTITY = flags["if_subject"], flags["weight_mod"], flags["if_identity"]
-    COND_SCHED = flags["cond_sched"]
-    SINK_SCALE = flags["sink_scale"]
+    COND_SCHED, SINK_SCALE, IF_SETTLE, SETTLE = flags["cond_sched"], flags["sink_scale"], flags["if_settle"], None
     cs_mode = "off" if not COND_SCHED.enabled else ("skip" if STATELESS else "on")
     KV_NOISE = flags["kv_noise"]
     kvn_mode = "off" if not KV_NOISE.enabled else ("skip" if STATELESS else "on")
@@ -818,7 +831,8 @@ def main(argv: list[str] | None = None) -> int:
                                  kv_noise=kvn_mode, kv_noise_t=KV_NOISE.t, stg=stg_mode,
                                  window=f"{LOCAL_ATTN}:{SINK}" if window else "", scripted=flags["scripted"],
                                  sink_scale=SINK_SCALE.enabled, noise_mean=NOISE_MEAN, turn_step=flags["turn_step"],
-                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "")
+                                 yaw_gain=YAW_GAIN.tag() if YAW_GAIN.enabled else "",
+                                 if_settle=IF_SETTLE.enabled)
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
@@ -833,6 +847,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[lingbot] {YAW_GAIN.describe()}: model yaw only, intended track unchanged", flush=True)
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
+    SETTLE = IS.SettleBudget(IF_SETTLE, getattr(run_agent, "parse_segments", None)) if IF_SETTLE.enabled else None
     run_agent.SanaWMEngine = LingBotWorld2Engine
     prompts.install(run_agent)
     STATS.install(run_agent)
@@ -869,6 +884,9 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = IH.wrap(run_agent.decide_action, run_agent.parse_segments,
                                           on_event=STATS.if_horizon_event)
         print("[lingbot] IF horizon: on", flush=True)
+    if SETTLE is not None and hasattr(run_agent, "decide_action"):
+        run_agent.decide_action = IS.wrap(run_agent.decide_action, SETTLE)
+        print(f"[lingbot] {IF_SETTLE.describe()}", flush=True)
     if flags["scripted"]:  # outermost: answers every decision, so no wrapper inside it and no LLM is reached
         run_agent.decide_action = SP.wrap(run_agent.decide_action, run_agent.parse_segments,
                                           run_agent.VALID_ACTIONS, on_event=STATS.scripted_event)

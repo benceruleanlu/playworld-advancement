@@ -89,7 +89,9 @@ class FlagStats:
                  if_subject: bool = False, weight_mod: bool = False, window: str = "",
                  if_identity: bool = False, measured_turn: bool = False, cond_sched: str = "off", scripted: bool = False,
                  kv_noise: str = "off", kv_noise_t: float = 0.0, stg: str = "off",
-                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = ""):
+                 sink_scale: bool = False, noise_mean: bool = False, turn_step: float = 0.0, yaw_gain: str = "",
+                 if_settle: bool = False):
+        self.if_settle = bool(if_settle)
         self.yaw_gain = str(yaw_gain)  # --lingbot-yaw-gain tag ("" = off)
         self.sink_scale = bool(sink_scale)
         self.scripted = bool(scripted)
@@ -126,7 +128,7 @@ class FlagStats:
                        "if_identity_prompts": 0, "cond_sched_chunks": 0, "cond_sched_calls": 0,
                        "scripted_chunks": 0, "scripted_ends": 0,
                        "kv_noise_chunks": 0, "stg_chunks": 0, "stg_calls": 0, "sink_scaled_chunks": 0,
-                       "yaw_gain_frames": 0}
+                       "yaw_gain_frames": 0, "if_settle_tasks": 0, "if_settle_frames": 0}
         self.new_task()
 
     # -- hooks (called from run.py and player_hint.wrap) ------------------------
@@ -159,6 +161,7 @@ class FlagStats:
         self.gc_completion_hints = self.gc_completion_ends = 0
         self.if_horizon_cap = 0
         self.if_horizon_ends = 0
+        self.if_settle_budget = self.if_settle_frames = 0
 
     def caption(self, used: bool):
         if used:
@@ -250,6 +253,9 @@ class FlagStats:
         if kind == "end":
             self.if_horizon_ends += 1
 
+    def if_settled(self, budget: int, frames: int = 0):
+        self.if_settle_budget, self.if_settle_frames = int(budget), self.if_settle_frames + int(frames)
+
     def scripted_event(self, kind: str, n: int):
         """scripted_player.wrap on_event: "plan", "chunk" or "end", with the plan length."""
         self.scripted_planned = int(n)
@@ -322,6 +328,8 @@ class FlagStats:
         if self.scripted:
             s.update(scripted="on" if self.scripted_planned else "skip", scripted_planned=self.scripted_planned,
                      scripted_chunks=self.scripted_chunks, scripted_end=self.scripted_end)
+        if self.if_settle:
+            s.update(if_settle="on" if self.if_settle_budget else "skip", if_settle_budget=self.if_settle_budget, if_settle_frames=self.if_settle_frames)
         return s
 
     @staticmethod
@@ -360,7 +368,8 @@ class FlagStats:
                 + (f" if_identity=on if_identity_prompts={t['if_identity_prompts']}" if self.if_identity else "")
                 + (f" scripted=on scripted_chunks={t['scripted_chunks']} scripted_ends={t['scripted_ends']}"
                    if self.scripted else "")
-                + (f" sink_scaled_chunks={t['sink_scaled_chunks']}" if self.sink_scale else ""))
+                + (f" sink_scaled_chunks={t['sink_scaled_chunks']}" if self.sink_scale else "")
+                + (f" if_settle_tasks={t['if_settle_tasks']} if_settle_frames={t['if_settle_frames']}" if self.if_settle else ""))
 
     def finish_task(self, task_id) -> dict:
         s = self.summary(task_id)
@@ -397,6 +406,8 @@ class FlagStats:
         t["stg_calls"] += self.stg_calls
         t["sink_scaled_chunks"] += self.sink_scaled_chunks
         t["yaw_gain_frames"] += self.yaw_gain_frames
+        t["if_settle_tasks"] += bool(self.if_settle_budget)
+        t["if_settle_frames"] += self.if_settle_frames
         print(self.line(s), flush=True)
         return s
 
