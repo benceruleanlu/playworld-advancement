@@ -36,7 +36,7 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 
 ---
 
-# One coordinating agent session ran the work, and research agents sent each idea as a proposal pull request
+# One coordinating agent session ran the proposal flow: research agents sent each idea as a proposal pull request
 
 <div class="grid gap-6 mt-3" style="grid-template-columns: 1fr 190px;">
 <div class="dg">
@@ -45,6 +45,7 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 <g fill="none" stroke="currentColor" stroke-width="1">
 <rect x="12" y="12" width="190" height="84" rx="4" opacity="0.45"/>
 <rect x="8" y="8" width="190" height="84" rx="4" opacity="0.7"/>
+<rect x="4" y="4" width="190" height="84" rx="4" class="opq" stroke="none"/>
 <rect x="4" y="4" width="190" height="84" rx="4" fill="rgba(47,111,214,0.16)"/>
 <rect x="225" y="4" width="190" height="84" rx="4"/>
 <rect x="446" y="4" width="190" height="84" rx="4" fill="rgba(47,111,214,0.16)"/>
@@ -59,7 +60,6 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 <path d="M417,46 H443"/>
 <path d="M470,90 L400,121"/>
 <path d="M417,165 H443"/>
-<path d="M541,209 V239"/>
 <path d="M444,284 H418"/>
 <path d="M223,284 H197"/>
 <path d="M99,240 V100"/>
@@ -67,7 +67,7 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 </g>
 <g class="lbl">
 <text x="99" y="34" class="h">Research agents</text>
-<text x="99" y="56">many sessions,</text>
+<text x="99" y="56">coordinator subagents,</text>
 <text x="99" y="74">one idea each</text>
 <text x="320" y="30" class="h">Proposal pull request</text>
 <text x="320" y="52" class="mono">proposal/&lt;idea&gt;</text>
@@ -92,7 +92,7 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 <text x="99" y="314">PR comments</text>
 <text x="108" y="166" class="st">feed the next</text>
 <text x="108" y="184" class="st">proposals</text>
-<text x="440" y="114" class="lab">verdicts</text>
+<text x="440" y="119" class="lab">verdicts</text>
 <text x="452" y="222" class="lab">dispatches</text>
 </g>
 </svg>
@@ -105,7 +105,11 @@ Every number in this deck comes from AGENTS.md, README.md, results/experiments.c
 </div>
 </div>
 
+<div class="text-sm mt-2 muted">Outside this flow: the owner's session ran the yaw servo study (#125, slides 12 and 13); teammate Hcoder10 opened #162 and #163.</div>
+
 <style>
+.opq { fill: var(--slidev-theme-background, #fff); }
+html.dark .opq { fill: #121212; }
 .lbl text { fill: currentColor; font-size: 14px; text-anchor: middle; }
 .lbl text.h { font-size: 16px; font-weight: 700; }
 .lbl text.mono { font-family: ui-monospace, monospace; font-size: 13px; }
@@ -118,27 +122,27 @@ html.dark .nums .n { color: #7fa8ee; }
 </style>
 
 <!--
-This is how the work was organised. One coordinating agent session (a Claude Code session) ran the project: it gave each proposal to review agents, folded accepted proposals into main, closed or held the rest with a written reason, dispatched the experiment and arms workflow runs, and kept AGENTS.md and issue #9 current. AGENTS.md "Settled" gives it that role: "The coordinator session launches experiment runs, merges the integration branch when CI is green ... and freezes and launches the final run." The owner gave it standing authority to dispatch.
+This is how the proposal work was organised. It was not all of the project: the owner's own agent session ran the yaw servo study (#125, the lead on slides 12 and 13) in a separate Modal workspace and posted the replays that closed #114; #129 opens with "The project owner asked to 'fix pose memory'"; teammate Hcoder10 opened #162 (SANA-WM in the infra) and #163 (a loop-closure wrapper); jpoehnelt opened #1, #12 and #21. One coordinating agent session (a Claude Code session) ran the proposal flow: it gave each proposal to review agents, folded accepted proposals into main, closed or held the rest with a written reason, dispatched the experiment and arms workflow runs, and kept AGENTS.md and issue #9 current. AGENTS.md "Settled" gives it that role: "The coordinator session launches experiment runs, merges the integration branch when CI is green ... and freezes and launches the final run." The owner gave it standing authority to dispatch.
 
 The loop on the slide, as the pull request record shows it:
-- A research agent writes one idea as an off-by-default runner flag with unit tests, on a proposal/<idea> branch, and opens a PR whose body is the proposal: hypothesis, how it works, how it differs from earlier work, smoke recipe, kill criterion, risks, an Unverified list, tests (template from #80). Proposals state that flag-off output is byte-identical to main and refuse flag combinations it cannot support.
+- A research agent (a subagent of the coordinating session in most cases; the 36 proposal branches carry commit trailers from only two sessions, the coordinator's and one other) writes one idea as an off-by-default runner flag with unit tests, on a proposal/<idea> branch, and opens a PR whose body is the proposal: hypothesis, how it works, how it differs from earlier work, smoke recipe, kill criterion, risks, an Unverified list, tests (template from #80). Proposals state that flag-off output is byte-identical to main and refuse flag combinations it cannot support.
 - Review agents return merge, merge_with_fixes or reject. Their verdicts are recorded only in the coordinator's PR text ("Every review came back merge or merge_with_fixes", #90); they leave no GitHub reviews of their own. An automated code-review app also posted findings on proposal PRs, which the coordinator answered in comments and fix commits.
-- The coordinator merged a proposal directly, or folded several into a batch PR (#63, #90, #100, #104, #112) that merges each proposal branch with --no-ff, applies the review fixes, and closes the originals with "Landed via #N". Some it held ("On hold, no GPU slot", #132, #133) or closed with measured reasons (#114, #117, #126).
+- The coordinator merged a proposal directly, or folded several into a batch PR (#63, #90, #100, #104, #112) that merges each proposal branch with --no-ff, applies the review fixes, and closes the originals with "Landed via #N". Some it held and later merged ("On hold, no GPU slot", #132 and #133, merged at 07:05 and 07:07) or closed with measured reasons (#114, #117, #126).
 - Experiments are Actions runs of experiment.yml or arms.yml on Modal GPUs; arm 1 of each group is the control. The workflow writes the results row, the report and the clips back to GitHub (next slide).
 - Findings go into AGENTS.md status and PR comments, and the next proposals cite them by commit-pinned link (#147 has a "Duplicate check" against earlier PRs).
 
-The first version was an hourly "autoresearch loop" in a fresh session, whose only memory was the ledger in issue #24. It could not dispatch GPU runs, so its 4 ideas got 0 evaluations. It was paused with a PAUSE line in #24 at 00:50 UTC Nov 15 "at the owner's direction", and the proposal PRs took over (research/autoresearch-loop.md).
+The first version was an hourly "autoresearch loop" in a fresh session, whose only memory was the ledger in issue #24. It could not dispatch GPU runs, so in its first hours its 4 ideas got 0 evaluations; AR-002 to AR-004 were later folded into the integration branch (#63), and the caption prompt and re-anchor ran in sp14-gc-v1. It was paused with a PAUSE line in #24 at 00:50 UTC Nov 15 "at the owner's direction", and the proposal PRs took over (research/autoresearch-loop.md).
 
-Counts. 150 pull requests: #1 to #169 minus 19 issue numbers, first 19:22 UTC Nov 14, last 18:52 UTC Nov 15; 110 merged, 27 closed unmerged, 13 open. 36 proposal PRs (proposal/* branches, #75 to #147): 15 merged directly, 18 closed and landed through batch PRs #90, #100, #104 and #112, and 3 closed without landing (#114, #117, #126), so 33 reached main as off-by-default flags. 105 rows in results/experiments.csv on main: 101 real runs and 4 pipeline tests.
+Counts. 150 pull requests: #1 to #169 minus 19 issue numbers, first opened 19:22 UTC Nov 14, last (#169) opened 19:21 UTC Nov 15; 110 merged, 27 closed unmerged, 13 open. 36 proposal PRs (proposal/* branches, #75 to #147): 15 merged directly, 18 closed and landed through batch PRs #90, #100, #104 and #112, and 3 closed without landing (#114, #117, #126), so 33 reached main as off-by-default flags. 105 rows in results/experiments.csv on main: 101 real runs and 4 pipeline tests.
 
-Who is who. 143 of the 150 PRs were opened under one shared bot login, so agents are told apart by the session link in a PR body or commit trailer: 24 distinct session links in main's commit messages, 35 across all branches, both lower bounds because squash merges drop branch trailers and some proposals (#81 to #85) carry none. The owner's own agent session posted the replays that closed #114 and opened #125, which became #131.
+Who is who. 143 of the 150 PRs were opened under one shared bot login. Session links do not tell research agents apart: most proposal PR bodies carry none, and those that do (#103, #105, #108, #119, #123) carry the coordinator's. Main's commit messages carry 24 distinct session links, 35 across all branches, both lower bounds because squash merges drop branch trailers. #125 is the owner's servo PR; #131 carried its result to main.
 
 What the pattern cost (the next slide has the short list): sessions collided on the same files (#143 rewrote site/src/scripts/app.js and AGENTS.md asked others to hold site edits; #166 had to absorb #164); runs were launched before the path was checked (three sharded runs before the #62 fix; 30 pose-memory rollouts that could not fire, slide 4); every merged proposal is a dark flag, and none has decision-tier evidence; review threads were answered in comments but left unresolved; status PRs piled up.
 -->
 
 ---
 
-# GitHub held the project's state: decisions in pull requests, the log and evidence on main, runs in Actions
+# GitHub held most of the project's state: decisions in pull requests, the log and evidence on main, runs in Actions
 
 <div class="grid gap-6 mt-4" style="grid-template-columns: 1fr 250px;">
 <div class="dg smap">
@@ -159,6 +163,8 @@ What the pattern cost (the next slide has the short list): sessions collided on 
 </div>
 </div>
 
+<div class="text-sm mt-3 muted">Off GitHub: raw rollouts (Modal volume, 14-day Actions artifacts); full review verdicts and agent briefs (session context).</div>
+
 <style>
 .smap { display: grid; grid-template-columns: 240px 24px 1fr; gap: 10px 6px; align-items: stretch; font-size: 16px; }
 .smap .k { border: 1px solid currentColor; border-radius: 4px; padding: 8px 10px; font-weight: 600; background: rgba(47, 111, 214, 0.16); }
@@ -170,24 +176,24 @@ What the pattern cost (the next slide has the short list): sessions collided on 
 </style>
 
 <!--
-Every kind of project state had a place on GitHub, and agents read it from there instead of from a chat. Sources are origin/main unless noted.
+Most project state had a place on GitHub, and sessions read it from there; the exceptions are listed after this list and on the slide. Sources are origin/main unless noted.
 
 - Proposals, reviews and decisions: PR bodies, PR comment threads and closing comments ("Landed via #90 ... Closing as superseded. Unscored."; #114's closing reason). Hold notes listed fixes and a kill criterion (#132).
 - Plan of record: issue #9, "the single plan" (AGENTS.md "Plan of record"). Idea ledger: issue #24, one line per idea with an AR id, hypothesis, PR and status, and the PAUSE line. Out-of-sight research threads: #48 with sub-issues #49 to #53 and #58, closed as research records.
 - Instructions and status: AGENTS.md, which every agent session loads, rewritten by hourly "Docs: status at HH:MM" PRs. Longer reasoning lives in research/*.md. Shared skills (19, copied from jpoehnelt/skills under MIT) live in the repo too.
 - Experiment log: results/experiments.csv on main, 105 rows, with branch, status and run_url columns. Rows from any branch land on main through .github/scripts/push_results.sh, which stages only results/, so branch code never reaches main.
 - Per-run evidence: 83 files in results/reports/ (74 official, 9 screening), 73 Releases named run-EXP with 480p clips, and 73 scenes manifests in results/media/.
-- Run state: the Actions run title carries the experiment, runner, tasks and action source, because GitHub does not show a running job's inputs (AGENTS.md "Remote runs"). Status markers are commits to main: 340 of the 456 commits on main start "results:" and come from the Actions bot.
+- Run state: the Actions run title carries the experiment, runner, tasks and action source, because GitHub does not show a running job's inputs (AGENTS.md "Remote runs"). Status markers are commits to main: as of #169, 340 of the 456 commits on main start "results:", 339 of them authored by github-actions[bot].
 - Public view: the site fetches results/experiments.csv and results/media/ from main at view time (site/src/scripts/app.js), so a new row shows up without a redeploy.
 
-Not everything is on GitHub: raw rollouts sit in the Modal volume pwa-runs and in Actions artifacts, which expire after 14 days, and secrets live in config/env.sh and repo secrets.
+Not everything is on GitHub: raw rollouts sit in the Modal volume pwa-runs and in Actions artifacts, which expire after 14 days; the review agents' full verdicts, the research agents' briefs and the owner's standing dispatch authority lived in session context and chat; the owner's servo study ran in a separate Modal workspace; secrets live in config/env.sh and repo secrets.
 
 What it cost, with sources:
 - Collisions: #143 rewrote much of site/src/scripts/app.js while others held site edits; #166 had to merge main and move #164's review link; #167 avoided app.js to stay clear of #166; batch PRs #90 and #112 resolved conflicts with parallel PRs.
 - Unverified launches: pose memory (#123) ran in pm14-fx-v1 and v2, and all 30 pose-memory rollouts had 0 retrievals before #129 fixed it (slide 4). Three sharded runs were launched before the #62 fix.
 - Status PRs: 9 "Docs: status" PRs are open and unmerged (#149, #152 to #155, #158, #161, #167, #169); each new one says it replaces the earlier ones.
 - One login: 143 of 150 PRs were opened under the same bot account, so authorship is visible only through session links, and #90 lists #81 to #85 with no session link.
-- Also: 28 or more flags merged dark with no decision-tier evidence, and issue #9 was not updated when the plan switched to fixed-action A/Bs (AGENTS.md).
+- Also: none of the 33 proposals that reached main has decision-tier evidence for its flag, and issue #9 was not updated when the plan switched to fixed-action A/Bs (AGENTS.md).
 -->
 
 ---
@@ -197,21 +203,21 @@ What it cost, with sources:
 <div class="dg mt-6">
 <div class="ptl">
   <div class="st fill"><span class="t">04:32</span><b>#123 merged</b>proposal: pose-indexed memory, off by default</div>
-  <div class="st"><span class="t">04:55</span><b>pm14-fx-v1, v2</b>30 rollouts, 0 retrievals; clips equal control</div>
-  <div class="st fill"><span class="t">05:34</span><b>#129 merged</b>CPU replay finds the cause; new rule fires</div>
+  <div class="st"><span class="t">04:33</span><b>pm14-fx-v1, v2</b>30 rollouts, 0 retrievals; 3 arms match control</div>
+  <div class="st fill"><span class="t">05:34</span><b>#129 merged</b>CPU replay finds the cause; new rule</div>
+  <div class="st"><span class="t">05:35</span><b>pm14-fx-v3</b>arms with the fix; memory fires</div>
   <div class="st dash"><span class="t">05:46</span><b>#134 closed</b>covered by #129; re-file one knob</div>
   <div class="st fill"><span class="t">07:01</span><b>#144 merged</b>the re-filed knob</div>
-  <div class="st"><span class="t">07:41</span><b>pm14-fx-v3</b>memory fires; +0.20 against a 0.34 bar</div>
-  <div class="st grey"><span class="t">16:27</span><b>#157 merged</b>records pose memory as dropped</div>
+  <div class="st grey"><span class="t">16:27</span><b>#157 merged</b>dropped: +0.20 against a 0.34 bar</div>
 </div>
-<div class="small muted mt-3">Times in UTC, Nov 15. Rows are arms runs in <code>results/experiments.csv</code>; pm14-fx-v3 was scored by the proxy judge only.</div>
+<div class="small muted mt-3">Times in UTC, Nov 15; run times are launches. The last gap is 9 hours. pm14-fx-v3's +0.20 is from the proxy judge only.</div>
 </div>
 
 <style>
 .ptl { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; position: relative; }
 .ptl { font-size: 15px; }
 .ptl::before { content: ''; position: absolute; left: 0; right: 0; top: 12px; border-top: 2px solid currentColor; opacity: 0.6; }
-.ptl .st { position: relative; margin: 34px 4px 0; padding: 14px 6px 10px; border: 1px solid currentColor; border-radius: 4px; text-align: center; min-height: 190px; background-clip: padding-box; }
+.ptl .st { position: relative; margin: 34px 4px 0; padding: 14px 6px 10px; border: 1px solid currentColor; border-radius: 4px; text-align: center; min-height: 150px; background-clip: padding-box; }
 .ptl .st.fill { background: rgba(47, 111, 214, 0.16); }
 .ptl .st.grey { background: rgba(139, 139, 139, 0.2); }
 .ptl .st.dash { border-style: dashed; }
@@ -224,12 +230,12 @@ html.dark .ptl .t { background: #121212; }
 One proposal traced end to end, every step with a PR number or a run row.
 
 - 04:32 UTC: #123 merged, pose-indexed memory that re-inserts past views into the attention sink, behind --lingbot-pose-memory, off by default.
-- 04:55: arms runs pm14-fx-v1 (run 43677202111) and pm14-fx-v2 (run 43677269975), 14B, fixed dataset actions, tasks GC031, GC033, GC036, OE039, OE047, OE048. Every task printed pose_mem=on, but all 30 pose-memory rollouts ended with pose_mem_retrievals=0, and four arms were byte-identical to the control (#129 body).
+- 04:32 and 04:33: arms runs pm14-fx-v1 (run 43677202111) and pm14-fx-v2 (run 43677269975) launched (status commits on main; their rows were written about 04:55 and 05:01), 14B, fixed dataset actions, tasks GC031, GC033, GC036, OE039, OE047, OE048. Every task printed pose_mem=on, but all 30 pose-memory rollouts ended with pose_mem_retrievals=0, and three arms (v1-a2, v2-a1, v2-a2) were byte-identical to the control v1-a1; v2-a3 (yaw gain 0.85) and v2-a4 (cache size) differed only because they change the model's inputs or cache (#129 body; AGENTS.md says only the cache-size and yaw-gain arms differed).
 - 05:34: #129 merged. The cause was reproduced on CPU with pwa.pose_mem_plan: a shadow rule blocked every smooth turn, the opening chunks were never candidates, and the leave threshold was out of reach. The new coverage rule gives 1 to 6 planned retrievals per task. A review-fix second commit landed in the same PR.
+- 05:35: pm14-fx-v3 arms launched one minute after #129 merged ("results: pm14-fx-v3 arms running" on main): control, pose memory, and pose memory with yaw scale 1.19. Memory fired: retrievals 3, 3, 6, 1, 3, 3 on the six tasks (AGENTS.md). Its score-only runs failed at 06:14 and were relaunched; the rows were last written at 07:41.
 - 05:46: #134 closed. Its close comment says #129 covers the bug and asks for only the rel mode to be re-filed as a small PR from main once a #129 arm shows retrievals above 0.
-- 07:01: #144 merged, the re-filed proposal (proposal/pose-mem-rel), citing that comment and pm14-fx-v3 retrieval counts.
-- 07:41: pm14-fx-v3 arms launched with the fix; memory fired. Under the proxy judge Luna it scored +0.20, against a bar of 0.34, and showed no geometric gain.
-- 16:27: #157 merged; it records pose memory as dropped on the site and in the findings.
+- 07:01: #144 merged, the re-filed proposal (proposal/pose-mem-rel), filed "after pm14-fx-v3 verified the #129 default arm" and citing the #134 comment.
+- 16:27: #157 merged; it records pose memory as dropped on the site and in the findings: under the proxy judge Luna pm14-fx-v3 scored +0.20, against a bar of 0.34, and showed no geometric gain.
 
 The same pattern ran without a GPU run where measurements already answered the question: #114 was closed after the owner's session posted fixed-script replays in its thread (left turns rendered 1.19 to 1.30 times right turns, no transient after a reversal), pointing to #119's per-direction yaw gain.
 
@@ -244,7 +250,7 @@ The 30 rollouts before the fix are also the cost listed on the previous slide: t
 <div class="flex items-stretch gap-1">
   <div class="box flex-1"><b>Task</b>image, goal, actions</div>
   <div class="arr">→</div>
-  <div class="box flex-1 fill"><b>Runner</b>LingBot v2 14B + flags</div>
+  <div class="box flex-1 fill"><b>Runner</b>LingBot 14B, flags</div>
   <div class="arr">→</div>
   <div class="box flex-1"><b>Clip</b>about 60 s</div>
   <div class="arr">→</div>
