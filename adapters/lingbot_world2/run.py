@@ -36,6 +36,9 @@ GC completion hint (off by default): `--lingbot-gc-completion-hint` or
 LINGBOT_GC_COMPLETION_HINT=1 reminds the player to finish the requested path once, then
 END on visual completion. Counts hints and END replies; never forces an action.
 
+Player history endpoints (off by default): --lingbot-player-history-endpoints /
+LINGBOT_PLAYER_HISTORY_ENDPOINTS=1 keeps only endpoints from older player chunks.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
@@ -89,12 +92,13 @@ from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
+from adapters.lingbot_world2 import player_history as PH  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
 from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
-_FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
+_FLAG_ARGS = ("--lingbot-player-history-endpoints", "--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint")
 
@@ -114,6 +118,8 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
         "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
+        "history_endpoints": "--lingbot-player-history-endpoints" in argv
+                             or environ.get("LINGBOT_PLAYER_HISTORY_ENDPOINTS", "0") == "1",
     }
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
@@ -314,7 +320,8 @@ def main(argv: list[str] | None = None) -> int:
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
     RETURN_STOP, GC_COMPLETION = flags["return_stop"], flags["gc_completion"]
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION,
+                                 history_endpoints=flags["history_endpoints"])
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
@@ -322,6 +329,9 @@ def main(argv: list[str] | None = None) -> int:
     prompts.install(run_agent)
     STATS.install(run_agent)
     print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
+    if flags["history_endpoints"]:
+        PH.install(run_agent, STATS.history_removed)
+        print("[lingbot] player history endpoints: on", flush=True)
     if PLAYER_HINT:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
                                          session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
