@@ -169,3 +169,21 @@ def test_read_ahead_reads_every_byte(tmp_path, capsys):
     b.write_bytes(b"y" * 2500)
     FS.read_ahead([a, b, tmp_path / "missing"], threads=3, block=512).join()
     assert "(0.0 GB in 2 files" in capsys.readouterr().out
+
+
+def test_patched_loaders_restore_and_never_stack():
+    i2v = types.ModuleType("i2v")
+    orig = {n: (lambda *a, **k: None) for n in ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model")}
+    for n, f in orig.items():
+        setattr(i2v, n, f)
+    for _ in range(2):  # a second load in the same process sees the originals, not wrapped wrappers
+        with FS.patched_loaders(i2v, lazy_t5=True, fast_load=False):
+            assert i2v.load_dit_model.__wrapped__ is orig["load_dit_model"]
+            assert isinstance(i2v.T5EncoderModel(text_len=512), FS.LazyT5)
+        assert all(getattr(i2v, n) is f for n, f in orig.items())
+    try:
+        with FS.patched_loaders(i2v, lazy_t5=False, fast_load=False):
+            raise RuntimeError("load failed")
+    except RuntimeError:
+        pass
+    assert all(getattr(i2v, n) is f for n, f in orig.items())

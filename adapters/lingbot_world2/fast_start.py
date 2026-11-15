@@ -30,6 +30,7 @@ import json
 import os
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -190,6 +191,23 @@ def install_t5(i2v, lazy: bool, fast: bool) -> None:
         i2v.T5EncoderModel = factory
     else:
         i2v.T5EncoderModel = base
+
+
+_LOADER_NAMES = ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model")
+
+
+@contextmanager
+def patched_loaders(i2v, lazy_t5: bool, fast_load: bool):
+    """For one WanI2VCausal(...) load: install the T5 replacements (install_t5) and the timed
+    wrappers (LoadTimer), yield the timer, then restore wan.image2video's original names, so a
+    process that loads more than once (pwa gen-arms) never stacks wrappers."""
+    saved = {n: getattr(i2v, n) for n in _LOADER_NAMES}
+    try:
+        install_t5(i2v, lazy=lazy_t5, fast=fast_load)
+        yield LoadTimer(i2v)
+    finally:
+        for n, v in saved.items():
+            setattr(i2v, n, v)
 
 
 # ------------------------------------------------------------ read-ahead

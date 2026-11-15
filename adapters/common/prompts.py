@@ -21,6 +21,11 @@ MODES = ("goal", "caption", "auto")
 _current: dict = {}
 
 
+def reset() -> None:
+    """Forget the current task (a process that runs several arms calls this before each one)."""
+    _current.clear()
+
+
 def install(run_agent) -> None:
     """Wrap run_agent.run_task so the engine can see the task it is generating for.
     main() looks run_task up in the module at call time, like SanaWMEngine."""
