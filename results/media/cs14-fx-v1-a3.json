@@ -1,0 +1,117 @@
+{
+ "exp": "cs14-fx-v1-a3",
+ "release_tag": "run-cs14-fx-v1-a3",
+ "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-cs14-fx-v1-a3",
+ "generated": "2026-11-15T03:39:20Z",
+ "git_sha": "929d0714d2cf10db706079fbaa5b84eb292e7705",
+ "branch": "proposal/cond-schedule",
+ "runner": "lingbot_world2",
+ "action_source": "dataset",
+ "scored": true,
+ "max_chunks": null,
+ "runner_args": [
+  "--lingbot-fast",
+  "--lingbot-cpu-threads",
+  "--lingbot-stall-abort",
+  "900",
+  "--lingbot-caption-prompt",
+  "--lingbot-turn-cal",
+  "--lingbot-cond-schedule",
+  "--lingbot-cond-text=1.0"
+ ],
+ "player_model": "",
+ "notes": "PR 101 cond-schedule, fixed actions, official judge 4 passes [arm 3/4 of cs14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --lingbot-cond-schedule --lingbot-cond-text=1.0]",
+ "labels": [
+  "replayed dataset moves (open loop), A/B only"
+ ],
+ "report": "cs14-fx-v1-a3.md",
+ "model": {
+  "name": "LingBot-World v2",
+  "org": "Robbyant Team",
+  "url": "https://github.com/Robbyant/lingbot-world-v2",
+  "paper": "arXiv:2607.07534",
+  "license": "CC BY-NC-SA 4.0",
+  "note": "Its released weights and modules run unchanged; our session wrapper (adapters/lingbot_world2/session.py) re-implements its causal sampling loop.",
+  "runner": "lingbot_world2"
+ },
+ "license": "CC BY-NC-SA 4.0",
+ "tasks": [
+  {
+   "task_id": "GC033",
+   "family": "gc",
+   "mean": 3.3,
+   "status": [
+    "ok"
+   ],
+   "reason": "镜头成功执行了向左旋转并转回的动作，初始橱窗内的关键物体在重新出现时基本保持了身份和位置的一致性，但招牌上的文本内容发生了退化。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/GC033.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/GC033.jpg"
+  },
+  {
+   "task_id": "IF010",
+   "family": "if",
+   "mean": 1.75,
+   "status": [
+    "gate_fail"
+   ],
+   "reason": "视频中机器狗严重变形为真狗，且工厂地面无端变为冰面，导致整体物理连贯性极差。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF010.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF010.jpg"
+  },
+  {
+   "task_id": "IF034",
+   "family": "if",
+   "mean": 1.1,
+   "status": [
+    "gate_fail"
+   ],
+   "reason": "由于硬重置，完整的抓取和抬起动作未能连贯展示。",
+   "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF034.mp4",
+   "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-cs14-fx-v1-a3/IF034.jpg"
+  },
+  {
+   "task_id": "OE001",
+   "family": "insight",
+   "mean": 1.0,
+   "status": [
+    "missing"
+   ],
+   "reason": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE005",
+   "family": "insight",
+   "mean": 1.0,
+   "status": [
+    "missing"
+   ],
+   "reason": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE018",
+   "family": "insight",
+   "mean": 1.0,
+   "status": [
+    "missing"
+   ],
+   "reason": "",
+   "video": null,
+   "poster": null
+  },
+  {
+   "task_id": "OE035",
+   "family": "insight",
+   "mean": 1.0,
+   "status": [
+    "missing"
+   ],
+   "reason": "",
+   "video": null,
+   "poster": null
+  }
+ ]
+}
