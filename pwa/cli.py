@@ -19,6 +19,9 @@ typical loop:
 screening judge (dev loops only; never the csv, never a reported number):
   pwa score anchor-v1-dev --judge-model gemini-4-hydrogen [--judge-thinking low]
   pwa cells base-sana-dev anchor-v1-dev --judge-model gemini-4-hydrogen
+  pwa score anchor-v1-dev --judge-model openai:gpt-6-luna          # OpenAI-compatible API, JUDGE_API_KEY
+  pwa cells base-sana-dev anchor-v1-dev --judge-model gemini-4-hydrogen:low --judge-model openai:gpt-6-luna
+  pwa judges base-sana-dev --judge-model gemini-4-hydrogen:low --judge-model openai:gpt-6-luna   # calibration
 extra runner args go after `--`, e.g.  pwa gen X --runner sana -- --num-chunks 20 --seed 1
 exit codes: 0 ok, 1 failure (some task failed / check failed), 2 usage error.
 config/env.sh is sourced automatically (existing env vars win).
@@ -45,12 +48,25 @@ def _gen_args(p):
                         "--num-chunks, default 30). Labelled a capped smoke run everywhere; never an official score")
 
 
-def _judge_args(p):
-    p.add_argument("--judge-model", default=None, metavar="MODEL",
-                   help="screening judge: same verifier with another Gemini model, results in runs/EXP/eval-<slug>/; "
-                        "never written to results/experiments.csv (default: official judge, $GEMINI_MODEL, eval/)")
+def _warn_caps(exp_a: str, exp_b: str) -> list:
+    """Chunk caps of A and B; warns when they differ (the delta then mixes the method with the horizon)."""
+    from .panel import caps_differ
+    caps = [core.chunk_cap(core.read_meta(e)) for e in (exp_a, exp_b)]
+    if caps[0] != caps[1]:
+        log(f"[pwa] WARNING: {caps_differ(*caps)}")
+    return caps
+
+
+def _judge_args(p, panel: bool = False, required: bool = False):
+    more = ("; repeat for a panel of judges" if panel else "")
+    p.add_argument("--judge-model", action="append", default=None, required=required, metavar="[openai:]MODEL[:THINKING]",
+                   help="screening judge: same verifier with another model, results in runs/EXP/eval-<slug>/; never "
+                        "written to results/experiments.csv. No prefix = Gemini; openai: = OpenAI-compatible chat API "
+                        "(JUDGE_API_URL/JUDGE_API_KEY, else PLAYER_API_*); :THINKING = minimal|low|medium|high"
+                        + more + " (default: official judge, $GEMINI_MODEL, eval/)")
     p.add_argument("--judge-thinking", default=None, choices=["minimal", "low", "medium", "high"],
-                   help="screening judge only: Gemini thinking level (upstream sets none); part of the dir slug")
+                   help="one screening judge only: thinking level (Gemini thinking_level, OpenAI reasoning_effort; "
+                        "upstream sets none); part of the dir slug")
 
 
 def _score_args(p):
@@ -59,7 +75,7 @@ def _score_args(p):
     p.add_argument("--retries", type=int, default=1, help="retries per failed verifier call (default 1)")
     p.add_argument("--dry-run", action="store_true", help="sampling + prompt only, no Gemini; writes eval_dry/")
     p.add_argument("--force", action="store_true", help="rescore even if result files exist")
-    _judge_args(p)
+    _judge_args(p, panel=True)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -107,7 +123,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--md", action="store_true", help="GitHub markdown output (for $GITHUB_STEP_SUMMARY)")
     p.add_argument("--site-url", default=None, help="link to append in --md output")
-    _judge_args(p)
+    _judge_args(p, panel=True)
 
     p = mk("compare", "per-family and per-task deltas B - A, with noise flags")
     p.add_argument("exp_a")
@@ -121,7 +137,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("exp_b")
     _sel_args(p)
     p.add_argument("--json", action="store_true")
-    _judge_args(p)
+    _judge_args(p, panel=True)
+
+    p = mk("judges", "calibrate screening judges against the official judge on one experiment (screening only; writes nothing)")
+    p.add_argument("exp")
+    _sel_args(p)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--md", action="store_true", help="GitHub markdown table")
+    _judge_args(p, panel=True, required=True)
 
     p = mk("ls", "list experiments and their status")
     p.add_argument("--json", action="store_true")
@@ -228,7 +251,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def dispatch(a) -> int:  # noqa: C901
-    from . import doctor, gen, report, score
+    from . import doctor, gen, panel, report, score
+
+    judges = score.judges_of(a)  # validates the judge flags before any work
+    if len(judges) > 1 and a.cmd in ("run", "compare", "failures"):
+        raise PwaError(f"`pwa {a.cmd}` takes one --judge-model; panels: score, report, cells, judges")
 
     if a.cmd == "doctor":
         res = doctor.checks(a.runner)
@@ -291,7 +318,42 @@ def dispatch(a) -> int:  # noqa: C901
             log("[pwa] dry run: skipping report")
             return 1 if gen_failed or score_failed else 0
 
-    judge = score.judge_of(a)
+    judge = judges[0] if len(judges) == 1 else None
+
+    if a.cmd == "report" and len(judges) > 1:
+        sel = core.select_for_exp(a.exp, a.split, a.family, a.tasks)
+        reps = [report.report(a.exp, sel, _split_label(a, a.exp), a.strict, judge=j) for j in judges]
+        pn = panel.panel(reps)
+        emit(pn, a.json, panel.render_panel(pn, a.md))
+        return 0 if all(r["passes"] for r in reps) else 1
+
+    if a.cmd == "judges":
+        sel = core.select_for_exp(a.exp, a.split, a.family, a.tasks)
+        off = report.build(a.exp, sel)
+        if not off["passes"]:
+            raise PwaError(f"{a.exp} has no official passes in eval/; calibration needs official scores on the same videos")
+        reps = [report.build(a.exp, sel, judge=j) for j in judges]
+        if missing := [j.spec for j, r in zip(judges, reps) if not r["passes"]]:
+            raise PwaError(f"no scored passes for {' '.join(missing)} (run `pwa score {a.exp} --judge-model ...`)")
+        c = panel.calibrate(off, reps)
+        emit(c, a.json, panel.render_calibration(c, a.md))
+        return 0
+
+    if a.cmd == "cells" and len(judges) > 1:
+        sa = core.select_for_exp(a.exp_a, a.split, a.family, a.tasks)
+        sb = core.select_for_exp(a.exp_b, a.split, a.family, a.tasks)
+        common = {t["task_id"] for t in sa} & {t["task_id"] for t in sb}
+        if len(common) < max(len(sa), len(sb)):
+            log(f"[pwa] task lists differ; comparing on the {len(common)} common tasks")
+        caps = _warn_caps(a.exp_a, a.exp_b)
+        pairs = [(report.build(a.exp_a, [t for t in sa if t["task_id"] in common], judge=j),
+                  report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=j)) for j in judges]
+        if missing := [j.spec for j, (ra, rb) in zip(judges, pairs) if not ra["passes"] or not rb["passes"]]:
+            raise PwaError(f"both experiments need at least one scored pass under every judge; missing: {' '.join(missing)}")
+        c = panel.panel_cells(pairs)
+        c["max_chunks"] = {"a": caps[0], "b": caps[1]}
+        emit(c, a.json, panel.render_panel_cells(c))
+        return 0
 
     if a.cmd in ("report", "run"):
         sel = core.select_for_exp(a.exp, a.split, a.family, a.tasks)
@@ -311,10 +373,7 @@ def dispatch(a) -> int:  # noqa: C901
         common = {t["task_id"] for t in sa} & {t["task_id"] for t in sb}
         if len(common) < max(len(sa), len(sb)):
             log(f"[pwa] task lists differ; comparing on the {len(common)} common tasks")
-        caps = [core.chunk_cap(core.read_meta(e)) for e in (a.exp_a, a.exp_b)]
-        if caps[0] != caps[1]:
-            log(f"[pwa] WARNING: chunk caps differ (A={caps[0] or 'none'}, B={caps[1] or 'none'}); rollouts have "
-                f"different lengths, so the delta mixes the method with the horizon")
+        _warn_caps(a.exp_a, a.exp_b)
         ra = report.build(a.exp_a, [t for t in sa if t["task_id"] in common], judge=judge)
         rb = report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=judge)
         if not ra["passes"] or not rb["passes"]:

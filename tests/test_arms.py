@@ -296,17 +296,18 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
 
     monkeypatch.setattr(R, "import_run_agent", fake_import)
     default_yaw = P.YAW
+    _, preloaded, _, _ = R.load_pipe()  # what warm_app.py's @modal.enter does before any call
     assert R.main(["run.py", "--tasks", "GC005", "--lingbot-turn-cal", "--lingbot-player-hint", "--lingbot-fast-y"]) == 0
     assert R.main(["run.py", "--tasks", "GC005", "--lingbot-stateless"]) == 0
     assert R.main(["run.py", "--tasks", "GC005"]) == 0
 
-    assert len(loads) == 1  # one pipe for three arms
+    assert len(loads) == 1  # one pipe for three arms, loaded ahead of them
     assert all(getattr(i2v, n) is f for n, f in originals.items())  # loader patches undone after the load
     # fast-start flags are per call: arm 1's streamed y does not leak into arm 3
     assert R.FAST == R.FS.FastFlags()
     a1, a2, a3 = calls
     assert all(c["fresh"] for c in calls) and len({id(c["module"]) for c in calls}) == 3
-    assert a1["engine"].pipe is a2["engine"].pipe is a3["engine"].pipe
+    assert preloaded is a1["engine"].pipe is a2["engine"].pipe is a3["engine"].pipe
     assert a1["argv"] == a2["argv"] == a3["argv"] == ["run.py", "--tasks", "GC005"]  # flags stripped
     # turn-cal arm calibrated; the next arms start from the default rates again
     assert a1["yaw"] != default_yaw and a2["yaw"] == a3["yaw"] == default_yaw == P.YAW
@@ -321,3 +322,140 @@ def test_lingbot_main_loads_once_and_resets_state(tmp_path, monkeypatch):
         assert c["module"].run_task is c["run_task"]
     assert a1["module"].decide_action is not a1["decide"]  # player hint wraps it on arm 1 only
     assert a2["module"].decide_action is a2["decide"] and a3["module"].decide_action is a3["decide"]
+
+
+def test_lingbot_arms_do_not_share_t5_embeddings_across_cpu_threads(tmp_path, monkeypatch):
+    """Arms differing in --lingbot-cpu-threads on one pipe (CPU T5): each arm finds upstream's in-memory
+    prompt embeddings empty unless the previous arm ran at the same thread count."""
+    from adapters.lingbot_world2 import run as R
+
+    root, weights = tmp_path / "lingbot", tmp_path / "weights"
+    (root / "wan").mkdir(parents=True)
+    (weights / "lingbot-world-v2-14b-causal-fast").mkdir(parents=True)
+    for k in ("LINGBOT_VARIANT", "LINGBOT_TURN_CAL", "LINGBOT_SESSION", "LINGBOT_PLAYER_HINT", "LINGBOT_PROMPT_MODE",
+              "LINGBOT_REANCHOR", "LINGBOT_RETURN_STOP", "LINGBOT_GC_COMPLETION_HINT", "PLAYER_API_PROVIDER",
+              "LINGBOT_FAST", "LINGBOT_FAST_T5", "LINGBOT_FAST_LOAD", "LINGBOT_FAST_Y", "LINGBOT_FAST_DIT",
+              "LINGBOT_CPU_THREADS", "LINGBOT_DIT_CHECKSUM", "LINGBOT_T5_CPU"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("LINGBOT_ROOT", str(root))
+    monkeypatch.setenv("LINGBOT_WEIGHTS", str(weights))
+
+    class Pipe:
+        def __init__(self, **kw):
+            self._t5_cache = {}
+
+    wan = types.ModuleType("wan")
+    wan.WanI2VCausal = Pipe
+    configs = types.ModuleType("wan.configs")
+    configs.WAN_CONFIGS = {"i2v-A14B": SimpleNamespace(sample_shift=5.0)}
+    i2v = types.ModuleType("wan.image2video")
+    for n in ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model"):
+        setattr(i2v, n, lambda *a, **k: None)
+    wan.image2video = i2v
+    monkeypatch.setitem(sys.modules, "wan", wan)
+    monkeypatch.setitem(sys.modules, "wan.configs", configs)
+    monkeypatch.setitem(sys.modules, "wan.image2video", i2v)
+    monkeypatch.setattr(R, "_PIPES", {})
+    monkeypatch.setattr(R, "_print_cpu", lambda: None)
+    # torch's thread count, faked: the process starts at 1 (what Modal's default CPU request gives)
+    threads = {"n": 1}
+    monkeypatch.setattr(R.FS, "_DEFAULT_THREADS", [])
+    real_apply = R.FS.apply_cpu_threads
+    monkeypatch.setattr(R.FS, "apply_cpu_threads", lambda spec: real_apply(
+        spec, lambda n: threads.update(n=n), lambda: threads["n"], usable=lambda: 24))
+
+    seen = []
+
+    def fake_import(fresh=False):
+        m = types.ModuleType("run_agent")
+
+        def main():
+            engine = m.SanaWMEngine(SimpleNamespace(seed=42, fps=16, max_total_frames=961, action_frame_unit=20))
+            seen.append(dict(engine.pipe._t5_cache))  # what this arm's first encode would find in memory
+            engine.pipe._t5_cache["goal"] = f"ctx@{threads['n']}"  # what its encode leaves behind
+
+        m.main, m.run_task = main, lambda *a, **k: None
+        m.decide_action, m.to_sana_key = (lambda *a, **k: "W"), (lambda a: "w")
+        return m
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    for arm in ([], ["--lingbot-cpu-threads=8"], ["--lingbot-cpu-threads=8"], ["--lingbot-cpu-threads"], []):
+        assert R.main(["run.py", "--tasks", "GC005", *arm]) == 0
+    # default, 8 (dropped), 8 again (kept), auto=24 (dropped), restored default 1 (dropped)
+    assert seen == [{}, {}, {"goal": "ctx@8"}, {}, {}]
+    assert threads["n"] == 1
+
+
+def test_lingbot_return_stop_is_per_arm(tmp_path, monkeypatch, capsys):
+    """Two arms in one process, the first with --lingbot-return-stop (plus hint and turn-cal), the second
+    without: the stop answers only in arm 1, arm 2 asks its own player, and no counter or wrapper carries over."""
+    from adapters.lingbot_world2 import run as R
+
+    root, weights = tmp_path / "lingbot", tmp_path / "weights"
+    (root / "wan").mkdir(parents=True)
+    (weights / "lingbot-world-v2-14b-causal-fast").mkdir(parents=True)
+    for k in ("LINGBOT_VARIANT", "LINGBOT_TURN_CAL", "LINGBOT_SESSION", "LINGBOT_PLAYER_HINT", "LINGBOT_PROMPT_MODE",
+              "LINGBOT_REANCHOR", "LINGBOT_RETURN_STOP", "LINGBOT_RETURN_STOP_HOLD", "LINGBOT_RETURN_STOP_FRAC",
+              "LINGBOT_YAW_RAD", "LINGBOT_PITCH_RAD", "PLAYER_API_PROVIDER", "LINGBOT_FAST", "LINGBOT_FAST_T5",
+              "LINGBOT_FAST_LOAD", "LINGBOT_FAST_Y", "LINGBOT_T5_CPU"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("LINGBOT_ROOT", str(root))
+    monkeypatch.setenv("LINGBOT_WEIGHTS", str(weights))
+    wan = types.ModuleType("wan")
+    wan.WanI2VCausal = lambda **kw: SimpleNamespace()
+    configs = types.ModuleType("wan.configs")
+    configs.WAN_CONFIGS = {"i2v-A14B": SimpleNamespace(sample_shift=5.0)}
+    i2v = types.ModuleType("wan.image2video")
+    for n in ("T5EncoderModel", "Wan2_1_VAE", "load_dit_model"):
+        setattr(i2v, n, lambda *a, **k: None)
+    wan.image2video = i2v
+    monkeypatch.setitem(sys.modules, "wan", wan)
+    monkeypatch.setitem(sys.modules, "wan.configs", configs)
+    monkeypatch.setitem(sys.modules, "wan.image2video", i2v)
+    monkeypatch.setattr(R, "_PIPES", {})
+
+    goal = "Turn the camera right 90 degrees, then return to the starting view."
+    key = {"RIGHT": "l", "LEFT": "j", "WAIT": "none", "W": "w"}.get
+    arms_seen = []
+
+    def fake_import(fresh=False):
+        m = types.ModuleType("run_agent")
+        asked = []
+
+        def decide_action(task, frame, recent, chunk_idx, num_chunks, args, **kw):
+            asked.append((task["prompt"], list(recent)))
+            return "RIGHT"
+
+        def run_task(task, engine, output_dir, args):
+            arms_seen[-1]["answers"] = [m.decide_action(task, None, acts, len(acts), 30, args)
+                                        for acts in (["RIGHT", "RIGHT", "LEFT"], ["RIGHT", "RIGHT", "LEFT", "LEFT"])]
+            return {"task_id": task["task_id"], "success": True}
+
+        def main():
+            args = SimpleNamespace(seed=42, fps=16, max_total_frames=961, chunk_frames=33, action_frame_unit=20)
+            m.run_task({"task_id": "OE034", "prompt": goal}, m.SanaWMEngine(args), str(tmp_path), args)
+
+        m.run_task, m.main, m.decide_action, m.to_sana_key = run_task, main, decide_action, key
+        arms_seen.append({"module": m, "decide": decide_action, "asked": asked})
+        return m
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    assert R.main(["run.py", "--tasks", "OE034", "--lingbot-return-stop", "--lingbot-player-hint",
+                   "--lingbot-turn-cal"]) == 0
+    out1 = capsys.readouterr().out
+    stats1 = R.STATS
+    assert R.main(["run.py", "--tasks", "OE034"]) == 0
+    out2 = capsys.readouterr().out
+    a1, a2 = arms_seen
+
+    # arm 1: the first decision still goes to the (hinted) player; at the return the stop answers WAIT itself
+    assert a1["answers"] == ["RIGHT", "WAIT"] and len(a1["asked"]) == 1 and "Controls:" in a1["asked"][0][0]
+    assert stats1.totals["return_stops"] == 1 and stats1.totals["player_hints"] == 1
+    assert "return_stop=on return_stops=1" in out1 and "[lingbot] return stop: OE034" in out1
+    assert "return stop on" in out1 and out1.rstrip().endswith("return_stops=1")
+    # arm 2: no stop, no hint, the player answers both; the flag lines have no return-stop fields
+    assert a2["answers"] == ["RIGHT", "RIGHT"] and [p for p, _ in a2["asked"]] == [goal, goal]
+    assert a2["module"].decide_action is a2["decide"]
+    assert R.RETURN_STOP is False and "return_stop" not in R.STATS.summary("OE034")
+    lingbot2 = [x for x in out2.splitlines() if "[lingbot]" in x and str(tmp_path) not in x]
+    assert lingbot2 and not any("return_stop" in x or "return stop" in x for x in lingbot2)

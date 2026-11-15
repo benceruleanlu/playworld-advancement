@@ -15,11 +15,13 @@ from adapters.lingbot_world2 import fast_start as FS
 # -- flags -----------------------------------------------------------------------
 
 
-def test_new_flags_default_off_and_not_in_umbrella():
+def test_new_flags_default_off_and_umbrella_has_only_fast_dit():
     f = FS.parse_flags([], {})
     assert (f.fast_dit, f.dit_checksum, f.cpu_threads) == (False, False, "")
     u = FS.parse_flags(["--lingbot-fast"], {})
-    assert not u.fast_dit and not u.dit_checksum and u.cpu_threads == ""
+    # fast-dit was checked bit-identical on the 14B checkpoint; cpu threads can change CPU T5 bits
+    assert u.fast_dit and not u.dit_checksum and u.cpu_threads == ""
+    assert FS.parse_flags([], {"LINGBOT_FAST": "1"}).fast_dit
     assert FS.parse_flags(["--lingbot-fast-dit"], {}).fast_dit
     assert FS.parse_flags([], {"LINGBOT_FAST_DIT": "1"}).fast_dit
     assert FS.parse_flags(["--lingbot-dit-checksum"], {}).dit_checksum
@@ -67,6 +69,25 @@ def test_apply_cpu_threads_sets_and_restores(monkeypatch):
     assert FS.apply_cpu_threads("auto", set_t, get_t, usable=lambda: 16) == 16
     assert FS.apply_cpu_threads("4", set_t, get_t) == 4
     assert FS.apply_cpu_threads("", set_t, get_t) == 1  # a later arm without the flag runs as upstream
+
+
+def test_thread_tag_treats_restored_default_as_default(monkeypatch):
+    monkeypatch.setattr(FS, "_DEFAULT_THREADS", [])
+    assert FS.thread_tag(None) is None
+    monkeypatch.setattr(FS, "_DEFAULT_THREADS", [1])
+    assert FS.thread_tag(1) is None and FS.thread_tag(8) == 8
+
+
+def test_partition_t5_memory_drops_entries_across_thread_counts(capsys):
+    pipe = types.SimpleNamespace(_t5_cache={})
+    assert not FS.partition_t5_memory(pipe, None)  # first call, empty: nothing to drop
+    pipe._t5_cache["p"] = "ctx@default"
+    assert not FS.partition_t5_memory(pipe, None) and pipe._t5_cache == {"p": "ctx@default"}  # same count: kept
+    assert FS.partition_t5_memory(pipe, 8) and pipe._t5_cache == {}  # arm with --lingbot-cpu-threads=8
+    pipe._t5_cache["p"] = "ctx@8"
+    assert FS.partition_t5_memory(pipe, None) and pipe._t5_cache == {}  # restored to the default
+    assert "dropped 1 embedding(s) computed under cpu threads 8" in capsys.readouterr().out
+    assert not FS.partition_t5_memory(types.SimpleNamespace(), 4)  # a pipe without the dict
 
 
 # -- shard listing ---------------------------------------------------------------

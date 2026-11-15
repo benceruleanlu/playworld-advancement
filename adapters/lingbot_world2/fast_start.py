@@ -16,18 +16,21 @@ Opt-in flags (runner args, stripped from argv before run_agent parses it, or env
   --lingbot-fast-y     LINGBOT_FAST_Y=1     session mode: encode the image conditioning `y` only as
                        far as the rollout has got, streaming the VAE encoder's causal cache,
                        instead of the full horizon (~1000 frames for 961) on every reset.
-  --lingbot-fast       LINGBOT_FAST=1       all three above.
+  --lingbot-fast       LINGBOT_FAST=1       all three above plus --lingbot-fast-dit.
   --lingbot-t5-gpu     LINGBOT_T5_CPU=0     run T5 on the GPU (upstream's default) instead of the
                        CPU. Embeddings differ from the CPU ones at bf16 rounding level, so this one
                        changes outputs; not part of --lingbot-fast.
   --lingbot-fast-dit   LINGBOT_FAST_DIT=1   DiT built with its parameters on the meta device and each
                        safetensors tensor copied to the GPU in its file dtype, then cast there
                        (fast_dit_loader), instead of upstream's cast on the CPU. Same values (see
-                       fast_dit_loader); not part of --lingbot-fast until a GPU run has checked it.
+                       fast_dit_loader; a 14B GPU run checked it bit-identical). Part of
+                       --lingbot-fast. Falls back to the upstream loader on any error.
   --lingbot-cpu-threads[=N]  LINGBOT_CPU_THREADS=N|auto   torch.set_num_threads(N) for the process
                        (auto: the CPUs the container may use, usable_cpus()). Upstream leaves torch's
                        default, which was 1 on Modal. CPU T5 reductions may split differently, so
-                       this can change embedding bits; the T5 cache identity includes the count.
+                       this can change embedding bits; the T5 cache identity includes the count and
+                       in-memory embeddings are dropped when it changes (partition_t5_memory).
+                       Not part of --lingbot-fast.
   --lingbot-dit-checksum  LINGBOT_DIT_CHECKSUM=1  after the load, log a checksum of every DiT parameter's
                        bits (dit_checksum), and with --lingbot-fast-dit compare sampled tensors with
                        a CPU cast from the file (verify_dit_sample). Diagnostics only.
@@ -93,7 +96,7 @@ def parse_flags(argv, environ) -> FastFlags:
         fast_load=umbrella or on("--lingbot-fast-load", "LINGBOT_FAST_LOAD"),
         fast_y=umbrella or on("--lingbot-fast-y", "LINGBOT_FAST_Y"),
         t5_gpu="--lingbot-t5-gpu" in argv,
-        fast_dit=on("--lingbot-fast-dit", "LINGBOT_FAST_DIT"),
+        fast_dit=umbrella or on("--lingbot-fast-dit", "LINGBOT_FAST_DIT"),
         dit_checksum=on("--lingbot-dit-checksum", "LINGBOT_DIT_CHECKSUM"),
         cpu_threads=threads,
     )
@@ -520,6 +523,33 @@ def apply_cpu_threads(spec: str, set_threads=None, get_threads=None, usable=None
     set_threads(n)
     print(f"[lingbot] cpu threads: {before} -> {get_threads()} ({spec})", flush=True)
     return get_threads()
+
+
+def thread_tag(applied):
+    """The CPU thread setting T5 embeddings are computed under, from apply_cpu_threads' return value:
+    None for torch's own default (never changed, or restored to it), else the count."""
+    if applied is None or (_DEFAULT_THREADS and applied == _DEFAULT_THREADS[0]):
+        return None
+    return applied
+
+
+def partition_t5_memory(pipe, tag) -> bool:
+    """Keep upstream's in-memory prompt embeddings (pipe._t5_cache, keyed by prompt only) from crossing
+    CPU thread settings: when `tag` differs from the one the entries were computed under, clear them, so
+    an arm of pwa gen-arms with another --lingbot-cpu-threads (or back to the default) encodes at its own
+    count. Returns True when entries were dropped."""
+    mem = getattr(pipe, "_t5_cache", None)
+    prev = getattr(pipe, "_lingbot_t5_tag", None)
+    dropped = bool(mem) and prev != tag
+    if dropped:
+        print(f"[lingbot] t5 memory: dropped {len(mem)} embedding(s) computed under cpu threads {prev}; "
+              f"now {tag}", flush=True)
+        mem.clear()
+    try:
+        pipe._lingbot_t5_tag = tag
+    except AttributeError:
+        pass
+    return dropped
 
 
 # ------------------------------------------------------------ fast DiT load

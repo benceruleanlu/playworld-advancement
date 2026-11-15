@@ -28,6 +28,14 @@ Player hint (off by default): `--lingbot-player-hint` or LINGBOT_PLAYER_HINT=1 t
 closed-loop player how far one action turns the camera and where the commanded camera
 is relative to the start; see player_hint.py. The world model's inputs do not change.
 
+Return stop (off by default): `--lingbot-return-stop` or LINGBOT_RETURN_STOP=1 ends a closed-loop
+rollout (WAIT for LINGBOT_RETURN_STOP_HOLD chunks, then END) once the commanded camera has left
+and come back to the start, on goals that end with a return; see return_stop.py.
+
+GC completion hint (off by default): `--lingbot-gc-completion-hint` or
+LINGBOT_GC_COMPLETION_HINT=1 reminds the player to finish the requested path once, then
+END on visual completion. Counts hints and END replies; never forces an action.
+
 Env:
   LINGBOT_ROOT      checkout of Robbyant/lingbot-world-v2 (default /opt/lingbot)
   LINGBOT_WEIGHTS   dir holding lingbot-world-v2-{14b,1.3b}-causal-fast (default /weights/lingbot)
@@ -41,6 +49,10 @@ Env:
   LINGBOT_REANCHOR_TASKS  regex matched at the start of the call name (default GC)
   LINGBOT_REANCHOR_DEG / LINGBOT_REANCHOR_TRANS   return tolerance: degrees / key units (6 / 2)
   LINGBOT_PLAYER_HINT  1 = same as --lingbot-player-hint
+  LINGBOT_RETURN_STOP  1 = same as --lingbot-return-stop
+  LINGBOT_RETURN_STOP_HOLD / LINGBOT_RETURN_STOP_FRAC   WAIT chunks before END (2) / share of the goal's angle
+                    or steps that counts as having left (0.75)
+  LINGBOT_GC_COMPLETION_HINT  1 = same as --lingbot-gc-completion-hint
   LINGBOT_SESSION   0 = stateless (same as --lingbot-stateless)
   LINGBOT_STREAM_DECODE  0 = re-decode all latents each step instead of streaming the VAE cache
 
@@ -51,12 +63,14 @@ reset and first step of every rollout, always on. Opt-in, all off by default:
   --lingbot-fast-load  (LINGBOT_FAST_LOAD=1) parallel read-ahead of the checkpoint files during the
                        load (LINGBOT_READ_AHEAD_THREADS, default 8); T5 built on meta + mmap state dict
   --lingbot-fast-y     (LINGBOT_FAST_Y=1)    session mode: stream-encode `y` as the rollout advances
-  --lingbot-fast       (LINGBOT_FAST=1)      all three
+  --lingbot-fast       (LINGBOT_FAST=1)      all three plus --lingbot-fast-dit
   --lingbot-t5-gpu     T5 on the GPU (same as LINGBOT_T5_CPU=0; changes embeddings at bf16 rounding level)
   --lingbot-fast-dit   (LINGBOT_FAST_DIT=1)  DiT built on meta, tensors copied to the GPU and cast there
-                       (LINGBOT_DIT_LOAD_THREADS shards at a time, default 4); same values, not in --lingbot-fast
+                       (LINGBOT_DIT_LOAD_THREADS shards at a time, default 4); bit-identical weights on 14B
+                       (checksum and sample verify on an H100); any error falls back to the upstream loader
   --lingbot-cpu-threads[=N]  (LINGBOT_CPU_THREADS=N|auto)  torch CPU threads (auto: usable CPUs); may change
                        CPU T5 bits, so not in --lingbot-fast. A `[lingbot] cpu {...}` line is always printed.
+                       In-memory prompt embeddings are dropped when the count differs from the previous call's.
   --lingbot-dit-checksum  (LINGBOT_DIT_CHECKSUM=1)  log a DiT parameter checksum after the load (and, with
                        fast-dit, compare sampled tensors with a CPU cast)
 
@@ -82,12 +96,15 @@ from adapters.common import agent_api, prompts  # noqa: E402
 from adapters.common.upstream import import_run_agent  # noqa: E402
 from adapters.lingbot_world2 import fast_start as FS  # noqa: E402
 from adapters.lingbot_world2 import flag_stats  # noqa: E402
+from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import poses as P  # noqa: E402
+from adapters.lingbot_world2 import return_stop as RS  # noqa: E402
 from adapters.lingbot_world2 import session as S  # noqa: E402
 
 _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-prompt",
-              "--lingbot-reanchor", "--lingbot-player-hint")
+              "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
+              "--lingbot-gc-completion-hint")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -102,15 +119,18 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "prompt_mode": mode,
         "reanchor": "--lingbot-reanchor" in argv or environ.get("LINGBOT_REANCHOR", "0") == "1",
         "player_hint": "--lingbot-player-hint" in argv or environ.get("LINGBOT_PLAYER_HINT", "0") == "1",
+        "return_stop": "--lingbot-return-stop" in argv or environ.get("LINGBOT_RETURN_STOP", "0") == "1",
+        "gc_completion": "--lingbot-gc-completion-hint" in argv or environ.get("LINGBOT_GC_COMPLETION_HINT", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
 # Set by main() from configure(); the engine reads them at call time.
-STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = False
+STATELESS = TURN_CAL = REANCHOR = PLAYER_HINT = RETURN_STOP = GC_COMPLETION = False
 PROMPT_MODE = "goal"
 FAST = FS.FastFlags()
+CPU_THREADS = None  # FS.thread_tag of this call's --lingbot-cpu-threads (None = torch's default)
 STATS = flag_stats.FlagStats(False, "goal", False, False)
 
 MAX_AREA = 480 * 832  # the released checkpoints' reference resolution
@@ -144,55 +164,65 @@ def _check_dit(model):
               f"({'ok' if same == checked else 'MISMATCH'})", flush=True)
 
 
+def load_pipe(environ=os.environ):
+    """(config, pipe, weights dir, t5_cpu) for the checkpoint the env selects, loading the pipe on first use in
+    this process with the current fast-start flags (FAST). Shared by every engine in the process (pwa gen-arms)
+    and called ahead of time by warm_app.py's @modal.enter."""
+    root = environ.get("LINGBOT_ROOT", "/opt/lingbot")
+    weights = Path(environ.get("LINGBOT_WEIGHTS", "/weights/lingbot"))
+    variant = environ.get("LINGBOT_VARIANT", "14b").lower()
+    if variant not in ("14b", "1.3b"):
+        raise SystemExit(f"LINGBOT_VARIANT must be 14b or 1.3b, got {variant!r}")
+    ckpt = weights / f"lingbot-world-v2-{variant}-causal-fast"
+    # The 1.3B release ships DiT shards only; T5, VAE and tokenizer come from the 14B dir.
+    assets = weights / "lingbot-world-v2-14b-causal-fast" if variant == "1.3b" else None
+    for p in (Path(root) / "wan", ckpt, *( [assets] if assets else [])):
+        if not p.exists():
+            raise SystemExit(f"[lingbot] missing {p}; set LINGBOT_ROOT / LINGBOT_WEIGHTS or run prefetch_lingbot.py")
+    t5_cpu = environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1" and not FAST.t5_gpu
+
+    t0 = time.time()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import wan  # noqa: PLC0415
+    import wan.image2video as i2v  # noqa: PLC0415
+    from wan.configs import WAN_CONFIGS  # noqa: PLC0415
+    FS.log("load.import_wan", time.time() - t0)
+
+    cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
+    key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
+    if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
+        print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
+        _print_cpu()
+        dit_dev = _cuda0() if FAST.fast_dit else None
+        with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load, fast_dit_device=dit_dev,
+                                dit_threads=int(environ.get("LINGBOT_DIT_LOAD_THREADS", "4"))) as timer:
+            if FAST.fast_load:
+                FS.read_ahead(FS.checkpoint_files(cfg, ckpt, assets, include_t5=not FAST.t5_cache),
+                              threads=int(environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
+            t0 = time.time()
+            _PIPES[key] = wan.WanI2VCausal(
+                config=cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
+                local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
+                assets_dir=str(assets) if assets else None)
+            timer.rest(time.time() - t0)
+        print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+        if FAST.dit_checksum:
+            _check_dit(_PIPES[key].model)
+    else:
+        print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
+              f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
+    return cfg, _PIPES[key], weights, t5_cpu
+
+
 class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
     def __init__(self, args):
         self.args = args
-        root = os.environ.get("LINGBOT_ROOT", "/opt/lingbot")
-        weights = Path(os.environ.get("LINGBOT_WEIGHTS", "/weights/lingbot"))
-        variant = os.environ.get("LINGBOT_VARIANT", "14b").lower()
-        if variant not in ("14b", "1.3b"):
-            raise SystemExit(f"LINGBOT_VARIANT must be 14b or 1.3b, got {variant!r}")
-        ckpt = weights / f"lingbot-world-v2-{variant}-causal-fast"
-        # The 1.3B release ships DiT shards only; T5, VAE and tokenizer come from the 14B dir.
-        assets = weights / "lingbot-world-v2-14b-causal-fast" if variant == "1.3b" else None
-        for p in (Path(root) / "wan", ckpt, *( [assets] if assets else [])):
-            if not p.exists():
-                raise SystemExit(f"[lingbot] missing {p}; set LINGBOT_ROOT / LINGBOT_WEIGHTS or run prefetch_lingbot.py")
-        t5_cpu = os.environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1" and not FAST.t5_gpu
-
-        t0 = time.time()
-        sys.path.insert(0, root)
-        import wan  # noqa: PLC0415
-        import wan.image2video as i2v  # noqa: PLC0415
-        from wan.configs import WAN_CONFIGS  # noqa: PLC0415
-        FS.log("load.import_wan", time.time() - t0)
-
-        self.cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
-        key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
-        if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
-            print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
-            _print_cpu()
-            dit_dev = _cuda0() if FAST.fast_dit else None
-            with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load, fast_dit_device=dit_dev,
-                                    dit_threads=int(os.environ.get("LINGBOT_DIT_LOAD_THREADS", "4"))) as timer:
-                if FAST.fast_load:
-                    FS.read_ahead(FS.checkpoint_files(self.cfg, ckpt, assets, include_t5=not FAST.t5_cache),
-                                  threads=int(os.environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
-                t0 = time.time()
-                _PIPES[key] = wan.WanI2VCausal(
-                    config=self.cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-                    local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
-                    assets_dir=str(assets) if assets else None)
-                timer.rest(time.time() - t0)
-            print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
-            if FAST.dit_checksum:
-                _check_dit(_PIPES[key].model)
-        else:
-            print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
-                  f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
-        self.pipe = _PIPES[key]
+        self.cfg, self.pipe, weights, t5_cpu = load_pipe()
+        # upstream's in-memory embeddings are keyed by prompt only: drop them when the CPU T5 thread count changed
+        FS.partition_t5_memory(self.pipe, CPU_THREADS if t5_cpu else "gpu")
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         self.session = None
         if not STATELESS:
@@ -205,7 +235,9 @@ class LingBotWorld2Engine:
               + (f", turn-cal {P.UNIT_YAW_DEG}/{P.UNIT_PITCH_DEG} deg per token" if TURN_CAL else "")
               + ("" if PROMPT_MODE == "goal" else f", prompt mode {PROMPT_MODE}")
               + ((", re-anchor ignored (stateless)" if STATELESS else ", re-anchor on") if REANCHOR else "")
-              + (", player hint on" if PLAYER_HINT else ""),
+              + (", player hint on" if PLAYER_HINT else "")
+              + (", return stop on" if RETURN_STOP else "")
+              + (", GC completion hint on" if GC_COMPLETION else ""),
               flush=True)
 
     def _t5_cache(self, weights, t5_cpu):
@@ -318,12 +350,15 @@ def main(argv: list[str] | None = None) -> int:
     """One run_agent invocation. argv is run_agent's (argv[0] is the script). Every call re-reads the flags,
     resets the turn rates and imports a fresh run_agent, so patches and counters never carry over; only the
     loaded pipe (_PIPES) is shared between calls in one process."""
-    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, STATS, FAST
+    global STATELESS, TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, GC_COMPLETION, STATS, FAST
+    global CPU_THREADS
     flags, sys.argv = configure(list(sys.argv if argv is None else argv))
     STATELESS, TURN_CAL, PROMPT_MODE = flags["stateless"], flags["turn_cal"], flags["prompt_mode"]
     REANCHOR, PLAYER_HINT, FAST = flags["reanchor"], flags["player_hint"], flags["fast"]
-    FS.apply_cpu_threads(FAST.cpu_threads)  # before the engine: the T5 cache identity records the count
-    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT)
+    RETURN_STOP, GC_COMPLETION = flags["return_stop"], flags["gc_completion"]
+    # before the engine: the T5 cache identity records the count, and the engine partitions pipe._t5_cache by it
+    CPU_THREADS = FS.thread_tag(FS.apply_cpu_threads(FAST.cpu_threads))
+    STATS = flag_stats.FlagStats(TURN_CAL, PROMPT_MODE, REANCHOR, PLAYER_HINT, RETURN_STOP, gc_completion=GC_COMPLETION)
     P.reset()
     prompts.reset()
     run_agent = import_run_agent(fresh=True)
@@ -335,6 +370,13 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
                                          session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
         print("[lingbot] player hint: on", flush=True)
+    if GC_COMPLETION:
+        run_agent.decide_action = C.wrap(run_agent.decide_action, STATS.completion_hint, STATS.completion_end)
+        print("[lingbot] GC completion hint: on", flush=True)
+    if RETURN_STOP:  # outermost: a stopped step never reaches the player (or the hint)
+        run_agent.decide_action = RS.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                          turn_cal=TURN_CAL, on_event=STATS.return_stop_event)
+        print("[lingbot] return stop: on", flush=True)
     rc = run_agent.main()
     print(STATS.total_line(), flush=True)
     return rc or 0
