@@ -290,16 +290,21 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
   // The starting model is the full run with no method flags; the method is the best other full run.
   function fullRuns() {
     var rows = realRows().filter(function (r) { return isFull(r) && isClosed(r) && !isCapped(r) && r.overall !== null && r.passes !== null && r.passes >= 2; });
-    var start = null, method = null;
+    // a run whose flags are not recorded is neither: it is counted and named in the note, never shown as starting model or method
+    var start = null, method = null, unknown = [];
     rows.forEach(function (r) {
-      var ri = RI.get(r.exp), plain = ri && ri.words && ri.words.length === 0;
-      if (plain) { if (!start || r.t > start.t) start = r; } else if (!method || r.overall > method.overall) method = r;
+      var ri = RI.get(r.exp), w = ri && ri.words;
+      if (!w) { unknown.push(r.exp); return; }
+      if (w.length === 0) { if (!start || r.t > start.t) start = r; } else if (!method || r.overall > method.overall) method = r;
     });
-    return { start: start, method: method, any: rows.length > 0 };
+    return { start: start, method: method, unknown: unknown, any: rows.length > 0 };
+  }
+  // tasks left out of a run's mean: clips never generated (counted as 1.0 by the report) and results the verifier could not use (dropped)
+  function leftOut(r) { return (r.n_missing || 0) + (r.n_dropped || 0);
   }
   function renderFullResult() {
     var box = $("fullres"); if (!box) return; clear(box);
-    var f = fullRuns(); if (!f.any) { box.hidden = true; return; }
+    var f = fullRuns(); if (!f.start && !f.method) { box.hidden = true; return; }
     box.hidden = false;
     var lb = REFS.filter(function (r) { return r.exp === "LingBot-World2"; })[0];
     var cols = [["Genie 3, paper", GENIE], ["LingBot v2, paper", lb]];
@@ -319,13 +324,17 @@ import { $, el, clear, fmt, judgeComment, passesText, badge, segmented, toggleFu
       }
       tb.appendChild(tr);
     });
-    box.appendChild(el("h2", { text: "All 171 tasks, AI played" }));
+    var complete = [f.start, f.method].every(function (r) { return !r || leftOut(r) === 0; });
+    box.appendChild(el("h2", { text: complete ? "All 171 tasks, AI played" : "171-task runs, AI played, not every task scored" }));
     box.appendChild(el("div", { class: "scroll" }, [el("table", { class: "fullres" }, [el("thead", null, [hr]), tb])]));
     var note = [];
     [["Starting model", f.start], ["Method", f.method]].forEach(function (x) {
       var r = x[1]; if (!r) return;
-      note.push(x[0] + " " + r.exp + ": " + fmt(r.overall) + (typeof r.overall_std === "number" ? " ± " + fmt(r.overall_std) : "") + ", " + r.passes + " passes" + (r.n_missing ? ", " + r.n_missing + " clips missing" : "") + ".");
+      note.push(x[0] + " " + r.exp + ": " + fmt(r.overall) + (typeof r.overall_std === "number" ? " ± " + fmt(r.overall_std) : "") + ", " + r.passes + " passes" + (r.n_missing ? ", " + r.n_missing + " clips missing and counted as 1.0" : "") +
+        (r.n_dropped ? ", " + r.n_dropped + " tasks dropped from the mean" : "") + ".");
     });
+    if (f.unknown.length) note.push("Not shown, flags not recorded: " + f.unknown.join(", ") + ".");
+    if (!complete) note.push("A run with tasks left out is not comparable with the paper rows.");
     if (f.start && f.method) {
       var d2 = f.method.overall - f.start.overall, sd = Math.max(f.start.overall_std || FALLBACK_STD, f.method.overall_std || FALLBACK_STD);
       note.push("The overall change is " + (Math.abs(d2) >= 2 * sd ? "larger" : "smaller") + " than twice the pass spread (" + fmt(2 * sd) + ")" + (Math.abs(d2) >= 2 * sd ? "." : ", so it is inside the noise."));
