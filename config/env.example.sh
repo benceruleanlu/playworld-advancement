@@ -7,6 +7,11 @@ export PLAYER_API_PROVIDER="openai"
 export PLAYER_API_URL="https://api.openai.com/v1"
 export PLAYER_API_KEY=""
 export PLAYER_MODEL="gpt-4.1-mini"   # non-reasoning; reasoning models can return empty at 128 tokens
+# Request settings (adapters/common/agent_api.py); defaults shown. Remote (Modal) runs: pass the runner args
+# --player-max-completion-tokens / --player-reasoning-effort / --player-empty-retries instead.
+# export PLAYER_MAX_COMPLETION_TOKENS=4096
+# export PLAYER_REASONING_EFFORT=low     # openai default; empty or "off" omits it
+# export PLAYER_EMPTY_RETRIES=2
 # Paper-matching alternative:
 # export PLAYER_API_PROVIDER="anthropic"
 # export PLAYER_API_URL="https://api.anthropic.com/v1"

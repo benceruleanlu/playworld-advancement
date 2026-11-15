@@ -1,6 +1,32 @@
 {
  "runs": [
   {
+   "exp": "ins14-base-v2",
+   "generated": "2026-11-15T02:22:37Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-ins14-base-v2",
+   "scored": false,
+   "labels": [
+    "not scored"
+   ]
+  },
+  {
+   "exp": "rs13-arms-v1-a2",
+   "generated": "2026-11-15T02:19:58Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-rs13-arms-v1-a2",
+   "scored": true,
+   "labels": []
+  },
+  {
+   "exp": "rs13-arms-v1-a1",
+   "generated": "2026-11-15T02:19:58Z",
+   "n_tasks": 6,
+   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-rs13-arms-v1-a1",
+   "scored": true,
+   "labels": []
+  },
+  {
    "exp": "gch13-arms-v1-a2",
    "generated": "2026-11-15T02:19:15Z",
    "n_tasks": 3,
@@ -35,28 +61,6 @@
    "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-gch13-arms-v1-a1",
    "scored": true,
    "labels": []
-  },
-  {
-   "exp": "rs13-arms-v1-a2",
-   "generated": "2026-11-15T02:09:12Z",
-   "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-rs13-arms-v1-a2",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "arm 2/2 of rs13-arms-v1: --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-player-hint --lingbot-return-stop"
-   ]
-  },
-  {
-   "exp": "rs13-arms-v1-a1",
-   "generated": "2026-11-15T02:08:58Z",
-   "n_tasks": 6,
-   "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-rs13-arms-v1-a1",
-   "scored": false,
-   "labels": [
-    "not scored",
-    "arm 1/2 of rs13-arms-v1: --lingbot-turn-cal --agent-model gpt-6-luna --lingbot-player-hint"
-   ]
   },
   {
    "exp": "lb14-session-agent-dev-v1",

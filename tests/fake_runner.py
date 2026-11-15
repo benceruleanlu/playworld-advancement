@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Stub runner with run_agent.py's argv: writes ffmpeg testsrc mp4s. FAKE_FAIL="ID ..." simulates failures.
+FAKE_PLAYER=1 prints, per task, an empty player reply, a retry, an upstream fallback and the agent_api counter
+line, and a counter total at the end (what a closed-loop run with a flaky player logs).
 
 main(argv) is the in-process entry point `pwa gen-arms` calls; _model() stands in for a model load that a
 real runner caches per process, and every call prints `[fake] model loads=N` so tests can count loads."""
@@ -59,7 +61,16 @@ def main(argv=None) -> int:
                        check=True)
         (d / f"{tid}_result.json").write_text(json.dumps({"task_id": tid, "success": True,
                                                          "action_source": a.action_source}))
+        if os.environ.get("FAKE_PLAYER") == "1":
+            print("    [agent] empty reply (finish_reason=length, completion_tokens=4096, reasoning_tokens=4096) "
+                  "-> retry 1 (max_completion_tokens=4096)")
+            print("    [agent] fallback=RIGHT")
+            print(f"[agent] player task={tid} decisions=3 calls=4 empty=1 retries=1 errors=0 fallbacks=1")
         print(f"[{tid}] DONE -> {mp4}")
+    if os.environ.get("FAKE_PLAYER") == "1":
+        n = len(tasks)
+        print(f"[agent] player total tasks={n} decisions={3 * n} calls={4 * n} empty={n} retries={n} errors=0 "
+              f"fallbacks={n}")
     return 0
 
 

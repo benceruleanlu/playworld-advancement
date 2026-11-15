@@ -91,6 +91,9 @@ the loader patches are undone after that load, so they never stack.
 Flag counters (flag_stats.py): after each task one greppable line, e.g.
   [lingbot] flags task=GC033 turn_cal=1 caption=used reanchor=on reanchor_events=2 player_hint=on player_hints=30
 and a `[lingbot] flags total ...` line at the end; also "lingbot_flags" in <task>_result.json.
+Player counters (adapters/common/agent_api.py, every runner): `[agent] player task=... decisions= calls= empty=
+retries= errors= fallbacks=` per task, `[agent] player total ...` at the end, "player" in <task>_result.json.
+The --player-* args (completion budget, reasoning effort, empty-reply retries) are read there too.
 """
 import os
 import sys
@@ -135,6 +138,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
     if flags["gc_director"] and (mode == "goal" or flags["stateless"]):
         raise SystemExit("--lingbot-gc-chunk-director requires caption prompting and session mode")
     flags["stall"], argv = W.parse(argv, environ)
+    flags["player"], argv = agent_api.configure(argv, environ)
     return flags, FS.strip_flags([a for a in argv if a not in _FLAG_ARGS])
 
 
@@ -390,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     run_agent.SanaWMEngine = LingBotWorld2Engine
     prompts.install(run_agent)
     STATS.install(run_agent)
-    print(f"[adapter] agent provider: {agent_api.patch(run_agent)}", flush=True)
+    print(f"[adapter] agent provider: {agent_api.patch(run_agent, flags['player'])}", flush=True)
     if PLAYER_HINT:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key,
                                          session=not STATELESS, turn_cal=TURN_CAL, on_hint=STATS.hint)
@@ -403,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
                                           turn_cal=TURN_CAL, on_event=STATS.return_stop_event)
         print("[lingbot] return stop: on", flush=True)
     rc = run_agent.main()
+    agent_api.finish(run_agent)
     print(STATS.total_line(), flush=True)
     return rc or 0
 

@@ -79,7 +79,7 @@ def test_runner_flag_defaults_and_installation(monkeypatch, mode):
         return "WAIT"
     ra = SimpleNamespace(decide_action=original, run_task=lambda *a: None, main=lambda: 0)
     monkeypatch.setattr(upstream, "import_run_agent", lambda **kw: ra)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, cfg=None: "test")
     for name in ("LINGBOT_PLAYER_HINT", "LINGBOT_GC_COMPLETION_HINT", "LINGBOT_RETURN_STOP"):
         monkeypatch.delenv(name, raising=False)
     flag = "--lingbot-gc-completion-hint"
@@ -103,7 +103,7 @@ def test_completion_flag_resets_between_arms(monkeypatch):
         modules.append((ra, ra.decide_action))
         return ra
     monkeypatch.setattr(R, "import_run_agent", fresh)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, cfg=None: "test")
     monkeypatch.setattr(sys, "argv", ["run.py"])
     monkeypatch.delenv("LINGBOT_GC_COMPLETION_HINT", raising=False)
     monkeypatch.delenv("LINGBOT_PLAYER_HINT", raising=False)
@@ -127,7 +127,7 @@ def test_composes_with_return_stop(monkeypatch, capsys):
     ra = SimpleNamespace(decide_action=player, run_task=lambda *a: None, main=lambda: 0,
                          to_sana_key={"LEFT": "j", "RIGHT": "l", "WAIT": "none"}.get)
     monkeypatch.setattr(R, "import_run_agent", lambda **kw: ra)
-    monkeypatch.setattr(agent_api, "patch", lambda ra: "test")
+    monkeypatch.setattr(agent_api, "patch", lambda ra, cfg=None: "test")
     for name in ("LINGBOT_PLAYER_HINT", "LINGBOT_GC_COMPLETION_HINT", "LINGBOT_RETURN_STOP"):
         monkeypatch.delenv(name, raising=False)
     assert R.main(["run.py", "--lingbot-gc-completion-hint", "--lingbot-return-stop"]) == 0
