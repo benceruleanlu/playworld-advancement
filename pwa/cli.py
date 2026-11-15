@@ -16,6 +16,9 @@ typical loop:
   pwa run anchor-v1-dev --split dev --runner anchor --action-source dataset --passes 2
   pwa compare base-sana-dev anchor-v1-dev
   pwa failures anchor-v1-dev
+screening judge (dev loops only; never the csv, never a reported number):
+  pwa score anchor-v1-dev --judge-model gemini-4-hydrogen [--judge-thinking low]
+  pwa cells base-sana-dev anchor-v1-dev --judge-model gemini-4-hydrogen
 extra runner args go after `--`, e.g.  pwa gen X --runner sana -- --num-chunks 20 --seed 1
 exit codes: 0 ok, 1 failure (some task failed / check failed), 2 usage error.
 config/env.sh is sourced automatically (existing env vars win).
@@ -39,12 +42,21 @@ def _gen_args(p):
     p.add_argument("--notes", default="", help="free text stored in meta.json and results/experiments.csv")
 
 
+def _judge_args(p):
+    p.add_argument("--judge-model", default=None, metavar="MODEL",
+                   help="screening judge: same verifier with another Gemini model, results in runs/EXP/eval-<slug>/; "
+                        "never written to results/experiments.csv (default: official judge, $GEMINI_MODEL, eval/)")
+    p.add_argument("--judge-thinking", default=None, choices=["minimal", "low", "medium", "high"],
+                   help="screening judge only: Gemini thinking level (upstream sets none); part of the dir slug")
+
+
 def _score_args(p):
     p.add_argument("--passes", type=int, default=2, help="verifier passes (default 2)")
     p.add_argument("--workers", type=int, default=4, help="parallel verifier subprocesses (default 4)")
     p.add_argument("--retries", type=int, default=1, help="retries per failed verifier call (default 1)")
     p.add_argument("--dry-run", action="store_true", help="sampling + prompt only, no Gemini; writes eval_dry/")
     p.add_argument("--force", action="store_true", help="rescore even if result files exist")
+    _judge_args(p)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -82,12 +94,21 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--md", action="store_true", help="GitHub markdown output (for $GITHUB_STEP_SUMMARY)")
     p.add_argument("--site-url", default=None, help="link to append in --md output")
+    _judge_args(p)
 
     p = mk("compare", "per-family and per-task deltas B - A, with noise flags")
     p.add_argument("exp_a")
     p.add_argument("exp_b")
     _sel_args(p)
     p.add_argument("--json", action="store_true")
+    _judge_args(p)
+
+    p = mk("cells", "per-task pass-means of A and B on their common tasks, delta, and tasks moved >= 1.0 up/down")
+    p.add_argument("exp_a")
+    p.add_argument("exp_b")
+    _sel_args(p)
+    p.add_argument("--json", action="store_true")
+    _judge_args(p)
 
     p = mk("ls", "list experiments and their status")
     p.add_argument("--json", action="store_true")
@@ -132,6 +153,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="every task, not only failures")
     p.add_argument("--json", action="store_true")
     p.add_argument("--md", action="store_true", help="GitHub markdown table")
+    _judge_args(p)
     return ap
 
 
@@ -227,9 +249,11 @@ def dispatch(a) -> int:  # noqa: C901
             log("[pwa] dry run: skipping report")
             return 1 if gen_failed or score_failed else 0
 
+    judge = score.judge_of(a)
+
     if a.cmd in ("report", "run"):
         sel = core.select_for_exp(a.exp, a.split, a.family, a.tasks)
-        rep = report.report(a.exp, sel, _split_label(a, a.exp), getattr(a, "strict", False))
+        rep = report.report(a.exp, sel, _split_label(a, a.exp), getattr(a, "strict", False), judge=judge)
         if a.cmd == "report" and a.md and not a.json:
             text = report.render_md(rep, core.read_meta(a.exp), a.site_url)
         else:
@@ -239,16 +263,21 @@ def dispatch(a) -> int:  # noqa: C901
             return 1 if gen_failed or score_failed else 0
         return 0 if rep["passes"] else 1
 
-    if a.cmd == "compare":
+    if a.cmd in ("compare", "cells"):
         sa = core.select_for_exp(a.exp_a, a.split, a.family, a.tasks)
         sb = core.select_for_exp(a.exp_b, a.split, a.family, a.tasks)
         common = {t["task_id"] for t in sa} & {t["task_id"] for t in sb}
         if len(common) < max(len(sa), len(sb)):
             log(f"[pwa] task lists differ; comparing on the {len(common)} common tasks")
-        ra = report.build(a.exp_a, [t for t in sa if t["task_id"] in common])
-        rb = report.build(a.exp_b, [t for t in sb if t["task_id"] in common])
+        ra = report.build(a.exp_a, [t for t in sa if t["task_id"] in common], judge=judge)
+        rb = report.build(a.exp_b, [t for t in sb if t["task_id"] in common], judge=judge)
         if not ra["passes"] or not rb["passes"]:
-            raise PwaError("both experiments need at least one scored pass")
+            where = f"eval-{judge.slug}/" if judge else "eval/"
+            raise PwaError(f"both experiments need at least one scored pass in {where}")
+        if a.cmd == "cells":
+            c = report.cells(ra, rb)
+            emit(c, a.json, report.render_cells(c))
+            return 0
         c = report.compare(ra, rb)
         emit(c, a.json, report.render_compare(c))
         return 0
@@ -284,12 +313,16 @@ def dispatch(a) -> int:  # noqa: C901
         return 0
 
     if a.cmd == "failures":
-        rows = report.failures(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), a.all)
+        rows = report.failures(a.exp, core.select_for_exp(a.exp, a.split, a.family, a.tasks), a.all, judge)
         text = "\n".join(f"{r['task_id']}\t{r['family']}\t{report.f2(r['mean']).strip()}\t"
                          f"{','.join(r['status'])}\t{r['reason']}" for r in rows)
         if a.md:
             text = report.render_failures_md(rows)
-        emit(rows, a.json, text or "(no failures)")
+        if judge:
+            label = f"> **{judge.label}.**\n\n" if a.md else f"*** {judge.label} ***\n"
+            text = label + (text or "(no failures)")
+        # screening JSON is wrapped so the judge travels with the rows; official output keeps its list shape
+        emit({"judge": report.judge_json(judge), "tasks": rows} if judge else rows, a.json, text or "(no failures)")
         return 0
     return 2
 

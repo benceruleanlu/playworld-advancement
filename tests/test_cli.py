@@ -86,8 +86,8 @@ def test_preview_and_dry_score(env):
     assert s["ran"] == 0 and s["skipped"] == 6  # idempotent
 
 
-def _fake_eval(runs: Path, exp: str, k: int, scores: dict):
-    d = runs / exp / "eval" / f"pass{k}"
+def _fake_eval(runs: Path, exp: str, k: int, scores: dict, dirname: str = "eval"):
+    d = runs / exp / dirname / f"pass{k}"
     d.mkdir(parents=True, exist_ok=True)
     for tid, (val, passed) in scores.items():
         extra = {}
@@ -139,6 +139,55 @@ def test_report_compare_failures_ls(env):
     assert "OE034" in f and "GC005" not in f
     ls = {r["exp"]: r for r in json.loads(pwa(env, "ls", "--json", check=0).stdout)}
     assert ls["a"]["gen"] == "done" and ls["a"]["passes"] == [1, 2] and ls["a"]["overall"] is not None
+
+
+def test_screening_judge_never_touches_official_outputs(env):
+    runs = Path(env["PWA_RUNS"])
+    hy, slug = "gemini-4-hydrogen", "eval-gemini-4-hydrogen"
+    tasks = ["GC005", "IF002", "OE001"]
+    pwa(env, "gen", "a", "--runner", FAKE, "--tasks", *tasks, check=0)
+    pwa(env, "gen", "b", "--runner", FAKE, "--tasks", *tasks, check=0)
+    for k in (1, 2):
+        _fake_eval(runs, "a", k, {"GC005": (3.0, True), "IF002": (2.0, True), "OE001": (2.0, True)}, slug)
+        _fake_eval(runs, "b", k, {"GC005": (4.0, True), "IF002": (2.0, False), "OE001": (2.5, True)}, slug)
+    # official view sees nothing: screening scores never count as official
+    assert pwa(env, "report", "a").returncode == 1
+    r = pwa(env, "report", "a", "--judge-model", hy, check=0)
+    assert f"screening judge: {hy}, not comparable to the leaderboard" in r.stdout
+    md = pwa(env, "report", "a", "--judge-model", hy, "--md", check=0).stdout
+    assert "screening judge" in md and "not written to results/experiments.csv" in md
+    rep = json.loads(pwa(env, "report", "a", "--judge-model", hy, "--json", check=0).stdout)
+    assert rep["judge"]["model"] == hy and rep["families"]["gc"]["mean"] == pytest.approx(3.0)
+    assert not Path(env["PWA_RESULTS_CSV"]).exists()
+    assert not (runs / "a" / "report.json").exists() and (runs / "a" / "report.gemini-4-hydrogen.json").is_file()
+    assert pwa(env, "compare", "a", "b").returncode == 1  # no official passes
+    c = json.loads(pwa(env, "compare", "a", "b", "--judge-model", hy, "--json", check=0).stdout)
+    assert c["judge"]["slug"] == "gemini-4-hydrogen" and c["families"]["gc"]["delta"] == pytest.approx(1.0)
+    assert "screening judge" in pwa(env, "compare", "a", "b", "--judge-model", hy, check=0).stdout
+    cl = json.loads(pwa(env, "cells", "a", "b", "--judge-model", hy, "--json", check=0).stdout)
+    by = {r["task_id"]: r for r in cl["tasks"]}
+    # GC005 3 -> 4 moves up; IF002 2 -> gate fail 1.0 moves down; OE001 +0.5 does not move
+    assert (by["GC005"]["move"], by["IF002"]["move"], by["OE001"]["move"]) == ("up", "down", "")
+    assert (cl["up"], cl["down"], cl["n_common"]) == (1, 1, 3)
+    txt = pwa(env, "cells", "a", "b", "--judge-model", hy, check=0).stdout
+    assert "screening judge" in txt and "up 1  down 1  of 3" in txt
+    f = json.loads(pwa(env, "failures", "b", "--judge-model", hy, "--json", check=0).stdout)
+    assert f["judge"]["model"] == hy and [r["task_id"] for r in f["tasks"]] == ["IF002"]
+    fm = pwa(env, "failures", "b", "--judge-model", hy, "--all", "--md", check=0).stdout
+    assert fm.startswith("> **screening judge") and "| GC005 |" in fm
+    assert pwa(env, "report", "a", "--judge-thinking", "low").returncode == 1  # thinking needs a screening model
+    assert not Path(env["PWA_RESULTS_CSV"]).exists() and not (runs / "a" / "report.json").exists()
+
+
+def test_screening_dry_score_with_thinking(env):
+    # the thinking shim runs the upstream module end to end (dry run: sampling only, no Gemini call)
+    pytest.importorskip("google.genai")
+    pwa(env, "gen", "t", "--runner", FAKE, "--tasks", "IF002", check=0)
+    s = json.loads(pwa(env, "score", "t", "--dry-run", "--passes", "1", "--json", "--judge-model",
+                       "gemini-4-hydrogen", "--judge-thinking", "low", check=0).stdout)
+    assert s["failed"] == [] and s["ran"] == 1 and s["judge"]["slug"] == "gemini-4-hydrogen-think-low"
+    assert (Path(env["PWA_RUNS"]) / "t" / "eval_dry" / "pass1" / "IF002_score.json").is_file()
+    assert not (Path(env["PWA_RUNS"]) / "t" / "eval").exists()
 
 
 def test_media_skips_pipeline_tests(env, tmp_path):

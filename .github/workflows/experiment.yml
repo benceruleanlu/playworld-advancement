@@ -1,6 +1,6 @@
 name: experiment
 # Shown in the Actions list and the API, so a run can be identified while it is still in progress.
-run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
+run-name: "${{ inputs.exp }} · ${{ inputs.runner }} · ${{ inputs.tasks || inputs.split }} · ${{ inputs.action_source }}${{ inputs.action_source != 'dataset' && format(' · {0}', inputs.player_model) || '' }}${{ inputs.extra && format(' · {0}', inputs.extra) || '' }}${{ inputs.judge_model && format(' · judge {0}', inputs.judge_model) || '' }}${{ inputs.stage != 'full' && format(' · {0}', inputs.stage) || '' }}"
 
 # Manual: Actions tab -> experiment -> Run workflow.
 # backend=modal: generation runs on Modal GPUs (needs MODAL_TOKEN_ID/SECRET).
@@ -47,6 +47,9 @@ on:
       passes:
         description: Verifier passes
         default: "2"
+      judge_model:
+        description: "Screening judge for dev loops, e.g. gemini-4-hydrogen or gemini-4-hydrogen:low (thinking level). Empty = official judge. Never writes the results csv row."
+        default: ""
       notes:
         default: ""
       extra:
@@ -87,8 +90,19 @@ jobs:
         with:
           submodules: true
       - name: Validate experiment name
+        env:
+          JUDGE_IN: ${{ inputs.judge_model }}
         run: |
           [[ "$EXP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "exp must match [A-Za-z0-9._-]+" >&2; exit 2; }
+          # judge_model: MODEL or MODEL:THINKING (minimal|low|medium|high); exported to later steps as JUDGE_MODEL / JUDGE_THINKING
+          [[ "$JUDGE_IN" =~ ^[A-Za-z0-9._:-]*$ ]] || { echo "judge_model must match [A-Za-z0-9._:-]*" >&2; exit 2; }
+          if [[ -n "$JUDGE_IN" ]]; then
+            model="${JUDGE_IN%%:*}"; thinking=""; [[ "$JUDGE_IN" == *:* ]] && thinking="${JUDGE_IN#*:}"
+            [[ -n "$model" ]] || { echo "judge_model needs a model id" >&2; exit 2; }
+            [[ -z "$thinking" || "$thinking" =~ ^(minimal|low|medium|high)$ ]] || { echo "judge thinking must be minimal|low|medium|high" >&2; exit 2; }
+            { echo "JUDGE_MODEL=$model"; echo "JUDGE_THINKING=$thinking"; } >> "$GITHUB_ENV"
+            echo "::notice title=screening judge::$JUDGE_IN (dev screening; no results csv row)"
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -192,11 +206,22 @@ jobs:
         if: inputs.stage != 'gen-only'
         env:
           PASSES: ${{ inputs.passes }}
-        run: pwa score "$EXP" --passes "$PASSES" --workers 6
+        run: |
+          judge=(); [[ -n "${JUDGE_MODEL:-}" ]] && judge=(--judge-model "$JUDGE_MODEL" ${JUDGE_THINKING:+--judge-thinking "$JUDGE_THINKING"})
+          pwa score "$EXP" "${judge[@]}" --passes "$PASSES" --workers 6
 
       - name: Report
         if: inputs.stage != 'gen-only'
         run: |
+          if [[ -n "${JUDGE_MODEL:-}" ]]; then
+            # screening judge: report and all-task table to the summary and results/reports/EXP.<slug>.md, no csv row
+            judge=(--judge-model "$JUDGE_MODEL" ${JUDGE_THINKING:+--judge-thinking "$JUDGE_THINKING"})
+            pwa report "$EXP" "${judge[@]}" --md | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+            { echo; echo '### Tasks'; echo; pwa failures "$EXP" "${judge[@]}" --all --md; } | tee -a "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+            slug=$(pwa report "$EXP" "${judge[@]}" --json | python -c 'import json, sys; print(json.load(sys.stdin)["judge"]["slug"])')
+            echo "JUDGE_SLUG=$slug" >> "$GITHUB_ENV"
+            exit 0
+          fi
           site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
           pwa report "$EXP" --md --site-url "$site" | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/report.md"
@@ -206,8 +231,8 @@ jobs:
 
       - name: Publish scenes (GitHub Release run-EXP)
         # Small web copies of every rollout go to a release; the manifest the site reads is committed below.
-        # A failure here must not lose the scored row, so it never fails the job.
-        if: inputs.stage != 'gen-only'
+        # A failure here must not lose the scored row, so it never fails the job. Skipped for screening-judge runs.
+        if: inputs.stage != 'gen-only' && inputs.judge_model == ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -230,8 +255,16 @@ jobs:
           # reached only if every upload above succeeded (bash -e); the commit step publishes the manifest only then
           touch "$out/.published"
 
+      - name: Commit screening report
+        # Screening judge: only results/reports/EXP.<slug>.md reaches main; never the results csv row or media.
+        if: inputs.stage != 'gen-only' && inputs.judge_model != ''
+        run: |
+          .github/scripts/push_results.sh "results: $EXP screening $JUDGE_SLUG" '
+            mkdir -p "$MAIN_DIR/results/reports"
+            cp "$RUNNER_TEMP/report.md" "$MAIN_DIR/results/reports/$EXP.$JUDGE_SLUG.md"'
+
       - name: Commit experiment log
-        if: inputs.stage != 'gen-only'
+        if: inputs.stage != 'gen-only' && inputs.judge_model == ''
         run: |
           # Runs on any branch record their row and report on main, from a separate checkout of main, so no
           # branch code reaches main. The row replaces the status=running row written at launch.
@@ -247,9 +280,9 @@ jobs:
             fi'
 
       - name: Mark final status on main
-        # gen-only success -> generated; a failed or cancelled job (any stage) -> failed / cancelled. Only touches
-        # a row that still says running, so a scored row is never downgraded.
-        if: always() && (job.status != 'success' || inputs.stage == 'gen-only')
+        # gen-only or screening-judge success -> generated (no official score); a failed or cancelled job (any
+        # stage) -> failed / cancelled. Only touches a row that still says running, so a scored row is never downgraded.
+        if: always() && (job.status != 'success' || inputs.stage == 'gen-only' || inputs.judge_model != '')
         continue-on-error: true
         env:
           STATUS: ${{ job.status == 'success' && 'generated' || (job.status == 'cancelled' && 'cancelled' || 'failed') }}

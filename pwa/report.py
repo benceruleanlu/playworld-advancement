@@ -8,7 +8,7 @@ import os
 
 from .aggregate import aggregate_pass, mean_std, upstream_cross_check
 from .core import FAMILIES, current_branch, RESULTS_CSV, RUNS, exp_dir, log, now, read_json, read_meta, video_path, write_json
-from .score import eval_dir, passes_present
+from .score import Judge, eval_dir, passes_present
 
 # Paper numbers, full 171-task benchmark: gc, if, insight, outsight, overall.
 REFERENCE = {
@@ -25,8 +25,8 @@ CSV_FIELDS = ["exp", "split", "timestamp", "git_sha", "runner", "action_source",
 LIVE_STATUSES = ("running", "generated", "failed", "cancelled")
 
 
-def load_pass(exp: str, k: int, sel: list[dict]) -> tuple[dict, dict]:
-    d = eval_dir(exp) / f"pass{k}"
+def load_pass(exp: str, k: int, sel: list[dict], judge: Judge | None = None) -> tuple[dict, dict]:
+    d = eval_dir(exp, judge=judge) / f"pass{k}"
     scores, gates = {}, {}
     for t in sel:
         s = read_json(d / f"{t['task_id']}_score.json")
@@ -36,12 +36,13 @@ def load_pass(exp: str, k: int, sel: list[dict]) -> tuple[dict, dict]:
     return scores, gates
 
 
-def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = None) -> dict:
+def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = None,
+          judge: Judge | None = None) -> dict:
     present = {t["task_id"] for t in sel if video_path(exp, t["task_id"]).is_file()}
-    passes = passes_present(exp)
+    passes = passes_present(exp, judge)
     per_pass = {}
     for k in passes:
-        scores, gates = load_pass(exp, k, sel)
+        scores, gates = load_pass(exp, k, sel, judge)
         per_pass[k] = aggregate_pass(exp, sel, present, scores, gates, strict)
         if split == "all" and not strict:
             up = upstream_cross_check(exp, sel, present, scores, gates)
@@ -72,7 +73,14 @@ def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = N
             "n_missing": len(sel) - len(present), "families": fams, "overall": om, "overall_std": os_,
             "overall_per_pass": overall_vals, "per_pass": {str(k): {kk: v for kk, v in p.items() if kk != "tasks"}
                                                           for k, p in per_pass.items()},
-            "tasks": tasks}
+            "tasks": tasks, "judge": judge_json(judge)}
+
+
+def judge_json(judge: Judge | None) -> dict | None:
+    """None = official judge. Screening reports carry the model and a label saying they are not comparable."""
+    if judge is None:
+        return None
+    return {"model": judge.model, "thinking": judge.thinking, "slug": judge.slug, "label": judge.label}
 
 
 def _avg(xs):
@@ -89,6 +97,8 @@ def render(rep: dict, meta: dict) -> str:
     p(f"{rep['exp']}  runner={meta.get('runner')} action_source={meta.get('action_source')} "
       f"passes={len(rep['passes'])} tasks={rep['n_tasks']} missing={rep['n_missing']}"
       + ("  [strict]" if rep["strict"] else ""))
+    if rep.get("judge"):
+        p(f"*** {rep['judge']['label']} ***")
     p()
     p(f"{'family':<9} {'mean':>5} {'std':>5} {'n':>3} {'gate':>7} {'miss':>4} {'drop':>4}  per-pass")
     for fam, f in rep["families"].items():
@@ -123,6 +133,9 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
     p = lambda s="": print(s, file=out)  # noqa: E731
     p(f"## {_md_cell(rep['exp'])}" + (" (strict)" if rep["strict"] else ""))
     p()
+    if rep.get("judge"):
+        p(f"> **{_md_cell(rep['judge']['label'])}.** Dev screening only; not written to results/experiments.csv.")
+        p()
     p(f"runner `{meta.get('runner')}` | action source `{meta.get('action_source')}` | passes {len(rep['passes'])} "
       f"| tasks {rep['n_tasks']} | missing {rep['n_missing']}")
     p()
@@ -288,11 +301,17 @@ def upsert_row_into(exp: str, src, dest) -> int:
     return len(mine)
 
 
-def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: bool = True) -> dict:
-    rep = build(exp, sel, strict, split_label)
+def report(exp: str, sel: list[dict], split_label: str, strict: bool, write: bool = True,
+           judge: Judge | None = None) -> dict:
+    rep = build(exp, sel, strict, split_label, judge)
     rep["split"] = split_label
     if not rep["passes"]:
-        log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}`)")
+        hint = f" --judge-model {judge.model}" + (f" --judge-thinking {judge.thinking}" if judge.thinking else "") if judge else ""
+        log(f"[pwa] {exp}: no scored passes yet (run `pwa score {exp}{hint}`)")
+    elif judge:
+        # screening judge: never the official report.json, never the results csv
+        if write and not strict:
+            write_json(exp_dir(exp) / f"report.{judge.slug}.json", rep)
     elif write and not strict:
         write_json(exp_dir(exp) / "report.json", rep)
         upsert_csv(rep, read_meta(exp), split_label)
@@ -327,13 +346,15 @@ def compare(a: dict, b: dict) -> dict:
         tasks[tid] = {"family": ta["family"], "a": ta["mean"], "b": tb["mean"], "delta": d, "threshold": thr,
                       "noise": None if thr is None else abs(d) < thr}
     return {"a": a["exp"], "b": b["exp"], "families": fams, "overall": ov, "tasks": tasks,
-            "threshold_source": "2x max pass std (fallback: paper variance 0.011)"}
+            "threshold_source": "2x max pass std (fallback: paper variance 0.011)", "judge": a.get("judge")}
 
 
 def render_compare(c: dict) -> str:
     out = io.StringIO()
     p = lambda s="": print(s, file=out)  # noqa: E731
     tag = lambda r: "noise" if r["noise"] else ("?" if r["noise"] is None else "REAL")  # noqa: E731
+    if c.get("judge"):
+        p(f"*** {c['judge']['label']} ***")
     p(f"A={c['a']}  B={c['b']}  delta = B - A; noise if |delta| < 2x pass std")
     p(f"{'':<9} {'A':>5} {'B':>5} {'delta':>6} {'thr':>5}")
     for fam, r in list(c["families"].items()) + ([("overall", c["overall"])] if c["overall"] else []):
@@ -345,9 +366,9 @@ def render_compare(c: dict) -> str:
     return out.getvalue()
 
 
-def failures(exp: str, sel: list[dict], all_tasks: bool = False) -> list[dict]:
+def failures(exp: str, sel: list[dict], all_tasks: bool = False, judge: Judge | None = None) -> list[dict]:
     """Tasks that are missing, gate-failed or scored 1.0, with the verifier's reason; every task with all_tasks."""
-    rep = build(exp, sel)
+    rep = build(exp, sel, judge=judge)
     out = []
     for t in sel:
         tid = t["task_id"]
@@ -362,7 +383,7 @@ def failures(exp: str, sel: list[dict], all_tasks: bool = False) -> list[dict]:
             continue
         reasons = []
         for k in rep["passes"]:
-            d = eval_dir(exp) / f"pass{k}"
+            d = eval_dir(exp, judge=judge) / f"pass{k}"
             s = (read_json(d / f"{tid}_score.json") or {}).get("score") or {}
             g = (read_json(d / f"{tid}_gate.json") or {}).get("score") or {}
             for src in (g, s.get("if_instruction_following_check") or {}, s.get("oe_instruction_following_check") or {}):
@@ -376,6 +397,44 @@ def failures(exp: str, sel: list[dict], all_tasks: bool = False) -> list[dict]:
         out.append({"task_id": tid, "family": t["family"], "mean": tr["mean"], "status": status,
                     "reason": reasons[0] if reasons else ""})
     return out
+
+
+MOVE = 1.0  # a cell "moves" only at a full point on the 1-5 scale
+
+
+def cells(a: dict, b: dict) -> dict:
+    """Per-task decision readout over the tasks both reports share: pass-mean of A and B, delta B - A, and how
+    many tasks moved up or down by at least MOVE. Tasks without a usable mean on either side are listed apart."""
+    rows, unscored = [], []
+    for tid, ta in a["tasks"].items():
+        tb = b["tasks"].get(tid)
+        if tb is None:
+            continue
+        if ta["mean"] is None or tb["mean"] is None:
+            unscored.append(tid)
+            continue
+        d = tb["mean"] - ta["mean"]
+        rows.append({"task_id": tid, "family": ta["family"], "a": ta["mean"], "b": tb["mean"], "delta": d,
+                     "move": "up" if d >= MOVE - 1e-9 else ("down" if d <= -MOVE + 1e-9 else "")})
+    rows.sort(key=lambda r: (-r["delta"], r["task_id"]))
+    return {"a": a["exp"], "b": b["exp"], "judge": a.get("judge"), "threshold": MOVE, "tasks": rows,
+            "n_common": len(rows), "up": sum(r["move"] == "up" for r in rows),
+            "down": sum(r["move"] == "down" for r in rows), "unscored": unscored}
+
+
+def render_cells(c: dict) -> str:
+    out = io.StringIO()
+    p = lambda s="": print(s, file=out)  # noqa: E731
+    if c.get("judge"):
+        p(f"*** {c['judge']['label']} ***")
+    p(f"A={c['a']}  B={c['b']}  per-task mean over passes; delta = B - A; moved = |delta| >= {c['threshold']:.1f}")
+    p(f"{'task':<7} {'family':<9} {'A':>5} {'B':>5} {'delta':>6}  moved")
+    for r in c["tasks"]:
+        p(f"{r['task_id']:<7} {r['family']:<9} {f2(r['a'])} {f2(r['b'])} {r['delta']:+6.2f}  {r['move']}")
+    p()
+    p(f"up {c['up']}  down {c['down']}  of {c['n_common']} common tasks"
+      + (f"; no usable mean on one side: {' '.join(c['unscored'])}" if c["unscored"] else ""))
+    return out.getvalue()
 
 
 def ls() -> list[dict]:
