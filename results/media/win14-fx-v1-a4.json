@@ -2,12 +2,12 @@
  "exp": "win14-fx-v1-a4",
  "release_tag": "run-win14-fx-v1-a4",
  "release_url": "https://github.com/benceruleanlu/playworld-advancement/releases/tag/run-win14-fx-v1-a4",
- "generated": "2026-11-15T05:35:10Z",
+ "generated": "2026-11-15T05:43:09Z",
  "git_sha": "6804889ff4c495357c46c7c5391f905c28697093",
  "branch": "main",
  "runner": "lingbot_world2",
  "action_source": "dataset",
- "scored": false,
+ "scored": true,
  "max_chunks": null,
  "runner_args": [
   "--lingbot-fast",
@@ -26,9 +26,7 @@
  "player_model": "",
  "notes": "larger attention cache on out-of-sight and GC returns: sink 10 + cache 22, cache 22 only, and a second seed for control and treatment; seed-0 control is sks14-fx-v1-a1 / mem14-fx-v1-a1 (generation is deterministic) [arm 4/4 of win14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --seed 1 --lingbot-sink-size 10 --lingbot-local-attn 22]",
  "labels": [
-  "not scored",
-  "replayed dataset moves (open loop), A/B only",
-  "arm 4/4 of win14-fx-v1: --lingbot-fast --lingbot-cpu-threads --lingbot-stall-abort 900 --lingbot-caption-prompt --lingbot-turn-cal --seed 1 --lingbot-sink-size 10 --lingbot-local-attn 22"
+  "replayed dataset moves (open loop), A/B only"
  ],
  "report": "win14-fx-v1-a4.md",
  "model": {
@@ -45,13 +43,18 @@
   {
    "task_id": "GC031",
    "family": "gc",
-   "mean": null,
+   "mean": 1.65,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.4,
+    3.2
+   ],
+   "reason": "镜头虽然进行了向右旋转，但未能完成360度旋转并回到初始的视角和画面。",
+   "reason_en": "Although the camera rotated to the right, it failed to complete a 360-degree rotation and return to the initial perspective and frame.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -61,13 +64,18 @@
   {
    "task_id": "GC033",
    "family": "gc",
-   "mean": null,
+   "mean": 3.8,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.6,
+    3.8,
+    4.0,
+    3.8
+   ],
+   "reason": "相机成功完成了向左转动并转回的动作，橱窗内的关键物品在重新出现时保持了良好的一致性，仅标牌文本有轻微退化，且左侧背景墙面出现了一定程度的幻觉生成。",
+   "reason_en": "The camera successfully turned left and turned back, and key items in the display window maintained good consistency upon reappearing, with only slight degradation in the sign text and some hallucinated generation on the left background wall.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -77,29 +85,39 @@
   {
    "task_id": "GC036",
    "family": "gc",
-   "mean": null,
+   "mean": 2.25,
    "status": [
-    "not scored"
+    "gate_fail"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
-   "fail_reason": "",
-   "fail_pass": null,
-   "fail_reason_en": "",
+   "pass_scores": [
+    3.0,
+    2.6,
+    2.4,
+    1.0
+   ],
+   "reason": "视频发生场景布局重置，招牌位置瞬移且地面纹理丢失。",
+   "reason_en": "The video experienced a scene layout reset, with the sign position teleporting and ground textures lost.",
+   "fail_reason": "镜头初始向右平移而非向左，完全没有展示场景的左侧，且运动方向与要求的“从左向右平移”相反。",
+   "fail_pass": 4,
+   "fail_reason_en": "The camera initially pans right instead of left, completely failing to show the left side of the scene, and the direction of movement is opposite to the requested \"pan from left to right\".",
    "video": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a4/GC036.mp4",
    "poster": "https://github.com/benceruleanlu/playworld-advancement/releases/download/run-win14-fx-v1-a4/GC036.jpg"
   },
   {
    "task_id": "OE034",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "score_1.0"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "镜头虽然向左返回，但未能准确还原初始视角的空间位置，且内容完全改变。",
+   "reason_en": "Although the camera returned to the left, it failed to accurately restore the spatial position of the initial perspective, and the content changed completely.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -109,13 +127,18 @@
   {
    "task_id": "OE039",
    "family": "outsight",
-   "mean": null,
+   "mean": 3.4375,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.75,
+    4.0,
+    2.0,
+    4.0
+   ],
+   "reason": "视频成功执行了360度旋转和后退的指令，狗在镜头移开期间合理地改变了姿势，但狗的胸背带在初期发生了颜色突变，且背景窗户的透明度在镜头转回后发生了改变。",
+   "reason_en": "The video successfully executed the 360-degree rotation and pullback instructions, and the dog plausibly changed posture while the camera moved away, but the dog's harness had a sudden color change early on, and the transparency of the background window changed after the camera turned back.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -125,13 +148,18 @@
   {
    "task_id": "OE047",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.0,
    "status": [
-    "not scored"
+    "score_1.0"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "reason": "视频完全失败，男子在镜头移开时走下扶梯进入一扇门，当镜头转回时却矛盾地在扶梯底部重新出现，没有展示预期的隐藏进展，且轨迹完全断裂。",
+   "reason_en": "The video failed completely: the man walked down the escalator and entered a door while the camera moved away, yet contradictorily reappeared at the bottom of the escalator when the camera turned back, failing to show the expected hidden progression and completely breaking the trajectory.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -141,13 +169,18 @@
   {
    "task_id": "OE048",
    "family": "outsight",
-   "mean": null,
+   "mean": 2.3125,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    3.5,
+    2.75,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头返回后，杯子款式和背景发生了严重的替换，且视线外期间咖啡液面未能合理积累。",
+   "reason_en": "After the camera returned, the cup style and background underwent severe replacement, and the coffee level failed to accumulate plausibly while out of sight.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -157,13 +190,18 @@
   {
    "task_id": "OE058",
    "family": "outsight",
-   "mean": null,
+   "mean": 1.5,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    2.0,
+    2.0,
+    1.0
+   ],
+   "reason": "镜头转回后，初始的装饰者、饼干和桌面物品被完全替换为不同的场景，导致严重的身份和演变失败。",
+   "reason_en": "After the camera turned back, the initial decorator, cookies, and tabletop items were completely replaced with a different scene, causing severe identity and progression failures.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",
@@ -173,13 +211,18 @@
   {
    "task_id": "OE069",
    "family": "outsight",
-   "mean": null,
+   "mean": 3.0,
    "status": [
-    "not scored"
+    "ok"
    ],
-   "pass_scores": [],
-   "reason": "",
-   "reason_en": "",
+   "pass_scores": [
+    1.0,
+    3.5,
+    3.5,
+    4.0
+   ],
+   "reason": "视频成功执行镜头环视指令，电梯下行运动合理累积，但人物重新出现时背包发生严重替换错误。",
+   "reason_en": "The video successfully executed the camera pan-around instruction and the elevator's downward motion accumulated plausibly, but a severe replacement error occurred with the person's backpack upon reappearing.",
    "fail_reason": "",
    "fail_pass": null,
    "fail_reason_en": "",

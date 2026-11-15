@@ -513,3 +513,97 @@ def test_non_streaming_decode_refused():
         R.configure(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"], environ={"LINGBOT_STREAM_DECODE": "0"})
     flags, _ = R.configure(["run.py", "--lingbot-turn-cal"], environ={"LINGBOT_STREAM_DECODE": "0"})
     assert flags["yaw_servo"] is False
+
+
+# ------------------------------------------------------------ task regex as a runner arg
+
+def test_tasks_arg_both_forms_precedence_and_refusals():
+    from adapters.lingbot_world2 import run as R
+    base = ["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo", "--tasks", "OE034"]
+    flags, rest = R.configure(base, environ={})
+    assert flags["yaw_servo_cfg"].tasks == "GC" and rest == ["run.py", "--tasks", "OE034"]
+    for arg in (["--lingbot-yaw-servo-tasks", r"^[GO][CE]\d"], [r"--lingbot-yaw-servo-tasks=^[GO][CE]\d"]):
+        flags, rest = R.configure(base + arg, environ={})
+        assert flags["yaw_servo_cfg"].tasks == r"^[GO][CE]\d" and rest == ["run.py", "--tasks", "OE034"]
+    flags, _ = R.configure(base + ["--lingbot-yaw-servo-tasks", "OE048"], environ={"LINGBOT_YAW_SERVO_TASKS": "GC|OE034"})
+    assert flags["yaw_servo_cfg"].tasks == "OE048"                                 # arg beats env
+    flags, _ = R.configure(base, environ={"LINGBOT_YAW_SERVO_TASKS": "GC|OE034"})
+    assert flags["yaw_servo_cfg"].tasks == "GC|OE034"                              # env still honoured
+    with pytest.raises(SystemExit, match="without --lingbot-yaw-servo"):
+        R.configure(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo-tasks", "OE"], environ={})
+    for bad, msg in ((["--lingbot-yaw-servo-tasks", "[OE"], "not a valid regex"), (["--lingbot-yaw-servo-tasks"], "needs a regex"),
+                     (["--lingbot-yaw-servo-tasks="], "needs a regex")):
+        with pytest.raises(SystemExit, match=msg):
+            R.configure(base + bad, environ={})
+    with pytest.raises(SystemExit, match="LINGBOT_YAW_SERVO_TASKS"):
+        R.configure(base, environ={"LINGBOT_YAW_SERVO_TASKS": "(GC"})
+    cfg = flags["yaw_servo_cfg"]
+    assert YS.applies("OE034_chunk_02", {}, pattern=cfg.tasks) and not YS.applies("OE048_full", {}, pattern=cfg.tasks)
+    assert YS.applies("OE048_full", {}, pattern=r"^[GO][CE]\d") and YS.applies("GC033_full", {}, pattern=r"^[GO][CE]\d")
+    assert not YS.applies("IF010_full", {}, pattern=r"^[GO][CE]\d")
+    assert not YS.applies("OE048_full", {"LINGBOT_YAW_SERVO_TASKS": "OE"}, pattern="GC")   # pattern wins over env
+
+
+def test_tasks_arg_reaches_the_engine_per_main_call(monkeypatch, capsys, tmp_path):
+    import sys
+    from pathlib import Path
+    from types import ModuleType
+
+    from PIL import Image
+
+    from adapters.lingbot_world2 import poses as P
+    from adapters.lingbot_world2 import run as R
+    for key in tuple(R.os.environ):
+        if key.startswith("LINGBOT_"):
+            monkeypatch.delenv(key)
+    for g in ("YAW", "PITCH", "UNIT_YAW_DEG", "UNIT_PITCH_DEG", "CHUNK_UNITS", "CHUNK_YAW_DEG"):
+        monkeypatch.setattr(P, g, getattr(P, g))   # turn-cal rates are module state: restore them for later tests
+    img = tmp_path / "in.png"
+    Image.new("RGB", (8, 8)).save(img)
+    torch = ModuleType("torch")
+    torch.cuda = SimpleNamespace(reset_peak_memory_stats=lambda: None, max_memory_allocated=lambda: 0)
+    imageio = ModuleType("imageio")
+    imageio.mimsave = lambda *a, **kw: None
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "imageio", imageio)
+    pipe = SimpleNamespace(model=None, _t5_cache={})
+    monkeypatch.setattr(R, "load_pipe", lambda environ=None: (SimpleNamespace(sample_shift=5.0), pipe, Path("."), False))
+    monkeypatch.setattr(R.agent_api, "patch", lambda ra, *a: "test")
+    monkeypatch.setattr(R.agent_api, "finish", lambda ra: None)
+    monkeypatch.setattr(R.MT, "chunk_turn", lambda frames: (float(frames[-1, 0, 0, 0] - frames[0, 0, 0, 0]), 0.0, 1.0))
+    calls = []
+
+    def fake_step(session, servo, keys, rate, measure):
+        calls.append(len(calls))
+        servo.chunks += 1
+        return session.step(keys)
+
+    monkeypatch.setattr(R.YSV, "step", fake_step)
+    split = []
+
+    def fake_import(fresh=True):
+        def run_task(task, eng, out, args):
+            for name in ("OE034_full", "OE048_full"):
+                n = len(calls)
+                eng.generate(str(img), "p", "j-80,l-80,none-12", tmp_path, name, 173)
+                split.append((name, len(calls) > n))
+            return {"task_id": task["task_id"], "success": False}
+
+        ra = SimpleNamespace(run_task=run_task, decide_action=lambda *a, **kw: "WAIT", to_sana_key=lambda a: "none")
+
+        def run_main():
+            eng = ra.SanaWMEngine(SimpleNamespace(max_total_frames=961, seed=0, fps=16, action_frame_unit=20))
+            eng.session = _RunnerSession(1.2, 0.9)
+            ra.run_task({"task_id": "OE034"}, eng, tmp_path, None)
+        ra.main = run_main
+        return ra
+
+    monkeypatch.setattr(R, "import_run_agent", fake_import)
+    assert R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-tasks", "OE034"]) == 0
+    assert R.main(["run.py", "--lingbot-turn-cal", "--lingbot-yaw-servo"]) == 0      # the next arm: back to GC only
+    assert split == [("OE034_full", True), ("OE048_full", False), ("OE034_full", False), ("OE048_full", False)]
+    out = capsys.readouterr().out
+    modes = [ln for ln in out.splitlines() if ln.startswith("[lingbot] mode:")]
+    assert ", yaw servo on (tasks OE034)" in modes[0] and ", yaw servo on" in modes[1] and "tasks" not in modes[1]
+    flags = [ln for ln in out.splitlines() if ln.startswith("[lingbot] flags task=")]
+    assert "yaw_servo=on" in flags[0] and "yaw_servo=skip" in flags[1]

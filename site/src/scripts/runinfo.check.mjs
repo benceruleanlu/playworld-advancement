@@ -37,6 +37,8 @@ assert.deepEqual(words(["--lingbot-cond-schedule", "--lingbot-cond-text=1.0"]), 
 assert.deepEqual(words(["--lingbot-new-thing=3"]), ["--lingbot-new-thing 3"], "unknown flags show verbatim");
 assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-k=0.5"]),
   ["turn calibration", "yaw servo (error share 0.5)"]);
+assert.deepEqual(words(["--lingbot-turn-cal", "--lingbot-yaw-servo", "--lingbot-yaw-servo-tasks=^[GO][CE]\\d"]),
+  ["turn calibration", "yaw servo (yaw servo tasks ^[GO][CE]\\d)"]);
 assert.deepEqual(words(["--lingbot-split-sink", "--lingbot-split-sink-fg-scale=0.15", "--lingbot-split-sink-fg-frac=0.3"]),
   ["split sink scaling (fg scale 0.15, fg fraction 0.3)"]);
 
