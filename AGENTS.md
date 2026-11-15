@@ -100,20 +100,23 @@ Sharding is per family: `pwa/gen.py::shard_tasks()` (mirroring upstream `run_age
 Verified:
 - Launching several `experiment` runs at once can fail with Modal `App create rate limit exceeded` (`RESOURCE_EXHAUSTED`) in the prefetch step, before any GPU starts. Stagger dispatches by 1-2 min; rerun under the same name is fine if nothing was generated.
 - Scoring runs on the Actions runner with `pwa score --workers 6`; it is serial after generation.
-- The single-task GC005 time (~15 min) underestimates dev tasks: at 23:40 UTC on 2026-11-14, `lb14-turncal-dev-v1` (busiest shard 4 tasks) was still generating after 94 min and `lb14-session-dev-v1` (8 tasks) after 126 min, so a closed-loop 14B dev task takes over ~23 min on average unless a shard is stuck. Budgets below assume 15 min and are optimistic.
+- `lb14-session-agent-dev-v1` (14B, closed loop, 24 dev tasks, 4 H100 shards): 142 min generation wall clock, about 9.5 GPU-hours, so about 18 min per task on a shard with 8 tasks. Accounted GPU time: 136 min denoising (717 steps at 11.3 s), 40 min first steps (25 at 95 s), 83 min model loads (17 loads, one per family per shard). About 310 GPU-min is outside the `[lingbot]` timings, mostly agent API waits and video I/O (not split further). Source: issue #13.
+- Every agent task in that run hit the 30-chunk cap (mean 29.7 chunks, about 60 s of video); the player almost never returns END. 742 agent calls, 3 timeouts (retried), 0 fallbacks.
+- The single-task GC005 time (~15 min) underestimates dev tasks: at 23:40 UTC on 2026-11-14, `lb14-turncal-dev-v1` (busiest shard 4 tasks) was still generating after 94 min and `lb14-session-dev-v1` (8 tasks) after 126 min, so those two runs were slower per task than `lb14-session-agent-dev-v1` (cause not checked).
 
 Unverified (check and update):
 - Concurrent H100 containers available on our quota (`lb14-turncal-dev-v1` asked for 24, but only 6 have dev work).
 - Whether a shard with no tasks exits before loading the model.
-- Split of per-task time between model load, denoising and agent API calls (read from `gen.log`).
+- How the ~310 unaccounted GPU-min of `lb14-session-agent-dev-v1` split between agent API latency and video I/O.
 
-Levers, biggest first: raise `num_shards` up to the largest family size (dev: 6); one task per GPU would need cross-family sharding in `pwa gen`; 1.3B for A/B, 14B to confirm; `--action-source dataset` for A/B only (no agent calls, not for final numbers); `tasks` input to run only the family a method targets; start the next A/B while the last one runs.
+Levers, biggest first: load the model once per shard instead of once per family (83 of 568 GPU-min in the dev baseline); raise `num_shards` up to the largest family size (dev: 6); one task per GPU would need cross-family sharding in `pwa gen`; 1.3B for A/B, 14B to confirm; `--action-source dataset` for A/B only (no agent calls, not for final numbers); `tasks` input to run only the family a method targets; start the next A/B while the last one runs.
 
 | Exp | Runner | Tasks | Shards | GPU | Gen wall clock | Min/task | Notes |
 |---|---|---|---|---|---|---|---|
 | lb14-session-agent-gc005-v1 | lingbot_world2 | 1 | 1 | H100 | <=16 min | <=16 (incl. load) | closed loop; upper bound, gen start to job end incl. scoring |
+| lb14-session-agent-dev-v1 | lingbot_world2 | 24 | 4 | H100 | 142 min | ~18 (incl. 4 loads per shard) | closed loop; every agent task ran all 30 chunks |
 
-Full 171-task budget at ~15 min/task: 4 shards ~11 h (over the 6 h job cap), 8 shards ~5.8 h, 24 shards ~2.3 h, 50 shards ~1 h.
+Full 171-task budget at the measured ~18 min/task: 4 shards ~13 h and 8 shards ~6.9 h (both over the 6 h job cap), 24 shards ~2.7 h, 50 shards ~1.2 h.
 
 ### Results site
 
@@ -140,6 +143,24 @@ Submission due Sunday 14:30: repo link, 2-minute demo video, short description. 
 
 Genie 3 is weak on insight and out-of-sight. That is where we win. LingBot already beats Genie 3 on insight (1.95 vs 1.51); its gap is out-of-sight (1.16) and GC.
 
+### Dev baseline (measured)
+
+`lb14-session-agent-dev-v1`: LingBot v2 14B, persistent session, closed loop (gpt-4.1-mini player), 24 dev tasks, 2 passes, 0 missing.
+
+| GC | IF | Insight | Out-of-sight | Overall |
+|---|---|---|---|---|
+| 1.83 | 1.81 | 1.58 | 1.33 | 1.64 ± 0.13 |
+
+Dev is 6 tasks per family, and the paper rows are 171 tasks through LingBot's web demo, so this is not like for like with 1.82. Compare new dev runs against this row with `pwa compare`: a delta under 0.25 overall is noise. The run predates #44 and #47, so it has no `results/reports/` file and no Scenes release.
+
+What the failure census (issue #49) found in this run:
+
+- The player decides most GC and out-of-sight outcomes. It reverses left and right 9 to 17 times per out-of-sight rollout and up to 25 on GC (GC036). 4 of 6 out-of-sight rollouts never return to the start view, so no content is graded.
+- By the rule set before the census, out-of-sight content work (#51, #52, #53) waits until control and the player are fixed (#6; turn calibration, player hint PR #59).
+- Where the camera did return (OE047, OE048), two passes on the same video differ by up to 3 points.
+- Insight (1.58) is below the paper with no player involved: all six rollouts are 30 WAIT chunks and three are flagged static in at least one pass. The caption prompt (PR #32) is the first lever.
+- IF: three of six rollouts are `W` for 29 chunks.
+
 ### Timeline
 
 | Hours | Goal | Exit criterion |
@@ -161,7 +182,7 @@ Full-run budget: `171 * min_per_task / n_gpus / 60` must fit in ~6 h. Check at h
 - **C. Out-of-sight state tracker.** Save target crop + description on exit, advance state with LLM, condition on edited anchor on return.
 - **D. Eval infra (owner from hour 2).** `pwa`, proxy metrics, horizon curve, failure gallery.
 
-Cut: fine-tuning, full pose-indexed spatial memory. Re-injecting the first frame when the pose returns near the start is in PR #46 (GC only, opt-in, unscored). Out-of-sight hypotheses and test plan: issue #48.
+Cut: fine-tuning, full pose-indexed spatial memory. Re-injecting the first frame when the pose returns near the start is in PR #46 (GC only, opt-in, unscored). Telling the player what one action does and where the commanded camera is: PR #59 (opt-in, unscored). Out-of-sight hypotheses and test plan: issue #48.
 
 
 ### Compute
