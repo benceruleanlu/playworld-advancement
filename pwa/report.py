@@ -22,7 +22,9 @@ REFERENCE = {
 FALLBACK_STD = math.sqrt(0.011)
 CSV_FIELDS = ["exp", "split", "timestamp", "git_sha", "runner", "action_source", "gc", "if", "insight",
               "outsight", "overall", "overall_std", "passes", "n_tasks", "n_missing", "notes", "branch",
-              "n_dropped", "status", "run_url", "max_chunks"]
+              "n_dropped", "status", "run_url", "max_chunks", "judge_backend"]
+# judge_backend: API the Gemini judge was called through: aistudio, gcp, or aistudio+gcp for a run whose passes
+# mixed them. Same model either way. Blank on rows older than the column.
 # max_chunks: agent-chunk cap of a capped smoke run (pwa gen --max-chunks); blank = uncapped. A capped row is never
 # an official score: the site badges it and keeps it out of the headline.
 # status: running (launched), generated (gen-only done), scored, failed, cancelled. Blank on rows older than the column.
@@ -38,6 +40,20 @@ def load_pass(exp: str, k: int, sel: list[dict], judge: Judge | None = None) -> 
         scores[t["task_id"]] = (s or {}).get("score")
         gates[t["task_id"]] = (g or {}).get("score")
     return scores, gates
+
+
+def judge_backends(exp: str, passes: list[int], sel: list[dict], judge: Judge | None = None) -> str:
+    """aistudio / gcp / aistudio+gcp over the result files that hold a score; "" when none do. A result
+    without the field (upstream as is, every run before the field) is aistudio."""
+    seen = set()
+    for k in passes:
+        d = eval_dir(exp, judge=judge) / f"pass{k}"
+        for t in sel:
+            for mode in ("score", "gate"):
+                res = read_json(d / f"{t['task_id']}_{mode}.json")
+                if isinstance(res, dict) and res.get("score") is not None:
+                    seen.add(res.get("judge_backend") or "aistudio")
+    return "+".join(sorted(seen))
 
 
 def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = None,
@@ -90,7 +106,7 @@ def build(exp: str, sel: list[dict], strict: bool = False, split: str | None = N
             "n_missing": len(sel) - len(present), "families": fams, "overall": om, "overall_std": os_,
             "overall_per_pass": overall_vals, "per_pass": {str(k): {kk: v for kk, v in p.items() if kk != "tasks"}
                                                           for k, p in per_pass.items()},
-            "tasks": tasks, "judge": judge_json(judge)}
+            "tasks": tasks, "judge": judge_json(judge), "judge_backend": judge_backends(exp, passes, sel, judge)}
 
 
 def pass_reason(exp: str, tid: str, k: int, judge: Judge | None = None) -> str:
@@ -142,6 +158,7 @@ def render(rep: dict, meta: dict) -> str:
     p = lambda s="": print(s, file=out)  # noqa: E731
     p(f"{rep['exp']}  runner={meta.get('runner')} action_source={meta.get('action_source')} "
       f"passes={len(rep['passes'])} tasks={rep['n_tasks']} missing={rep['n_missing']}"
+      + (f" judge_backend={rep['judge_backend']}" if rep.get("judge_backend") else "")
       + ("  [strict]" if rep["strict"] else ""))
     if rep.get("judge"):
         p(f"*** {rep['judge']['label']} ***")
@@ -194,7 +211,8 @@ def render_md(rep: dict, meta: dict, site_url: str | None = None) -> str:
           f"score or the site headline.")
         p()
     p(f"runner `{meta.get('runner')}` | action source `{meta.get('action_source')}` | passes {len(rep['passes'])} "
-      f"| tasks {rep['n_tasks']} | missing {rep['n_missing']}")
+      f"| tasks {rep['n_tasks']} | missing {rep['n_missing']}"
+      + (f" | judge backend `{rep['judge_backend']}`" if rep.get("judge_backend") else ""))
     p()
     p("| family | mean | std | n | gate pass | missing | dropped | per pass |")
     p("|---|---:|---:|---:|---:|---:|---:|---|")
@@ -283,7 +301,8 @@ def upsert_csv(rep: dict, meta: dict, split: str) -> None:
            "branch": meta.get("branch") or current_branch(),
            # unscored or gated-without-review rollouts excluded from the mean (worst pass per family)
            "n_dropped": sum(f.get("dropped") or 0 for f in fam.values()),
-           "status": "scored", "run_url": run_url(), "max_chunks": str(cap or "")}
+           "status": "scored", "run_url": run_url(), "max_chunks": str(cap or ""),
+           "judge_backend": rep.get("judge_backend") or ""}
     # replace the same exp+split, and exp's score-less live rows (mark_row) under any split label
     rows = [r for r in rows if not (r.get("exp") == rep["exp"]
                                     and (r.get("split") == split or r.get("status") in LIVE_STATUSES))] + [new]
