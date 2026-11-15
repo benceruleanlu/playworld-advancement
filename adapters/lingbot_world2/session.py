@@ -37,6 +37,10 @@ no files. Differences from upstream, all deliberate:
     before a chunk whose commanded view matches an evicted, earlier-left chunk, that chunk's stored x0 is
     recomputed by one clean forward into the sink slots after the anchor latents; the original sink is copied
     back when nothing matches, and on an exception (_pose_mem_before, _mem_recompute, pose_memory.py).
+  * opt-in split sink key scaling (split_sink=SplitSinkConfig, --lingbot-split-sink, off by default):
+    once the sink latents are written, a camera-rotation-compensated foreground mask splits sink tokens into
+    foreground (fg_scale) and static background (bg_scale) during active chunks' denoising forwards, restoring
+    the pristine sink keys before each clean KV write (_split_sink_scaled, split_sink.py).
 
 Everything above the LingBotSession class is numpy-only and unit-tested
 (tests/test_lingbot_session.py); torch is imported lazily.
@@ -55,6 +59,7 @@ from adapters.lingbot_world2 import fast_start as FS
 from adapters.lingbot_world2 import pose_memory as PM
 from adapters.lingbot_world2 import poses as P
 from adapters.lingbot_world2 import sink_scale as SK
+from adapters.lingbot_world2 import split_sink as SS
 from adapters.lingbot_world2 import watchdog as W
 
 CHUNK = P.LATENT_CHUNK          # latent frames per causal chunk
@@ -305,7 +310,7 @@ class LingBotSession:
 
     def __init__(self, pipe, max_area: int, shift: float, horizon_frames: int = 961,
                  stream_decode: bool | None = None, stream_encode: bool = False, t5_cache=None, weight_mod=None,
-                 cond_sched=None, kv_noise=None, stg=None, sink_scale=None, pose_mem=None):
+                 cond_sched=None, kv_noise=None, stg=None, sink_scale=None, pose_mem=None, split_sink=None):
         self.pipe = pipe
         self.max_area = max_area
         self.shift = shift
@@ -332,6 +337,9 @@ class LingBotSession:
         self.pose_mem, self.pose_mem_on = pose_mem, False
         self.pm_stored = self.pm_installs = self.pm_restores = self.pm_latents = self.pm_forwards = 0
         self.pm_chunks = self.pm_evicted = 0
+        # --lingbot-split-sink: config (None = off), whether this rollout's task matched, counters (deltas)
+        self.split_sink, self.split_sink_on = split_sink, False
+        self.split_sink_chunks = self.split_sink_fg_tokens = 0
         self._free()
 
     def _free(self):
@@ -348,6 +356,9 @@ class LingBotSession:
         self._pm_snapshot = None  # host copy of the original sink slots [anchor, anchor + latents) of every block
         self._pm_installed = ()   # (chunk id, rope latent) pairs whose recomputed K/V sit in those slots
         self.pm_peak_bytes = 0
+        self._ss_latents = []     # --lingbot-split-sink host x0 slices for the opening sink latents
+        self._ss_poses = []       # --lingbot-split-sink host c2w poses for the opening sink latents
+        self._ss_scales = None    # built per-token sink scale vector [1, n_tokens, 1, 1] for this rollout
 
     # -- reset -------------------------------------------------------------
     def reset(self, image, prompt: str, seed: int, horizon_frames: int | None = None,
@@ -599,8 +610,10 @@ class LingBotSession:
                 }
                 ts = self.timesteps
                 for i in range(len(ts)):
-                    if i == 0:  # --lingbot-sink-key-scale: no-op unless it acts on this chunk
+                    if i == 0:  # --lingbot-sink-key-scale / --lingbot-split-sink: no-op unless it acts on this chunk
                         sink.enter_context(self._sink_scaled(cid))
+                        if self.split_sink is not None and self.split_sink_on:
+                            sink.enter_context(self._split_sink_scaled(cid))
                     if self.weight_mod is not None:
                         self.weight_mod.denoise_step(i, len(ts))
                     if self.cond_sched is not None and self.cond_sched.set_step(rel_c, i, third_person=self.third_person):
@@ -653,6 +666,10 @@ class LingBotSession:
                     pipe.model(x=[x0], t=t0, cross_attn_first_call=False, **kwargs)
                 if pm is not None:
                     self._pose_mem_after(cid, self.track.latents[c * CHUNK:(c + 1) * CHUNK], x0, rel_c)
+                if self.split_sink is not None and self.split_sink_on:
+                    sink_n = int(getattr(pipe, "sink_size", 0) or 0)
+                    if len(self._ss_poses) < sink_n:
+                        self._split_sink_record(x0, c, sink_n)
                 self.chunk_id += 1
                 W.progress()  # stall watchdog: a long (dataset-mode) step is not a stall while chunks advance
             lat = torch.cat(new, dim=1)
@@ -689,6 +706,69 @@ class LingBotSession:
             yield
         finally:
             SK.restore_keys(self.kv, n_tokens, saved)
+
+    def _split_sink_record(self, x0, chunk_idx: int, sink: int):
+        have = len(self._ss_poses)
+        take = min(CHUNK, sink - have)
+        if take <= 0:
+            return
+        lat = x0.detach() if hasattr(x0, "detach") else x0
+        if hasattr(lat, "float"):
+            lat = lat.float()
+        if hasattr(lat, "cpu"):
+            lat = lat.cpu()
+        if hasattr(lat, "numpy"):
+            lat = lat.numpy()
+        lat_np = np.array(np.asarray(lat, dtype=np.float32)[:, :take], dtype=np.float32, copy=True)
+        track_lats = getattr(self.track, "model_latents", None)
+        if track_lats is None:
+            track_lats = self.track.latents
+        c2ws = np.asarray(track_lats[chunk_idx * CHUNK:chunk_idx * CHUNK + take], dtype=np.float64)
+        self._ss_latents.append(lat_np)
+        self._ss_poses.extend(np.array(c2ws[i], dtype=np.float64, copy=True) for i in range(len(c2ws)))
+
+    def _split_sink_scaled(self, cid: int):
+        """--lingbot-split-sink: spatially scale foreground/background sink keys on denoising forwards of cid,
+        then copy the saved originals back (also on an exception). nullcontext when off or not active for cid."""
+        sink = int(getattr(self.pipe, "sink_size", 0) or 0)
+        if not (self.split_sink is not None and self.split_sink_on
+                and SS.active(self.split_sink, cid, CHUNK, sink) and len(self._ss_poses) >= sink):
+            return contextlib.nullcontext()
+        if self._ss_scales is None:
+            self._build_split_sink_scales(sink)
+        return self._split_sink_ctx()
+
+    def _build_split_sink_scales(self, sink: int):
+        import torch  # noqa: PLC0415
+        full_lat = np.concatenate(self._ss_latents, axis=1)[:, :sink]
+        full_c2w = np.stack(self._ss_poses[:sink], axis=0)
+        scales_1d, fg_tokens = SS.compute_sink_scales(full_lat, full_c2w, self.split_sink)
+        n_tokens = SS.sink_tokens(sink, self.frame_seqlen)
+        if len(scales_1d) != n_tokens:
+            raise RuntimeError(f"split-sink scale length {len(scales_1d)} != sink_tokens {n_tokens}")
+        arr = scales_1d.reshape(1, n_tokens, 1, 1)
+        ref_k = self.kv[0]["k"] if self.kv else None
+        if ref_k is not None and not isinstance(ref_k, np.ndarray) and hasattr(torch, "as_tensor"):
+            self._ss_scales = torch.as_tensor(arr, device=ref_k.device, dtype=ref_k.dtype)
+        elif isinstance(ref_k, np.ndarray):
+            self._ss_scales = arr.astype(ref_k.dtype, copy=False)
+        else:
+            self._ss_scales = arr
+        self.split_sink_fg_tokens += int(fg_tokens)
+        print(f"[lingbot] split-sink: built spatial mask at chunk {self.chunk_id} "
+              f"(fg_tokens={fg_tokens}/{n_tokens}, fg={self.split_sink.fg_scale:g}, "
+              f"bg={self.split_sink.bg_scale:g}, frac={self.split_sink.fg_frac:g})", flush=True)
+
+    @contextlib.contextmanager
+    def _split_sink_ctx(self):
+        n_tokens = int(self._ss_scales.shape[1])
+        saved = []
+        try:
+            SS.scale_keys_vector(self.kv, self._ss_scales, saved)
+            self.split_sink_chunks += 1
+            yield
+        finally:
+            SS.restore_keys(self.kv, n_tokens, saved)
 
     # -- pose-indexed memory (--lingbot-pose-memory) -------------------------
     def _pose_memory(self):
