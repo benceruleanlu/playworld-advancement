@@ -219,6 +219,9 @@ def encode_prompt(pipe, prompt: str, disk=None):
             return pipe.text_encoder([p], pipe.device)
         return [t.to(pipe.device) for t in pipe.text_encoder([p], torch.device("cpu"))]
 
+    # A start line, so a stall here shows in the log as a start with no timing line after it.
+    print(f"[lingbot] reset: text encode start (t5={'gpu' if not pipe.t5_cpu else 'cpu'}, "
+          f"torch threads={torch.get_num_threads()}, disk cache={'on' if disk is not None else 'off'})", flush=True)
     t0 = time.time()
     ctx, source = FS.resolve_context(prompt, pipe._t5_cache, compute, disk,
                                      to_device=lambda c: [t.to(pipe.device) for t in c])
@@ -296,6 +299,7 @@ class LingBotSession:
             from wan.modules.vae2_1 import count_conv3d  # noqa: PLC0415
             self._enc_feat_map = [None] * count_conv3d(pipe.vae.model.encoder)  # y grows in step()
         else:
+            print("[lingbot] reset: y encode start", flush=True)
             t0 = time.time()
             self._encode_y(horizon_latents(horizon_frames or self.horizon_frames))
             torch.cuda.synchronize()
