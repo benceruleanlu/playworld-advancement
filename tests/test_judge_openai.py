@@ -188,6 +188,44 @@ def test_client_generate_content_roundtrip(no_sleep, monkeypatch):
     assert srv.requests[0]["body"]["model"] == "j" and srv.requests[0]["body"]["reasoning_effort"] == "medium"
 
 
+def test_rejected_temperature_is_dropped_and_remembered(no_sleep, monkeypatch, capsys):
+    # the real gpt-6-luna reply to upstream's temperature 0.1 (all 48 calls of the first real screening run)
+    rejected = {"error": {"message": "Unsupported value: 'temperature' does not support 0.1 with this model. "
+                                     "Only the default (1) value is supported.", "type": "invalid_request_error",
+                          "param": "temperature", "code": "unsupported_value"}}
+    srv = FakeChat([(400, rejected, None), ok('{"s": 1}'), ok('{"s": 2}')])
+    monkeypatch.setenv("JUDGE_API_URL", srv.url)
+    monkeypatch.setenv("JUDGE_API_KEY", KEY)
+    cfg = NS(response_mime_type="application/json", temperature=0.1)
+    try:
+        client = jo.make_client("low")()
+        r1 = client.models.generate_content(model="openai:j", contents="x", config=cfg)
+        r2 = client.models.generate_content(model="openai:j", contents="x", config=cfg)
+    finally:
+        srv.close()
+    assert (json.loads(r1.text), json.loads(r2.text)) == ({"s": 1}, {"s": 2})
+    bodies = [q["body"] for q in srv.requests]
+    assert len(bodies) == 3 and bodies[0]["temperature"] == 0.1
+    assert all("temperature" not in b for b in bodies[1:])  # retried without it, then left out up front
+    assert all(b["reasoning_effort"] == "low" and b["response_format"] == {"type": "json_object"} for b in bodies)
+    assert "rejects temperature=0.1" in capsys.readouterr().err
+
+
+def test_other_400s_are_not_retried(no_sleep, monkeypatch):
+    srv = FakeChat([(400, {"error": {"message": "bad effort", "param": "reasoning_effort"}}, None),
+                    (400, {"error": {"message": "nope", "param": None}}, None)])
+    monkeypatch.setenv("JUDGE_API_URL", srv.url)
+    monkeypatch.setenv("JUDGE_API_KEY", KEY)
+    try:
+        client = jo.make_client("low")()
+        for _ in range(2):
+            with pytest.raises(jo.JudgeAPIError, match="HTTP 400"):
+                client.models.generate_content(model="openai:j", contents="x", config=NS(temperature=0.1))
+    finally:
+        srv.close()
+    assert len(srv.requests) == 2 and client.dropped == set()
+
+
 def test_judge_api_env_fallbacks(monkeypatch):
     for k in ("JUDGE_API_URL", "JUDGE_API_KEY", "PLAYER_API_URL", "PLAYER_API_KEY", "PLAYER_API_PROVIDER"):
         monkeypatch.delenv(k, raising=False)

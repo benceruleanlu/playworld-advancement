@@ -12,6 +12,9 @@ Request translation (Gemini -> OpenAI chat):
   response_mime_type json    response_format json_object, or json_schema when the config carries a schema
   temperature, top_p, seed, max_output_tokens   temperature, top_p, seed, max_completion_tokens
   thinking level             reasoning_effort (PWA_JUDGE_THINKING)
+A 400 naming one of DROPPABLE as the rejected `param` (gpt-6-luna takes only the default temperature 1, so
+upstream's 0.1 is refused) is retried once per param without it, with a stderr note; the client then leaves
+that param out of its later calls. Other 400s raise.
 Files API: upload keeps the local path and returns an ACTIVE file whose bytes are inlined at request time.
 
 Env: JUDGE_API_URL / JUDGE_API_KEY (fall back to PLAYER_API_URL / PLAYER_API_KEY), JUDGE_API_RETRIES (4),
@@ -37,6 +40,9 @@ from typing import Any
 PREFIX = "openai:"
 DEFAULT_URL = "https://api.openai.com/v1"
 RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504}
+# sampling params a model may reject that the call can go without; never reasoning_effort or response_format,
+# which change what the judge is asked to do
+DROPPABLE = ("temperature", "top_p", "seed")
 _sleep = time.sleep  # tests replace this
 
 
@@ -195,7 +201,18 @@ def response_from(body: dict) -> SimpleNamespace:
 
 
 class JudgeAPIError(RuntimeError):
-    pass
+    def __init__(self, msg: str, status: int | None = None, param: str | None = None):
+        super().__init__(msg)
+        self.status, self.param = status, param
+
+
+def _error_param(raw: str) -> str | None:
+    """The `error.param` of an OpenAI-style error body, if any."""
+    try:
+        err = json.loads(raw).get("error")
+    except (ValueError, AttributeError):
+        return None
+    return err.get("param") if isinstance(err, dict) and isinstance(err.get("param"), str) else None
 
 
 def _scrub(text: str, key: str) -> str:
@@ -230,10 +247,11 @@ def post_chat(base_url: str, api_key: str, body: dict, retries: int | None = Non
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             # 401/403 bodies can echo key fragments: status only
-            detail = "" if e.code in (401, 403) else _scrub(e.read().decode(errors="replace")[:300], api_key)
+            raw = "" if e.code in (401, 403) else e.read().decode(errors="replace")
+            detail = _scrub(raw[:300], api_key)
             last = f"HTTP {e.code}" + (f": {detail}" if detail else "")
             if e.code not in RETRY_STATUS:
-                raise JudgeAPIError(f"judge API {last}") from None
+                raise JudgeAPIError(f"judge API {last}", e.code, _error_param(raw)) from None
             wait = _retry_after(e.headers)
         except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
             last = f"{type(e).__name__}: {_scrub(str(getattr(e, 'reason', e)), api_key)[:200]}"
@@ -253,7 +271,18 @@ class Models:
 
     def generate_content(self, *, model: str, contents: Any, config: Any = None, **_kw) -> SimpleNamespace:
         body = build_request(model, contents, config, self._c.reasoning_effort, self._c.files)
-        return response_from(post_chat(self._c.base_url, self._c.api_key, body))
+        for k in self._c.dropped:
+            body.pop(k, None)
+        while True:
+            try:
+                return response_from(post_chat(self._c.base_url, self._c.api_key, body))
+            except JudgeAPIError as e:
+                if e.status != 400 or e.param not in DROPPABLE or e.param not in body:
+                    raise
+                print(f"[pwa judge] model rejects {e.param}={body[e.param]!r}; retrying with the provider default",
+                      file=sys.stderr)
+                self._c.dropped.add(e.param)
+                body.pop(e.param)
 
 
 class OpenAIJudgeClient:
@@ -263,6 +292,7 @@ class OpenAIJudgeClient:
         self.base_url, self.api_key, self.reasoning_effort = base_url, api_key, reasoning_effort
         self.files = Files()
         self.models = Models(self)
+        self.dropped: set[str] = set()  # DROPPABLE params this model rejected
 
 
 def judge_api() -> tuple[str, str]:
