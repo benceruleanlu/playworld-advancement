@@ -113,50 +113,58 @@ DEFAULT_PROMPT = "A photo-realistic scene with rich details."
 _PIPES: dict = {}  # loaded wan.WanI2VCausal by checkpoint and window
 
 
+def load_pipe(environ=os.environ):
+    """(config, pipe, weights dir, t5_cpu) for the checkpoint the env selects, loading the pipe on first use in
+    this process with the current fast-start flags (FAST). Shared by every engine in the process (pwa gen-arms)
+    and called ahead of time by warm_app.py's @modal.enter."""
+    root = environ.get("LINGBOT_ROOT", "/opt/lingbot")
+    weights = Path(environ.get("LINGBOT_WEIGHTS", "/weights/lingbot"))
+    variant = environ.get("LINGBOT_VARIANT", "14b").lower()
+    if variant not in ("14b", "1.3b"):
+        raise SystemExit(f"LINGBOT_VARIANT must be 14b or 1.3b, got {variant!r}")
+    ckpt = weights / f"lingbot-world-v2-{variant}-causal-fast"
+    # The 1.3B release ships DiT shards only; T5, VAE and tokenizer come from the 14B dir.
+    assets = weights / "lingbot-world-v2-14b-causal-fast" if variant == "1.3b" else None
+    for p in (Path(root) / "wan", ckpt, *( [assets] if assets else [])):
+        if not p.exists():
+            raise SystemExit(f"[lingbot] missing {p}; set LINGBOT_ROOT / LINGBOT_WEIGHTS or run prefetch_lingbot.py")
+    t5_cpu = environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1" and not FAST.t5_gpu
+
+    t0 = time.time()
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import wan  # noqa: PLC0415
+    import wan.image2video as i2v  # noqa: PLC0415
+    from wan.configs import WAN_CONFIGS  # noqa: PLC0415
+    FS.log("load.import_wan", time.time() - t0)
+
+    cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
+    key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
+    if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
+        print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
+        with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load) as timer:
+            if FAST.fast_load:
+                FS.read_ahead(FS.checkpoint_files(cfg, ckpt, assets, include_t5=not FAST.t5_cache),
+                              threads=int(environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
+            t0 = time.time()
+            _PIPES[key] = wan.WanI2VCausal(
+                config=cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
+                local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
+                assets_dir=str(assets) if assets else None)
+            timer.rest(time.time() - t0)
+        print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
+    else:
+        print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
+              f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
+    return cfg, _PIPES[key], weights, t5_cpu
+
+
 class LingBotWorld2Engine:
     """Drop-in for run_agent.SanaWMEngine."""
 
     def __init__(self, args):
         self.args = args
-        root = os.environ.get("LINGBOT_ROOT", "/opt/lingbot")
-        weights = Path(os.environ.get("LINGBOT_WEIGHTS", "/weights/lingbot"))
-        variant = os.environ.get("LINGBOT_VARIANT", "14b").lower()
-        if variant not in ("14b", "1.3b"):
-            raise SystemExit(f"LINGBOT_VARIANT must be 14b or 1.3b, got {variant!r}")
-        ckpt = weights / f"lingbot-world-v2-{variant}-causal-fast"
-        # The 1.3B release ships DiT shards only; T5, VAE and tokenizer come from the 14B dir.
-        assets = weights / "lingbot-world-v2-14b-causal-fast" if variant == "1.3b" else None
-        for p in (Path(root) / "wan", ckpt, *( [assets] if assets else [])):
-            if not p.exists():
-                raise SystemExit(f"[lingbot] missing {p}; set LINGBOT_ROOT / LINGBOT_WEIGHTS or run prefetch_lingbot.py")
-        t5_cpu = os.environ.get("LINGBOT_T5_CPU", "1" if variant == "14b" else "0") == "1" and not FAST.t5_gpu
-
-        t0 = time.time()
-        sys.path.insert(0, root)
-        import wan  # noqa: PLC0415
-        import wan.image2video as i2v  # noqa: PLC0415
-        from wan.configs import WAN_CONFIGS  # noqa: PLC0415
-        FS.log("load.import_wan", time.time() - t0)
-
-        self.cfg = WAN_CONFIGS["i2v-1.3B" if variant == "1.3b" else "i2v-A14B"]
-        key = (root, str(ckpt), str(assets), t5_cpu, LOCAL_ATTN, SINK)
-        if key not in _PIPES:  # one load per process: pwa gen-arms runs several arms on the same pipe
-            print(f"[lingbot] fast start: {FAST.describe()}", flush=True)
-            with FS.patched_loaders(i2v, lazy_t5=FAST.t5_cache, fast_load=FAST.fast_load) as timer:
-                if FAST.fast_load:
-                    FS.read_ahead(FS.checkpoint_files(self.cfg, ckpt, assets, include_t5=not FAST.t5_cache),
-                                  threads=int(os.environ.get("LINGBOT_READ_AHEAD_THREADS", "8")))
-                t0 = time.time()
-                _PIPES[key] = wan.WanI2VCausal(
-                    config=self.cfg, checkpoint_dir=str(ckpt), device_id=0, rank=0, t5_cpu=t5_cpu,
-                    local_attn_size=LOCAL_ATTN, sink_size=SINK, infer_mode="causal_fast",
-                    assets_dir=str(assets) if assets else None)
-                timer.rest(time.time() - t0)
-            print(f"[lingbot] loaded {variant} from {ckpt} in {time.time() - t0:.0f}s (t5_cpu={t5_cpu})", flush=True)
-        else:
-            print(f"[lingbot] reusing {variant} loaded earlier in this process (t5_cpu={t5_cpu}); "
-                  f"fast start {FAST.describe()} (load-time parts apply only to the first load)", flush=True)
-        self.pipe = _PIPES[key]
+        self.cfg, self.pipe, weights, t5_cpu = load_pipe()
         self.t5_cache = self._t5_cache(weights, t5_cpu) if FAST.t5_cache else None
         self.session = None
         if not STATELESS:
