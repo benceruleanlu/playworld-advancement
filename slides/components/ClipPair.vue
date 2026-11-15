@@ -77,11 +77,11 @@ onSlideLeave(() => { if (playing.value || vids().some(v => !v.paused)) pauseBoth
     <div class="clips">
       <div class="clip">
         <video ref="a" :src="src(control, 'mp4')" :poster="src(control, 'jpg')" muted controls playsinline loop preload="none" />
-        <div class="label">{{ controlLabel || 'Control' }} <code>{{ control }}</code></div>
+        <div class="label">{{ controlLabel || 'Control' }}</div>
       </div>
       <div class="clip">
         <video ref="b" :src="src(treatment, 'mp4')" :poster="src(treatment, 'jpg')" muted controls playsinline loop preload="none" />
-        <div class="label">{{ treatmentLabel || 'Treatment' }} <code>{{ treatment }}</code></div>
+        <div class="label">{{ treatmentLabel || 'Treatment' }}</div>
       </div>
     </div>
   </figure>

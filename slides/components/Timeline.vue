@@ -309,13 +309,13 @@
 <circle cx="523.3" cy="346.0" r="2.7" style="fill:var(--tl-run)"/>
 <circle cx="523.3" cy="340.2" r="2.7" style="fill:var(--tl-run)"/>
 <line x1="371.6" x2="371.6" y1="14" y2="363.79999999999995" class="mk"/>
-<text x="375.6" y="24" class="ml">judge credits out 03:55</text>
+<text x="375.6" y="24" class="ml">scoring credits ran out 03:55</text>
 <line x1="437.5" x2="437.5" y1="30" y2="363.79999999999995" class="mk"/>
-<text x="441.5" y="40" class="ml">out for good 06:14</text>
+<text x="441.5" y="40" class="ml">no scoring after 06:14</text>
 <line x1="516.7" x2="516.7" y1="14" y2="363.79999999999995" class="mk"/>
-<text x="520.7" y="24" class="ml">GPU workspace disabled 09:01</text>
+<text x="520.7" y="56" class="ml">GPU access lost 09:01</text>
 <line x1="829.1" x2="829.1" y1="14" y2="363.79999999999995" class="mk"/>
-<text x="833.1" y="24" class="ml">freeze 20:00</text>
+<text x="825.1" y="24" class="ml" style="text-anchor:end">planned code freeze 20:00</text>
 <line x1="146.4" x2="146.4" y1="367.79999999999995" y2="372.79999999999995" class="tk"/>
 <text x="146.4" y="386.79999999999995" class="ax">20:00 Nov 14</text>
 <line x1="231.8" x2="231.8" y1="367.79999999999995" y2="372.79999999999995" class="tk"/>
@@ -347,7 +347,7 @@
 .tl .tn { text-anchor: end; font-weight: 700; font-size: 14px; }
 .tl .tc { text-anchor: end; font-weight: 700; font-size: 13px; }
 .tl .ax { text-anchor: middle; font-size: 12px; opacity: 0.75; }
-.tl .ml { font-size: 12px; opacity: 0.85; }
+.tl .ml { font-size: 13px; opacity: 1; }
 .tl .bl { stroke: currentColor; opacity: 0.15; }
 .tl .tk { stroke: currentColor; opacity: 0.4; }
 .tl .mk { stroke: currentColor; stroke-dasharray: 3 3; opacity: 0.5; }

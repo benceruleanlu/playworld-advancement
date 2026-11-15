@@ -13,7 +13,6 @@ const src = (exp: string, task: string, ext: string) => `${base}${exp}/${task}.$
       <div class="head">{{ it.head }}</div>
       <video :src="src(it.exp, it.task, 'mp4')" :poster="src(it.exp, it.task, 'jpg')" muted controls playsinline loop preload="none" />
       <div class="sub">{{ it.sub }}</div>
-      <div class="task">{{ it.task }}</div>
     </div>
   </div>
 </template>
