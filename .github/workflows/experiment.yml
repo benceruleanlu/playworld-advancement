@@ -16,7 +16,7 @@ on:
       split:
         description: Task split
         type: choice
-        options: [dev, heldout, all]
+        options: [dev, dev2, dev48, heldout, all]
         default: dev
       tasks:
         description: Comma-separated task IDs (overrides split)

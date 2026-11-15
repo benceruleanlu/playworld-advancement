@@ -39,6 +39,8 @@ def test_help():
 def test_tasks(env):
     rows = json.loads(pwa(env, "tasks", "--split", "dev", "--json", check=0).stdout)
     assert len(rows) == 24 and {r["family"] for r in rows} == {"gc", "if", "insight", "outsight"}
+    for split, n in (("dev2", 24), ("dev48", 48), ("heldout", 123)):
+        assert len(json.loads(pwa(env, "tasks", "--split", split, "--json", check=0).stdout)) == n
     out = pwa(env, "tasks", "--split", "all", "--family", "if", check=0).stdout.splitlines()
     assert len(out) == 50 and all(l.startswith("if\tIF") for l in out)
     assert pwa(env, "tasks", "--split", "nope").returncode == 1
