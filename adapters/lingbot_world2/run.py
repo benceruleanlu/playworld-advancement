@@ -80,6 +80,8 @@ Env:
                     or steps that counts as having left (0.75)
   LINGBOT_GC_COMPLETION_HINT  1 = same as --lingbot-gc-completion-hint
   LINGBOT_IF_HORIZON  1 = same as --lingbot-if-horizon
+  LINGBOT_MEASURED_TURN  1 = same as --lingbot-measured-turn (measure each turn chunk's rotation in the video,
+                         log it next to the command and tell the player both totals; see measured_turn.py)
   LINGBOT_IF_HORIZON_MULT / LINGBOT_IF_HORIZON_MIN   budget = MULT x the dataset action's frames (2), at least MIN chunks (6)
   LINGBOT_IF_CAMERA_HINT  1 = same as --lingbot-if-camera-hint
   LINGBOT_PLAYER_HISTORY_ENDPOINTS  1 = same as --lingbot-player-history-endpoints
@@ -141,6 +143,7 @@ from adapters.lingbot_world2 import flag_stats  # noqa: E402
 from adapters.lingbot_world2 import gc_completion as C  # noqa: E402
 from adapters.lingbot_world2 import if_camera as IC  # noqa: E402
 from adapters.lingbot_world2 import if_horizon as IH  # noqa: E402
+from adapters.lingbot_world2 import measured_turn as MT  # noqa: E402
 from adapters.lingbot_world2 import if_repeat as IR  # noqa: E402
 from adapters.lingbot_world2 import player_hint as H  # noqa: E402
 from adapters.lingbot_world2 import player_history as PH  # noqa: E402
@@ -153,7 +156,7 @@ _FLAG_ARGS = ("--lingbot-stateless", "--lingbot-turn-cal", "--lingbot-caption-pr
               "--lingbot-reanchor", "--lingbot-player-hint", "--lingbot-return-stop",
               "--lingbot-gc-completion-hint", "--lingbot-if-horizon", "--lingbot-if-camera-hint",
               "--lingbot-player-history-endpoints", "--lingbot-insight-director", "--lingbot-if-repeat-check",
-              "--lingbot-if-slow-translation")
+              "--lingbot-if-slow-translation", "--lingbot-measured-turn")
 
 
 def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
@@ -179,6 +182,7 @@ def configure(argv: list[str], environ=os.environ) -> tuple[dict, list[str]]:
         "if_repeat": "--lingbot-if-repeat-check" in argv or environ.get("LINGBOT_IF_REPEAT_CHECK", "0") == "1",
         "if_slow": "--lingbot-if-slow-translation" in argv
                    or environ.get("LINGBOT_IF_SLOW_TRANSLATION", "0") == "1",
+        "measured_turn": "--lingbot-measured-turn" in argv or environ.get("LINGBOT_MEASURED_TURN", "0") == "1",
         "fast": FS.parse_flags(argv, environ),
     }
     flags["stall"], argv = W.parse(argv, environ)
@@ -447,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
                                  if_horizon=IF_HORIZON, if_camera=flags["if_camera"],
                                  history_endpoints=flags["history_endpoints"],
                                  insight_director=flags["insight_director"], if_repeat=flags["if_repeat"],
-                                 if_slow=flags["if_slow"])
+                                 if_slow=flags["if_slow"], measured_turn=flags["measured_turn"])
     if flags["insight_director"]:
         print("[lingbot] insight director: on (fixed scene activity cue)", flush=True)
     if flags["if_slow"]:
@@ -469,6 +473,10 @@ def main(argv: list[str] | None = None) -> int:
         run_agent.decide_action = H.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
                                          turn_cal=TURN_CAL, on_hint=STATS.hint, if_slow=flags["if_slow"])
         print("[lingbot] player hint: on", flush=True)
+    if flags["measured_turn"]:  # its sentence sits just before the player hint's pose summary
+        run_agent.decide_action = MT.wrap(run_agent.decide_action, run_agent.to_sana_key, session=not STATELESS,
+                                          turn_cal=TURN_CAL, on_event=STATS.measured_turn_event)
+        print("[lingbot] measured turn: on", flush=True)
     if flags["if_repeat"]:  # conditional IF reminder, after the fixed IF camera reminder
         run_agent.decide_action = IR.wrap(run_agent.decide_action, STATS.if_repeat_hint)
         print("[lingbot] IF repeat check: on", flush=True)

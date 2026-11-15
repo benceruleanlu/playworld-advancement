@@ -53,7 +53,9 @@ class FlagStats:
     def __init__(self, turn_cal: bool, prompt_mode: str, reanchor: bool, player_hint: bool,
                  return_stop: bool = False, gc_completion: bool = False,
                  if_horizon: bool = False, if_camera: bool = False, history_endpoints: bool = False,
-                 insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False):
+                 insight_director: bool = False, if_repeat: bool = False, if_slow: bool = False,
+                 measured_turn: bool = False):
+        self.measured_turn = bool(measured_turn)
         self.if_horizon = bool(if_horizon)
         self.if_camera = bool(if_camera)
         self.history_endpoints = bool(history_endpoints)
@@ -87,6 +89,7 @@ class FlagStats:
         self.gc_completion_hints = self.gc_completion_ends = 0
         self.if_horizon_cap = 0
         self.if_horizon_ends = 0
+        self.measured = {}
 
     def caption(self, used: bool):
         if used:
@@ -138,6 +141,11 @@ class FlagStats:
                 ("gc_completion_hints", "gc_completion_ends")}}
 
     # -- output ----------------------------------------------------------------
+    def measured_turn_event(self, summary: dict):
+        """measured_turn.wrap on_event: the task's totals so far (the last call is the whole rollout but
+        its final chunk)."""
+        self.measured = dict(summary)
+
     def if_horizon_event(self, kind: str, cap: int):
         """if_horizon.wrap on_event: "armed" or "end", with the task's chunk budget."""
         self.if_horizon_cap = int(cap)
@@ -171,6 +179,12 @@ class FlagStats:
         if self.if_horizon:
             s.update(if_horizon="on" if self.if_horizon_cap else "skip", if_horizon_chunks=self.if_horizon_cap,
                      if_horizon_ends=self.if_horizon_ends)
+        if self.measured_turn:
+            m = self.measured
+            s.update(measured_turn="on" if m else "skip", measured_chunks=m.get("chunks", 0),
+                     measured_unreliable=m.get("unreliable", 0),
+                     commanded_yaw=round(m.get("commanded_yaw", 0)), measured_yaw=round(m.get("measured_yaw", 0)),
+                     commanded_tilt=round(m.get("commanded_tilt", 0)), measured_tilt=round(m.get("measured_tilt", 0)))
         return s
 
     @staticmethod
