@@ -33,7 +33,7 @@ still cuts a longer script, e.g. IF033 (no counts, `W*80` fallback, 50 W chunks)
 dataset mode rescales the same all-W action to the frame budget.
 
 The wrapper is the outermost decide_action wrapper: the player-side wrappers inside it (player hint,
-IF repeat, IF camera, GC completion, return stop, IF horizon) and player history endpoints (it patches
+measured turn, IF repeat, IF camera, GC completion, return stop, IF horizon) and player history endpoints (it patches
 the frame sampler only decide_action calls) are never reached, so their counters stay 0. Engine-side
 flags see the chunk calls as in a closed-loop run. Wait-only insight tasks never call decide_action
 (upstream fixes their WAIT chunks), so they are unchanged.
